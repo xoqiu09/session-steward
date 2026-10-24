@@ -191,7 +191,7 @@ func TestManagedReconcileAndStopDoNotCompleteWork(t *testing.T) {
 	c.St.Now = func() time.Time { return time.Now().Add(time.Minute) }
 	// a 的进程以退出码 2 结束；b 在 tmux 中被手动结束
 	ft.mu.Lock()
-	ft.panes[a.TmuxName] = tmux.Pane{Name: a.TmuxName, Dead: true, ExitCode: 2}
+	ft.panes[a.TmuxName] = tmux.Pane{Name: a.TmuxName, Dead: true, ExitCode: 2, HasExitCode: true}
 	delete(ft.panes, b.TmuxName)
 	ft.mu.Unlock()
 	if err := c.ReconcileManaged(ctx); err != nil {
@@ -502,5 +502,23 @@ func TestNotifierDeliveryExplainsAcceptanceAction(t *testing.T) {
 				t.Fatal("ordinary handoff mislabelled as acceptance", alerts)
 			}
 		})
+	}
+}
+
+func TestManagedExitWithoutStatusIsRecordedAsUnknown(t *testing.T) {
+	c, ft, repo := managedCore(t)
+	ctx := context.Background()
+	a, _ := c.LaunchManaged(ctx, LaunchInput{RepoID: repo, Agent: "claude", Title: "A"})
+	c.St.Now = func() time.Time { return time.Now().Add(time.Minute) }
+	// 部分 tmux 版本只报 pane_dead，不给退出码
+	ft.mu.Lock()
+	ft.panes[a.TmuxName] = tmux.Pane{Name: a.TmuxName, Dead: true}
+	ft.mu.Unlock()
+	if err := c.ReconcileManaged(ctx); err != nil {
+		t.Fatal(err)
+	}
+	m, _ := c.managed(ctx, a.ID)
+	if m.State != "exited" || m.ExitCode != nil || m.Error == "" {
+		t.Fatalf("退出码未知时不能记成 0：%+v", m)
 	}
 }

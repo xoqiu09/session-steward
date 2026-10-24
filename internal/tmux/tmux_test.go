@@ -51,8 +51,12 @@ func TestRealTmuxLifecycle(t *testing.T) {
 			t.Fatal(err)
 		}
 		if p := m["steward-a"]; p.Dead {
-			if p.ExitCode != 4 {
+			// Ubuntu 24.04 的 tmux 3.4 在 respawn-pane 后不提供 pane_dead_status
+			if p.HasExitCode && p.ExitCode != 4 {
 				t.Fatalf("exit=%d", p.ExitCode)
+			}
+			if !p.HasExitCode {
+				t.Log("当前 tmux 未提供退出码，只验证已退出")
 			}
 			break
 		}

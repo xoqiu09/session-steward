@@ -18,6 +18,8 @@ type Pane struct {
 	Name     string
 	Dead     bool
 	ExitCode int
+	// HasExitCode 为 false 表示进程已结束但 tmux 没给出退出码（如 Ubuntu 24.04 的 tmux 3.4）。
+	HasExitCode bool
 }
 
 type Tmux struct {
@@ -103,19 +105,30 @@ func (t *Tmux) List(ctx context.Context, prefix string) (map[string]Pane, error)
 	if err != nil {
 		return nil, err
 	}
+	return parsePanes(out, prefix), nil
+}
+
+// parsePanes 解析 list-panes 输出。只去掉换行，不能 TrimSpace 整段：
+// 末尾空的 pane_dead_status 字段会被一并削掉。
+func parsePanes(out, prefix string) map[string]Pane {
 	m := map[string]Pane{}
-	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
-		f := strings.Split(line, "\t")
+	for _, line := range strings.Split(strings.TrimRight(out, "\r\n"), "\n") {
+		f := strings.SplitN(strings.TrimRight(line, "\r"), "\t", 3)
 		if len(f) < 3 || !strings.HasPrefix(f[0], prefix) {
 			continue
 		}
 		if _, seen := m[f[0]]; seen {
 			continue
 		}
-		code, _ := strconv.Atoi(f[2])
-		m[f[0]] = Pane{Name: f[0], Dead: f[1] == "1", ExitCode: code}
+		p := Pane{Name: f[0], Dead: f[1] == "1"}
+		if p.Dead {
+			if code, err := strconv.Atoi(strings.TrimSpace(f[2])); err == nil {
+				p.ExitCode, p.HasExitCode = code, true
+			}
+		}
+		m[f[0]] = p
 	}
-	return m, nil
+	return m
 }
 
 // Capture 返回当前画面及最近 lines 行回滚（纯文本，不含控制序列）。

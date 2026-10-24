@@ -497,6 +497,9 @@ func (c *Core) ReconcileManaged(ctx context.Context) error {
 				continue
 			}
 			c.setManagedState(ctx, r.id, "exited", nil, "tmux 会话已不存在（可能被手动结束或电脑重启）", "")
+		case p.Dead && !p.HasExitCode:
+			c.setManagedState(ctx, r.id, "exited", nil, "进程已结束；当前 tmux 未提供退出码", "")
+			c.Term.Kill(ctx, r.name)
 		case p.Dead:
 			code := p.ExitCode
 			msg := ""
