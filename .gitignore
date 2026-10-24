@@ -1,0 +1,11 @@
+/bin/
+/web/node_modules
+/web/tsconfig.tsbuildinfo
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+*.token
+.DS_Store
+
+/.claude/
+/Icon?
