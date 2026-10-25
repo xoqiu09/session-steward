@@ -277,8 +277,9 @@ func TestRoutineDependencyIncidentUpgradeAndRestart(t *testing.T) {
 				t.Fatal(err)
 			}
 			// Retain the actual old clocks and notify_sent, but remove the new schema.
+			// A pre-upgrade database carries no schema version, so the full v1 schema runs again on open.
 			if err = c.St.Tx(ctx, func(tx *sql.Tx) error {
-				_, err := tx.Exec(`DROP TRIGGER work_item_state_change; DROP TABLE work_item_state_changes`)
+				_, err := tx.Exec(`DROP TRIGGER work_item_state_change; DROP TABLE work_item_state_changes; PRAGMA user_version = 0`)
 				return err
 			}); err != nil {
 				t.Fatal(err)

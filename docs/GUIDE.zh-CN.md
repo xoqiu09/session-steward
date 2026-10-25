@@ -66,27 +66,28 @@ Agent 明确回报 `next_owner=user` 且提供下一步或卡点时，右侧“�
 需要 Go 和 Node（npm）。
 
 ```sh
-make build   # 先构建 web/（npm ci && npm run build），再 go build -o bin/ ./cmd/...
+make build   # 先构建 web/（npm ci && npm run build），再 go build -o bin/ ./cmd/...（注入 git describe 作为版本号）
 make test    # go test -race ./... 和 web 下的 vitest
 ```
 
-产物是 `bin/steward` 和 `bin/steward-hook`。两者需要放在同一目录，`steward install` 会在 `steward` 所在目录查找 `steward-hook`。
+产物是 `bin/steward` 和 `bin/steward-hook`。两者需要放在同一目录，`steward install` 会在 `steward` 所在目录查找 `steward-hook`，并把它复制到 `~/.steward/bin/steward-hook`，hooks 条目调用的是这份副本。因此**重新构建后要再运行一次 `steward install`**，否则 hooks 仍在使用旧版本的 `steward-hook`。`steward version` 和 `steward-hook version` 输出构建时注入的版本号（直接 `go build` 时为 `dev`），报告问题时请附上。
 
 ## 快速开始
 
 ```sh
 bin/steward serve                      # 启动服务，默认 http://127.0.0.1:7788
-bin/steward open                       # 打印面板登录链接并用 macOS 的 open 打开
+bin/steward open                       # 打印面板登录链接并用默认浏览器打开（macOS 用 open，Linux 用 xdg-open）
 bin/steward install [claude|codex|all] # 追加 hooks 条目，默认 all
 bin/steward status                     # 查看已接入的事件、Codex 信任状态、服务是否在运行
 bin/steward uninstall [claude|codex|all]
 ```
 
 - `install` 会写入 `~/.claude/settings.json` 和 `~/.codex/hooks.json`。安装器只在每个事件数组末尾追加自己的一组条目，不改动、不重排已有条目（例如其他工具已有的 hooks）。每个 Steward 条目的命令里带标识 `--mark=steward-v1`。重复安装是幂等的，只替换自己的条目。
-- 首次安装会把原文件备份到 `~/.steward/install/<claude|codex>.orig`。写入采用“临时文件 + rename”，rename 前确认文件没被其他程序改过。
+- 首次安装会把原文件备份到 `~/.steward/install/<claude|codex>.orig`。写入采用“临时文件 + rename”，rename 前确认文件没被其他程序改过。配置文件是符号链接（例如由 dotfiles 管理）时，写入链接指向的真实文件，链接本身保持不变。
 - `uninstall` 有两种结果：
   - 文件在安装后没被修改过：逐字恢复安装前的文件（原本不存在则删除）。
   - 文件被其他程序修改过：只移除带 `--mark=steward-v1` 的条目，保留他人的修改。
+  - 如果某次重新安装时发现文件在上次写入后被改过，原始备份即作废，之后的卸载一律只移除 Steward 条目，不会用旧备份覆盖他人的修改。
 - Codex 需要在应用内确认新的 hooks 才会启用。`steward status` 会根据 `~/.codex/config.toml` 里是否存在信任记录列出待确认的事件；它无法校验哈希，最终以 Codex 内的提示为准。
 - `PermissionRequest` hook 的超时设为 `permission_wait_sec + 30` 秒；Codex 的 `Interrupt` / `SessionEnd` 为 3 秒，其他事件为 10 秒。
 
@@ -199,7 +200,7 @@ steward-hook report --goal "…" --progress "…" --blocker "…" --next "…"  
   "tmux": "",
   "worktree_root": "",
   "notify_macos": true,
-  "notify_dialog": true,
+  "notify_dialog": false,
   "ntfy_url": "",
   "checks": {"my-repo": [["go", "test", "./..."], ["npm", "--prefix", "web", "test"]]},
   "auto_merge": true,
@@ -212,6 +213,8 @@ steward-hook report --goal "…" --progress "…" --blocker "…" --next "…"  
 ```
 
 `auto_merge` 缺省为 `true`，只对 `checks` 中配置了检查命令的仓库生效：配置后批准合并即自动运行检查并更新本地目标分支。`spool_max` 是暂存上限，满了丢弃最旧的事件并计数。修改 `listen` 或 `permission_wait_sec` 后需要重新运行 `steward install`，hook 超时才会同步更新。
+
+数值字段有下限：`permission_wait_sec`、`check_timeout_sec`、`spool_max` 不小于 10，`stale_after_min` 不小于 1，`history_days` 不小于 0（0 表示不扫描历史会话）。低于下限（包括 0 和负数）时按缺省值处理，服务与 hook 使用同一套规则。`config.json` 无法解析或 `listen` 不是回环地址时，`steward serve` 等命令报错退出；`steward-hook` 不发送任何请求，直接以退出码 0 结束，不影响 Agent。
 
 ## 托管会话与推送
 
@@ -231,7 +234,7 @@ steward-hook report --goal "…" --progress "…" --blocker "…" --next "…"  
 
 ## 远程访问、复盘与 AI 摘要
 
-- 远程访问默认关闭。服务仍只监听回环；在 `remote_hosts` 填写 HTTPS 代理的主机名（例如 Tailscale 的 `mac.<tailnet>.ts.net`），再由 `tailscale serve --bg --https=443 http://127.0.0.1:7788` 之类的代理转发。只有列出的主机名可访问，必须是 HTTPS 同源 Origin，采集接口 `/hook/` 不对远程开放。远程使用独立的 `remote.token`（`steward remote` 打印登录链接，`steward remote --rotate` 吊销并重新生成，重启服务后生效）；本机 token 在远程无效，反之亦然。远程只能查看：审批、简报编辑等所有写操作，以及启动会话、终端画面（含只读画面）、合并、交接、生成摘要，只在本机进行，服务端同样拒绝。远程会看到全部项目的简报和脱敏后的命令预览；只使用 tailnet 内的 `tailscale serve`，不要用 `tailscale funnel` 或其他公网转发；登录链接本身就是凭据，不要分享。开启远程后，ntfy 推送的点击链接指向远程面板。
+- 远程访问默认关闭。服务仍只监听回环；在 `remote_hosts` 填写 HTTPS 代理的主机名（例如 Tailscale 的 `mac.<tailnet>.ts.net`），再由 `tailscale serve --bg --https=443 http://127.0.0.1:7788` 之类的代理转发。反向代理必须保留原始 `Host` 头（`tailscale serve` 默认如此；nginx 等需设置 `proxy_set_header Host $host`）：服务按 Host 区分远程和本机请求，Host 被改写为 `127.0.0.1` 后远程请求会被当作本机请求，远程 token 无法登录（这是安全的拒绝，但表现为一直 401）。只有列出的主机名可访问，必须是 HTTPS 同源 Origin，采集接口 `/hook/` 不对远程开放。远程使用独立的 `remote.token`（`steward remote` 打印登录链接，`steward remote --rotate` 吊销并重新生成，重启服务后生效）；本机 token 在远程无效，反之亦然。远程只能查看：审批、简报编辑等所有写操作，以及启动会话、终端画面（含只读画面）、合并、交接、生成摘要，只在本机进行，服务端同样拒绝。远程会看到全部项目的简报和脱敏后的命令预览；只使用 tailnet 内的 `tailscale serve`，不要用 `tailscale funnel` 或其他公网转发；登录链接本身就是凭据，不要分享。开启远程后，ntfy 推送的点击链接指向远程面板。
 - 复盘（“复盘”标签）：按 Agent 汇总最近 7/30/90 天的执行记录：执行、交付（Agent 的 deliver）、已验收（你标为完成）、交付后重开、待验收、放弃、交接出去、检查门结果。只展示计数与比例和口径说明，不打分。
 - AI 摘要默认关闭。`summary_command` 是本机命令 argv（材料经 stdin 传入，不经 shell），只对 `summary_repos` 中列出的仓库可用。材料与交接包相同：简报、功能清单、Git 记录，不含对话正文，已脱敏。摘要始终标为“AI 推断”，不改写简报；材料变化后标出“可能过期”。若命令会把材料发给云端模型，请只对允许外发的项目开启。
 

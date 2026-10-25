@@ -29,16 +29,32 @@ var BuildCommit = "dev"
 
 func main() {
 	defer func() { recover() }() // 任何异常都不能影响 Agent
-	args := os.Args[1:]
+	if code := run(os.Args[1:], os.Stdin, os.Stdout); code != 0 {
+		os.Exit(code)
+	}
+}
+
+func run(args []string, stdin io.Reader, stdout io.Writer) int {
 	if len(args) == 0 {
 		fmt.Fprintln(os.Stderr, "用法见源码注释")
-		return
+		return 0
 	}
 	if args[0] == "version" {
-		fmt.Println(BuildCommit)
-		return
+		fmt.Fprintln(stdout, BuildCommit)
+		return 0
 	}
-	cfg, _ := config.Load()
+	cfg, err := config.Load()
+	if err != nil {
+		// 配置有误（例如 listen 不是回环地址）时不能带着 token 发请求，也不能阻塞 Agent：直接以 0 退出。
+		// hooks 模式保持静默；手动执行的子命令在 stderr 提示原因。
+		switch args[0] {
+		case "claude", "codex", "other":
+			io.Copy(io.Discard, stdin)
+		default:
+			fmt.Fprintln(os.Stderr, "Steward 配置有误，已跳过：", err)
+		}
+		return 0
+	}
 	client := &hook.Client{
 		BaseURL:     "http://" + cfg.Listen,
 		Token:       config.ReadSecret("ingest.token"),
@@ -51,23 +67,24 @@ func main() {
 	switch args[0] {
 	case "claude", "codex", "other":
 		if len(args) < 2 || client.Token == "" {
-			io.Copy(io.Discard, os.Stdin)
-			return
+			io.Copy(io.Discard, stdin)
+			return 0
 		}
-		stdin, _ := io.ReadAll(io.LimitReader(os.Stdin, 8<<20))
-		client.Handle(ctx, args[0], args[1], stdin, os.Stdout)
+		in, _ := io.ReadAll(io.LimitReader(stdin, 8<<20))
+		client.Handle(ctx, args[0], args[1], in, stdout)
 	case "flush":
 		client.Flush(ctx)
-		fmt.Printf("暂存剩余 %d 条，累计丢弃 %d 条\n", client.Spool.Len(), client.Spool.Dropped())
+		fmt.Fprintf(stdout, "暂存剩余 %d 条，累计丢弃 %d 条\n", client.Spool.Len(), client.Spool.Dropped())
 	case "claim", "ask", "deliver":
-		os.Exit(agentAction(ctx, client, args))
+		return agentAction(ctx, client, args)
 	case "report", "begin":
-		os.Exit(report(ctx, client, args, cfg.ReportingHints))
+		return report(ctx, client, args, cfg.ReportingHints)
 	case "features":
-		os.Exit(features(ctx, client, args))
+		return features(ctx, client, args)
 	default:
 		fmt.Fprintln(os.Stderr, "未知命令:", args[0])
 	}
+	return 0
 }
 
 func features(ctx context.Context, c *hook.Client, args []string) int {

@@ -1,0 +1,26 @@
+# 更新日志
+
+本文件记录对用户可见的变更。版本号以 `steward version` 输出的 git 标识为准。
+
+## Unreleased
+
+### 修复
+
+- 安装：安装后其他工具修改了 `settings.json` / `hooks.json`，再次 `steward install` 后卸载会用最早的备份逐字覆盖，丢失他人的 hooks 和设置。现在重装时若发现文件在上次写入后被改过，原始备份作废，之后卸载只移除 Steward 自己的条目。
+- 安装：配置文件是符号链接（例如由 dotfiles 管理）时，写入会把链接替换成普通文件。现在写入链接指向的真实文件，链接保持不变。
+- 服务端：鉴权、Host、远程只读、Origin、`X-Steward` 等拒绝返回纯文本，前端解析失败，“需要登录”界面无法出现。现在 `/api/` 和 `/hook/` 下的错误一律返回 JSON `{"error": ...}`；未注册的 `/api/` 路径返回 JSON 404，不再回落到 `index.html`。浏览器直接打开的页面仍返回纯文本提示。
+- 前端：接口返回非 JSON（代理错误页、纯文本）时抛出带状态码的 `ApiError`，不再抛 `SyntaxError`，能正确识别 401 和 403。
+- 配置：`config.json` 校验失败时不再返回含非法值（如非回环 `listen`）的半成品配置。`steward-hook` 遇到配置错误时不发送任何请求，直接以 0 退出；`steward status` 报告配置错误。
+- 配置：`permission_wait_sec`、`spool_max`、`check_timeout_sec`、`stale_after_min`、`history_days` 设置下限，低于下限时回落到缺省值，避免例如权限等待为 0 时请求立即过期；服务与 hook 使用同一套规则。
+- hook 暂存：补发时不再在持有暂存文件锁的同时做网络请求，其他 hook 进程写入暂存不会被补发的网络超时阻塞；同一时刻只有一个进程补发。
+- 托管会话：进程退出后先保存终端最后画面再结束 tmux 会话，面板在会话结束后（包括服务重启后）仍能看到退出前的输出；读取画面失败时下一轮对账重试，不丢画面。
+
+### 新增
+
+- 数据库使用 `PRAGMA user_version` 记录 schema 版本，并按顺序执行迁移。首个公开版本的结构为 v1，此前创建的库按 v1 兼容升级；v2 新增托管会话最后画面表。库版本高于程序支持的版本时拒绝打开。
+- `make go` 通过 `-ldflags "-X main.BuildCommit=$(git describe --always --dirty)"` 为 `steward` 和 `steward-hook` 注入版本号。
+
+### 其他
+
+- `make web` 不再生成未跟踪的 `web/dist/.keep`（`go:embed all:web/dist` 依赖的是已提交的构建产物，不需要占位文件）；`make test` 改用 `npm test`，使用锁定版本的 vitest。
+- 文档：GUIDE 配置示例中 `notify_dialog` 改为缺省值 `false`；说明 `steward open` 在 Linux 上使用 `xdg-open`；README 写明需要 Go 1.26.5；说明重新构建后需重新运行 `steward install`；说明远程访问的反向代理必须保留原始 `Host` 头；说明数值配置的下限。

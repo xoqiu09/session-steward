@@ -23,8 +23,19 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<T>
     body: body === undefined ? undefined : JSON.stringify(body),
   })
   const text = await res.text()
-  const data = text ? JSON.parse(text) : {}
-  if (!res.ok) throw new ApiError(res.status, data.error ?? res.statusText, data)
+  let data: unknown = {}
+  if (text) {
+    try {
+      data = JSON.parse(text)
+    } catch {
+      // 非 JSON 响应（代理错误页、纯文本错误、回落的 HTML 等）：保留状态码，正文作为错误信息
+      throw new ApiError(res.status, text.trim() || res.statusText)
+    }
+  }
+  if (!res.ok) {
+    const obj = data !== null && typeof data === 'object' ? (data as Record<string, unknown>) : {}
+    throw new ApiError(res.status, typeof obj.error === 'string' && obj.error ? obj.error : res.statusText || `HTTP ${res.status}`, obj)
+  }
   return data as T
 }
 

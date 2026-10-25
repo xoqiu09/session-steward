@@ -229,13 +229,18 @@ func (s *Server) Handler() http.Handler {
 					return
 				}
 			}
+			if strings.HasPrefix(r.URL.Path, "/api/") || strings.HasPrefix(r.URL.Path, "/hook/") {
+				// 未注册的接口不能回落到 index.html，否则前端会把 HTML 当作接口响应
+				fail(w, r, http.StatusNotFound, "not found")
+				return
+			}
 			if !s.panelAuthed(r) {
-				http.Error(w, "请通过 steward open 打开面板（需要登录链接）", http.StatusUnauthorized)
+				fail(w, r, http.StatusUnauthorized, "请通过 steward open 打开面板（需要登录链接）")
 				return
 			}
 			b, err := fs.ReadFile(s.Static, "index.html")
 			if err != nil {
-				http.Error(w, "前端未构建", 500)
+				fail(w, r, 500, "前端未构建")
 				return
 			}
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -251,13 +256,13 @@ func (s *Server) guard(next http.Handler) http.Handler {
 		host := hostOnly(r.Host)
 		remote := s.remoteHost(host)
 		if host != "127.0.0.1" && host != "localhost" && host != "::1" && !remote {
-			http.Error(w, "forbidden host", http.StatusForbidden)
+			fail(w, r, http.StatusForbidden, "forbidden host")
 			return
 		}
 		if remote {
 			// 远程只开放面板接口；采集接口只给本机 hooks
 			if strings.HasPrefix(r.URL.Path, "/hook/") {
-				http.Error(w, "forbidden", http.StatusForbidden)
+				fail(w, r, http.StatusForbidden, "forbidden")
 				return
 			}
 			w.Header().Set("Strict-Transport-Security", "max-age=31536000")
@@ -276,7 +281,7 @@ func eq(a, b string) bool {
 func (s *Server) ingest(h http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if !eq(strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "), s.IngestToken) {
-			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			fail(w, r, http.StatusUnauthorized, "unauthorized")
 			return
 		}
 		h(w, r)
@@ -306,21 +311,21 @@ func (s *Server) originOK(r *http.Request) bool {
 func (s *Server) panel(h http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if !s.panelAuthed(r) {
-			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			fail(w, r, http.StatusUnauthorized, "unauthorized")
 			return
 		}
 		// 写操作要求同源，配合 SameSite=Strict cookie 防 CSRF
 		if s.isRemote(r) && remoteBlocked(r.Method, r.URL.Path) {
-			http.Error(w, "远程访问不允许此操作，请在本机面板进行", http.StatusForbidden)
+			fail(w, r, http.StatusForbidden, "远程访问不允许此操作，请在本机面板进行")
 			return
 		}
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
 			if !s.originOK(r) {
-				http.Error(w, "bad origin", http.StatusForbidden)
+				fail(w, r, http.StatusForbidden, "bad origin")
 				return
 			}
 			if r.Header.Get("X-Steward") != "1" {
-				http.Error(w, "missing X-Steward header", http.StatusForbidden)
+				fail(w, r, http.StatusForbidden, "missing X-Steward header")
 				return
 			}
 		}
@@ -331,7 +336,7 @@ func (s *Server) panel(h http.HandlerFunc) http.HandlerFunc {
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	if s.isRemote(r) {
 		if !eq(r.URL.Query().Get("t"), s.RemoteToken) {
-			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			fail(w, r, http.StatusUnauthorized, "unauthorized")
 			return
 		}
 		http.SetCookie(w, &http.Cookie{Name: remoteCookie, Value: s.RemoteToken, Path: "/", HttpOnly: true, Secure: true, SameSite: http.SameSiteStrictMode, MaxAge: 30 * 24 * 3600})
@@ -339,7 +344,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !eq(r.URL.Query().Get("t"), s.PanelToken) {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		fail(w, r, http.StatusUnauthorized, "unauthorized")
 		return
 	}
 	http.SetCookie(w, &http.Cookie{Name: cookieName, Value: s.PanelToken, Path: "/", HttpOnly: true, SameSite: http.SameSiteStrictMode, MaxAge: 30 * 24 * 3600})
@@ -350,6 +355,16 @@ func writeJSON(w http.ResponseWriter, code int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
 	json.NewEncoder(w).Encode(v)
+}
+
+// fail 返回错误。/api/ 与 /hook/ 等程序调用的接口一律返回 JSON {"error": ...}，前端和 hook 都按 JSON 解析；
+// 浏览器直接打开的页面（/、/login 等）返回纯文本，便于阅读。
+func fail(w http.ResponseWriter, r *http.Request, code int, msg string) {
+	if strings.HasPrefix(r.URL.Path, "/api/") || strings.HasPrefix(r.URL.Path, "/hook/") {
+		writeJSON(w, code, map[string]string{"error": msg})
+		return
+	}
+	http.Error(w, msg, code)
 }
 
 func writeErr(w http.ResponseWriter, err error) {
@@ -523,7 +538,7 @@ func (s *Server) handleSnapshot(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
 	fl, ok := w.(http.Flusher)
 	if !ok {
-		http.Error(w, "stream unsupported", 500)
+		fail(w, r, 500, "stream unsupported")
 		return
 	}
 	cursor, _ := strconv.ParseInt(r.URL.Query().Get("cursor"), 10, 64)

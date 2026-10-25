@@ -3,7 +3,9 @@
 // 规则：
 //   - 只追加自己的条目，不改动、不重排他人的条目；每个 Steward 条目的命令里带标识 --mark=steward-v1。
 //   - 首次安装保存原始文件备份；写入用“临时文件 + rename”，并在 rename 前确认文件未被他人改动。
-//   - 卸载：文件仍是我们写入时的样子 → 逐字恢复原始备份；否则只移除带标识的条目，保留他人的修改。
+//   - 卸载：文件仍是我们写入时的样子且安装期间从未发现外部修改 → 逐字恢复原始备份；否则只移除带标识的条目，保留他人的修改。
+//   - 重装时若文件已不是我们上次写入的样子，原始备份即失效：此后卸载一律只移除自己的条目。
+//   - 目标是符号链接时写入链接指向的真实文件，链接本身保持不变。
 package install
 
 import (
@@ -69,6 +71,9 @@ type State struct {
 	CreatedHooks  bool     `json:"created_hooks_obj"`
 	HookBinary    string   `json:"hook_binary"`
 	PermissionSec int      `json:"permission_sec"`
+	// ExternalEdits 表示某次重装时发现文件在我们写入后被他人改过。原始备份不再代表“去掉 Steward 后的文件”，
+	// 卸载不能再逐字恢复，只能移除自己的条目。
+	ExternalEdits bool `json:"external_edits,omitempty"`
 }
 
 type Installer struct {
@@ -211,6 +216,12 @@ func (in *Installer) Install(t Target) (changed bool, err error) {
 				return false, err
 			}
 		}
+	} else if !st.ExternalEdits && sum(raw) != st.WrittenHash {
+		// 上次写入后文件被他人改过（含删除）：逐字恢复备份会丢掉这些修改，改为卸载时只移除自己的条目。
+		st.ExternalEdits = true
+		if err := os.Remove(in.backupPath(t)); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return false, err
+		}
 	}
 	hv, ok := root.Get("hooks")
 	hooks, isObj := hv.(*ojson.Object)
@@ -280,7 +291,7 @@ func (in *Installer) Uninstall(t Target) (mode string, err error) {
 	if err != nil {
 		return "", err
 	}
-	if st != nil && existed && sum(raw) == st.WrittenHash {
+	if st != nil && !st.ExternalEdits && existed && sum(raw) == st.WrittenHash {
 		// 安装后无外部修改：逐字恢复原始文件
 		if st.OrigExisted {
 			orig, err := os.ReadFile(in.backupPath(t))
@@ -440,8 +451,42 @@ func contains(s []string, v string) bool {
 	return false
 }
 
+// resolveSymlinks 沿符号链接找到真实目标，使 rename 替换的是目标文件而不是链接本身。
+// 链接指向的文件尚不存在时 EvalSymlinks 会失败，此时逐层 Readlink 得到将要创建的目标路径。
+func resolveSymlinks(path string) (string, error) {
+	if real, err := filepath.EvalSymlinks(path); err == nil {
+		return real, nil
+	}
+	for i := 0; i < 40; i++ {
+		fi, err := os.Lstat(path)
+		if errors.Is(err, os.ErrNotExist) {
+			return path, nil
+		}
+		if err != nil {
+			return "", err
+		}
+		if fi.Mode()&os.ModeSymlink == 0 {
+			return path, nil
+		}
+		link, err := os.Readlink(path)
+		if err != nil {
+			return "", err
+		}
+		if !filepath.IsAbs(link) {
+			link = filepath.Join(filepath.Dir(path), link)
+		}
+		path = link
+	}
+	return "", fmt.Errorf("%s 的符号链接层数过多", path)
+}
+
 // atomicWrite 写临时文件后 rename。expectHash 非空时，rename 前确认目标文件内容仍是预期的（防止覆盖他人刚写入的修改）。
+// path 是符号链接时写入其真实目标。
 func atomicWrite(path string, data []byte, mode os.FileMode, expectHash string) error {
+	path, err := resolveSymlinks(path)
+	if err != nil {
+		return err
+	}
 	tmp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".steward-*")
 	if err != nil {
 		return err

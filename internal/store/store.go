@@ -25,7 +25,7 @@ func Open(path string) (*Store, error) {
 		return nil, err
 	}
 	w.SetMaxOpenConns(1)
-	if _, err := w.Exec(schema); err != nil {
+	if err := migrate(w, migrations); err != nil {
 		w.Close()
 		return nil, fmt.Errorf("初始化 schema: %w", err)
 	}

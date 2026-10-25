@@ -24,6 +24,8 @@ type fakeTerm struct {
 	argv   map[string][]string
 	sent   []string
 	failOn string
+	// captureErr 模拟 tmux 读取画面失败（会话仍在）
+	captureErr error
 }
 
 func newFakeTerm() *fakeTerm {
@@ -54,6 +56,9 @@ func (f *fakeTerm) Capture(_ context.Context, name string, _ int) (string, error
 	defer f.mu.Unlock()
 	if _, ok := f.panes[name]; !ok {
 		return "", tmux.ErrNoSession
+	}
+	if f.captureErr != nil {
+		return "", f.captureErr
 	}
 	return "screen of " + name, nil
 }
@@ -520,5 +525,63 @@ func TestManagedExitWithoutStatusIsRecordedAsUnknown(t *testing.T) {
 	m, _ := c.managed(ctx, a.ID)
 	if m.State != "exited" || m.ExitCode != nil || m.Error == "" {
 		t.Fatalf("退出码未知时不能记成 0：%+v", m)
+	}
+}
+
+// 进程退出后先保存最后画面再结束 tmux 会话，面板仍能看到崩溃前的输出。
+func TestManagedExitKeepsLastScreen(t *testing.T) {
+	c, ft, repo := managedCore(t)
+	ctx := context.Background()
+	a, _ := c.LaunchManaged(ctx, LaunchInput{RepoID: repo, Agent: "claude", Title: "A"})
+	b, _ := c.LaunchManaged(ctx, LaunchInput{RepoID: repo, Agent: "claude", Title: "B"})
+	c.St.Now = func() time.Time { return time.Now().Add(time.Minute) }
+	ft.mu.Lock()
+	ft.panes[a.TmuxName] = tmux.Pane{Name: a.TmuxName, Dead: true, ExitCode: 1, HasExitCode: true}
+	ft.panes[b.TmuxName] = tmux.Pane{Name: b.TmuxName, Dead: true}
+	ft.mu.Unlock()
+	if err := c.ReconcileManaged(ctx); err != nil {
+		t.Fatal(err)
+	}
+	for _, m := range []*ManagedSession{a, b} {
+		ft.mu.Lock()
+		_, alive := ft.panes[m.TmuxName]
+		ft.mu.Unlock()
+		if alive {
+			t.Fatalf("%s: 退出后应结束 tmux 会话", m.Title)
+		}
+		text, got, err := c.CaptureManaged(ctx, m.ID)
+		if err != nil || got.State != "exited" || text != "screen of "+m.TmuxName {
+			t.Fatalf("%s: 应返回退出前保存的画面: %q %+v %v", m.Title, text, got, err)
+		}
+	}
+	// 服务重启后（新的 Core）同样可读
+	c2 := New(c.St, c.Loc)
+	c2.Term = ft
+	if text, _, _ := c2.CaptureManaged(ctx, a.ID); text != "screen of "+a.TmuxName {
+		t.Fatalf("重启后丢失最后画面: %q", text)
+	}
+}
+
+// 画面读取失败（非“会话不存在”）时不 Kill、不改状态，下一轮重试，避免丢失最后画面。
+func TestManagedExitRetriesWhenCaptureFails(t *testing.T) {
+	c, ft, repo := managedCore(t)
+	ctx := context.Background()
+	a, _ := c.LaunchManaged(ctx, LaunchInput{RepoID: repo, Agent: "claude", Title: "A"})
+	c.St.Now = func() time.Time { return time.Now().Add(time.Minute) }
+	ft.mu.Lock()
+	ft.panes[a.TmuxName] = tmux.Pane{Name: a.TmuxName, Dead: true, ExitCode: 3, HasExitCode: true}
+	ft.captureErr = errors.New("synthetic tmux failure")
+	ft.mu.Unlock()
+	c.ReconcileManaged(ctx)
+	if m, _ := c.managed(ctx, a.ID); m.State != "running" {
+		t.Fatalf("画面未保存前不应结束: %s", m.State)
+	}
+	ft.mu.Lock()
+	ft.captureErr = nil
+	ft.mu.Unlock()
+	c.ReconcileManaged(ctx)
+	text, m, _ := c.CaptureManaged(ctx, a.ID)
+	if m.State != "exited" || *m.ExitCode != 3 || text != "screen of "+a.TmuxName {
+		t.Fatalf("%q %+v", text, m)
 	}
 }
