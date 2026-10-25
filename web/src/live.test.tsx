@@ -64,6 +64,14 @@ describe('谁在动 / 下一步', () => {
     const snap = { ...base, work_items: [updated] }
     expect(rows(snap).recent[0]).toMatchObject({ group: { repoId: 1 }, actor: 'review' })
   })
+  it('lets a current agent-owned item lead an old review, while a recent delivery still reads as review', () => {
+    const now = '2026-10-23T12:00:00Z', delivered = (time: string) => ({ fields: {}, tool_events_since: 0, last_event_at: time, stale: false, last_delivered_at: time })
+    const working = item('SYN-2', 1, { brief: { fields: { next_owner: { ...owner('agent'), at: now } }, tool_events_since: 0, last_event_at: now, stale: false } })
+    const snap = (time: string) => ({ ...base, now, work_items: [item('SYN-1', 1, { status: 'review', updated_at: now, brief: delivered(time) }), working] })
+    expect(projectActor(snap('2026-10-19T00:00:00Z'), 1)).toBe('agent')
+    expect(projectActor(snap(now), 1)).toBe('review')
+    expect(projectActor({ ...snap('2026-10-19T00:00:00Z'), work_items: [snap('2026-10-19T00:00:00Z').work_items[0]] }, 1)).toBe('review')
+  })
   it('does not count quiet old blockers as current blocked projects', () => {
     const snap = { ...base, work_items: [{ ...quietReview, status: 'blocked' as const }] }
     expect(liveSummary(snap).blocked).toBe(0)

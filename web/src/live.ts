@@ -44,9 +44,14 @@ export function projectActor(snap: Snapshot, repoId: number | null, scopedItems?
   if (lanes.counts.action) return 'user'
   if (items.some(w => w.automatic_issue)) return 'issue'
   if (sessions.some((s) => live(s) && ['running', 'waiting_permission'].includes(s.state)) || (snap.managed ?? []).some((m) => ids.has(m.work_item_id) && m.state === 'running' && (provider === 'all' || m.agent === provider))) return 'agent'
-  if (items.some(w => w.status === 'review') || lanes.review.some(r => ids.has(r.id))) return 'review'
-  const owners = items.map((w) => field(w, 'next_owner')).filter(f => f && Date.parse(snap.now) - Date.parse(f.at) >= 0 && Date.parse(snap.now) - Date.parse(f.at) < PROJECT_RECENT_MS).map(f => f!.text)
-  if (owners.some((o) => o === 'agent' || o === 'claude' || o === 'codex')) return 'agent'
+  const recent = (at?: string) => Date.parse(snap.now) - Date.parse(at || '') >= 0 && Date.parse(snap.now) - Date.parse(at || '') < PROJECT_RECENT_MS
+  const reviewing = items.filter(w => w.status === 'review' || lanes.review.some(r => r.id === w.id))
+  const owners = items.filter(w => !reviewing.includes(w)).map((w) => field(w, 'next_owner')).filter(f => f && recent(f.at)).map(f => f!.text)
+  const agentOwns = owners.some((o) => o === 'agent' || o === 'claude' || o === 'codex')
+  // A review delivered more than a day ago does not outrank another item an Agent reported owning today.
+  // updated_at is not used as the delivery time because Git scans also move it.
+  if (reviewing.some(w => recent(w.brief?.last_delivered_at)) || (reviewing.length && !agentOwns)) return 'review'
+  if (agentOwns) return 'agent'
   if (owners.some((o) => o === 'external')) return 'external'
   return 'unknown'
 }
