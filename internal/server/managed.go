@@ -154,7 +154,7 @@ func (s *Server) managedRoutes(mux *http.ServeMux) {
 func (s *Server) handleTerminal(w http.ResponseWriter, r *http.Request) {
 	fl, ok := w.(http.Flusher)
 	if !ok {
-		http.Error(w, "stream unsupported", 500)
+		fail(w, r, 500, "stream unsupported")
 		return
 	}
 	id := r.PathValue("id")

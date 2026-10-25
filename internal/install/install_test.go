@@ -191,3 +191,116 @@ func TestClaudeProjectTarget(t *testing.T) {
 		t.Fatal("原来不存在的文件应删除")
 	}
 }
+
+// 安装 → 他人修改 → 重装 → 卸载：重装写入了新的 WrittenHash，卸载不能再逐字恢复最早的备份，否则他人的修改会丢失。
+func TestReinstallAfterExternalChangeKeepsChanges(t *testing.T) {
+	tg, in := setup(t)
+	if _, err := in.Install(tg); err != nil {
+		t.Fatal(err)
+	}
+	b, _ := os.ReadFile(tg.Path)
+	s := strings.Replace(string(b), `"model": "x"`, `"model": "y",
+  "newKey": "kept"`, 1)
+	os.WriteFile(tg.Path, []byte(s), 0o644)
+	in.HookBinary = "/opt/steward-v2/steward-hook"
+	if _, err := in.Install(tg); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(in.backupPath(tg)); !os.IsNotExist(err) {
+		t.Fatal("失效的原始备份应删除")
+	}
+	// 再装一次（文件未再变化）也不能恢复逐字还原的资格
+	if _, err := in.Install(tg); err != nil {
+		t.Fatal(err)
+	}
+	mode, err := in.Uninstall(tg)
+	if err != nil || mode != "surgical" {
+		t.Fatalf("应只移除 Steward 条目: %s %v", mode, err)
+	}
+	b, _ = os.ReadFile(tg.Path)
+	out := string(b)
+	if strings.Contains(out, Mark) {
+		t.Fatalf("仍有 Steward 条目:\n%s", out)
+	}
+	for _, want := range []string{`"newKey": "kept"`, `"model": "y"`, "/usr/bin/orca done", "notch gate"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("外部修改丢失 %q:\n%s", want, out)
+		}
+	}
+}
+
+// 重装时文件已被删除：不能在卸载时用旧备份把删除前的内容复活。
+func TestReinstallAfterExternalDeleteDoesNotResurrect(t *testing.T) {
+	tg, in := setup(t)
+	in.Install(tg)
+	os.Remove(tg.Path)
+	if _, err := in.Install(tg); err != nil {
+		t.Fatal(err)
+	}
+	if mode, err := in.Uninstall(tg); err != nil || mode != "surgical" {
+		t.Fatalf("mode=%s err=%v", mode, err)
+	}
+	b, _ := os.ReadFile(tg.Path)
+	if strings.Contains(string(b), "orca") || strings.Contains(string(b), Mark) {
+		t.Fatalf("不应恢复已删除的内容或残留条目:\n%s", b)
+	}
+}
+
+// settings.json 是指向 dotfiles 的符号链接：安装和卸载都写真实文件，链接保持不变。
+func TestSymlinkedSettingsKeepLink(t *testing.T) {
+	dir := t.TempDir()
+	real := filepath.Join(dir, "dotfiles", "settings.json")
+	os.MkdirAll(filepath.Dir(real), 0o700)
+	os.WriteFile(real, []byte(orig), 0o644)
+	link := filepath.Join(dir, "home", ".claude", "settings.json")
+	os.MkdirAll(filepath.Dir(link), 0o700)
+	if err := os.Symlink("../../dotfiles/settings.json", link); err != nil {
+		t.Skip("无法创建符号链接:", err)
+	}
+	tg := ClaudeTarget(dir)
+	tg.Path = link
+	in := &Installer{StateDir: filepath.Join(dir, "state"), HookBinary: "/bin/steward-hook", PermWait: 60}
+	isLink := func() {
+		t.Helper()
+		fi, err := os.Lstat(link)
+		if err != nil || fi.Mode()&os.ModeSymlink == 0 {
+			t.Fatalf("符号链接被替换: %v %v", fi, err)
+		}
+	}
+	if _, err := in.Install(tg); err != nil {
+		t.Fatal(err)
+	}
+	isLink()
+	if b, _ := os.ReadFile(real); !strings.Contains(string(b), Mark) {
+		t.Fatalf("真实文件应包含 Steward 条目:\n%s", b)
+	}
+	if entries, _ := os.ReadDir(filepath.Dir(link)); len(entries) != 1 {
+		t.Fatalf("链接所在目录不应出现其他文件: %v", entries)
+	}
+	if mode, err := in.Uninstall(tg); err != nil || mode != "restored" {
+		t.Fatalf("mode=%s err=%v", mode, err)
+	}
+	isLink()
+	if b, _ := os.ReadFile(real); string(b) != orig {
+		t.Fatalf("真实文件应逐字恢复:\n%s", b)
+	}
+}
+
+// 链接指向尚不存在的文件时，创建的是链接目标而不是把链接换成普通文件。
+func TestDanglingSymlinkWritesTarget(t *testing.T) {
+	dir := t.TempDir()
+	real := filepath.Join(dir, "real.json")
+	link := filepath.Join(dir, "link.json")
+	if err := os.Symlink(real, link); err != nil {
+		t.Skip("无法创建符号链接:", err)
+	}
+	if err := atomicWrite(link, []byte("{}"), 0o600, ""); err != nil {
+		t.Fatal(err)
+	}
+	if fi, _ := os.Lstat(link); fi.Mode()&os.ModeSymlink == 0 {
+		t.Fatal("符号链接被替换")
+	}
+	if b, _ := os.ReadFile(real); string(b) != "{}" {
+		t.Fatalf("目标内容=%q", b)
+	}
+}

@@ -428,7 +428,11 @@ func status() error {
 			fmt.Printf("  已有信任记录 %d 个；待确认 %d 个 %v\n", len(tr), len(un), un)
 		}
 	}
-	cfg, _ := config.Load()
+	cfg, err := config.Load()
+	if err != nil {
+		fmt.Println("配置有误：", err)
+		return err
+	}
 	resp, err := http.Get("http://" + cfg.Listen + "/hook/ping")
 	if err != nil {
 		fmt.Println("服务：未运行")

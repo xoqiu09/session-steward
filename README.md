@@ -26,15 +26,17 @@ Claude Code / Codex hooks ──> steward-hook ──> steward serve (127.0.0.1:
 
 ## 安装
 
-需要 Go 1.26 及以上。构建好的 Web 界面已提交在仓库里，只有修改前端时才需要 Node。
+需要 Go 1.26.5 及以上（见 `go.mod`）。构建好的 Web 界面已提交在仓库里，只有修改前端时才需要 Node。
 
 ```sh
 git clone https://github.com/xoqiu09/session-steward
 cd session-steward
-go build -o bin/ ./cmd/...
+go build -ldflags "-X main.BuildCommit=$(git describe --always --dirty)" -o bin/ ./cmd/...
 ```
 
-`bin/steward` 和 `bin/steward-hook` 要放在同一个目录。
+`bin/steward` 和 `bin/steward-hook` 要放在同一个目录。`-ldflags` 用于注入 `steward version` 显示的版本号（`make go` 会自动加上），省略时显示 `dev`。
+
+`steward install` 会把 `steward-hook` 复制到 `~/.steward/bin/`，hooks 调用的是这份副本。重新构建后请再运行一次 `bin/steward install`，否则 hooks 仍使用旧版本。
 
 ## 快速开始
 
@@ -65,15 +67,15 @@ bin/steward open
 - 在本机运行，只监听回环地址，`Host` 不是回环地址的请求会被拒绝。没有遥测。
 - 两个随机 token，权限 `0600`：一个给 hooks（只能访问 `/hook/*`），一个给面板（只能访问 `/api/*`，使用 HttpOnly、SameSite=Strict 的 cookie，写操作还要检查 Origin 和 `X-Steward`）。
 - 存储的是脱敏后的事件元数据（事件类型、工具名、指纹、截断并遮蔽密钥的预览），不存原始载荷或完整对话。
-- 只有你配置了才会访问网络：`ntfy_url`、`summary_command` 或 `remote_hosts`。远程访问是只读的，使用单独的 token，只应在私有网络内提供，例如 `tailscale serve`。不要用 `tailscale funnel` 或公网代理暴露它。
+- 只有你配置了才会访问网络：`ntfy_url`、`summary_command` 或 `remote_hosts`。远程访问是只读的，使用单独的 token，只应在私有网络内提供，例如 `tailscale serve`。不要用 `tailscale funnel` 或公网代理暴露它。反向代理必须保留原始 `Host` 头，否则远程请求会被当作本机请求而无法登录。
 
 发现安全问题请按 [SECURITY.md](SECURITY.md) 私下报告。
 
 ## 开发
 
 ```sh
-make build     # 在 web/ 里 npm ci && npm run build，再 go build
-make test      # go test -race ./... 和 vitest
+make build     # 在 web/ 里 npm ci && npm run build，再 go build（注入版本号）
+make test      # go test -race ./... 和 web 下的 npm test
 make notifier  # 仅 macOS：带深链跳转的通知助手应用
 ```
 

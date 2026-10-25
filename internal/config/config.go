@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -101,21 +102,53 @@ func Home() string {
 
 func Path(name string) string { return filepath.Join(Home(), name) }
 
+// 数值配置的下限。低于下限（包括 0 和负数）视为未正确配置，回落到默认值，避免例如权限等待为 0 时请求立即过期。
+// hook 与服务都经由 Load 读取，因此两端得到的值一致。
+const (
+	MinPermissionWaitSec = 10
+	MinSpoolMax          = 10
+	MinCheckTimeoutSec   = 10
+	MinStaleAfterMin     = 1
+	MinHistoryDays       = 0 // 0 表示不扫描历史会话（演示环境使用）
+)
+
+// normalize 把低于下限的数值字段回落为默认值。
+func (c *Config) normalize() {
+	d := Default()
+	clamp := func(v *int, min, def int) {
+		if *v < min {
+			*v = def
+		}
+	}
+	clamp(&c.PermissionWaitSec, MinPermissionWaitSec, d.PermissionWaitSec)
+	clamp(&c.SpoolMax, MinSpoolMax, d.SpoolMax)
+	clamp(&c.CheckTimeoutSec, MinCheckTimeoutSec, d.CheckTimeoutSec)
+	clamp(&c.StaleAfterMin, MinStaleAfterMin, d.StaleAfterMin)
+	clamp(&c.HistoryDays, MinHistoryDays, d.HistoryDays)
+}
+
+func validListen(l string) bool {
+	return strings.HasPrefix(l, "127.0.0.1:") || strings.HasPrefix(l, "localhost:") || strings.HasPrefix(l, "[::1]:")
+}
+
+// Load 读取 config.json。出错时返回默认配置和错误，绝不返回半解析或含非法值（如非回环 listen）的配置；
+// 调用方应处理错误，而不是继续使用返回值联网。
 func Load() (Config, error) {
-	c := Default()
 	b, err := os.ReadFile(Path("config.json"))
 	if errors.Is(err, os.ErrNotExist) {
-		return c, nil
+		return Default(), nil
 	}
 	if err != nil {
-		return c, err
+		return Default(), err
 	}
+	c := Default()
 	if err := json.Unmarshal(b, &c); err != nil {
-		return c, err
+		return Default(), fmt.Errorf("config.json 解析失败：%w", err)
 	}
-	if !strings.HasPrefix(c.Listen, "127.0.0.1:") && !strings.HasPrefix(c.Listen, "localhost:") && !strings.HasPrefix(c.Listen, "[::1]:") {
-		return c, errors.New("listen 只允许回环地址")
+	if !validListen(c.Listen) {
+		return Default(), errors.New("listen 只允许回环地址")
 	}
+	c.normalize()
 	return c, nil
 }
 

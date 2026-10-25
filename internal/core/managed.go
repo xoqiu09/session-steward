@@ -441,7 +441,34 @@ func (c *Core) SendManagedInput(ctx context.Context, id, text, key string) error
 	return c.Term.SendKey(ctx, m.TmuxName, key)
 }
 
-// CaptureManaged 读取终端当前画面。未运行的会话返回最后保留的画面（若 tmux 仍保留）。
+// lastScreenMax 限制保存的最后画面大小（保留末尾）。
+const lastScreenMax = 64 << 10
+
+// saveLastScreen 在结束 tmux 会话前保存最后画面。tmux 会话已不存在时没有可保存的内容，不算错误。
+func (c *Core) saveLastScreen(ctx context.Context, id, name string) error {
+	text, err := c.Term.Capture(ctx, name, 300)
+	if err != nil {
+		if errors.Is(err, tmux.ErrNoSession) {
+			return nil
+		}
+		return err
+	}
+	if len(text) > lastScreenMax {
+		cut := len(text) - lastScreenMax
+		for cut < len(text) && !utf8.RuneStart(text[cut]) {
+			cut++
+		}
+		text = text[cut:]
+	}
+	now := c.St.NowTS()
+	return c.St.Tx(ctx, func(tx *sql.Tx) error {
+		_, err := tx.Exec(`INSERT INTO managed_screens(managed_id,text,captured_at) VALUES(?,?,?)
+			ON CONFLICT(managed_id) DO UPDATE SET text=excluded.text, captured_at=excluded.captured_at`, id, text, now)
+		return err
+	})
+}
+
+// CaptureManaged 读取终端当前画面。已退出的会话返回退出时保存的最后画面。
 func (c *Core) CaptureManaged(ctx context.Context, id string) (string, *ManagedSession, error) {
 	m, err := c.managed(ctx, id)
 	if err != nil {
@@ -449,6 +476,16 @@ func (c *Core) CaptureManaged(ctx context.Context, id string) (string, *ManagedS
 	}
 	if m.State == "archived" || m.State == "failed" || m.State == "stopped" {
 		return "", m, nil
+	}
+	if m.State == "exited" {
+		var text string
+		err := c.St.R().QueryRowContext(ctx, `SELECT text FROM managed_screens WHERE managed_id=?`, id).Scan(&text)
+		if err == nil {
+			return text, m, nil
+		}
+		if !errors.Is(err, sql.ErrNoRows) {
+			return "", m, err
+		}
 	}
 	text, err := c.Term.Capture(ctx, m.TmuxName, 300)
 	if errors.Is(err, tmux.ErrNoSession) {
@@ -497,17 +534,23 @@ func (c *Core) ReconcileManaged(ctx context.Context) error {
 				continue
 			}
 			c.setManagedState(ctx, r.id, "exited", nil, "tmux 会话已不存在（可能被手动结束或电脑重启）", "")
-		case p.Dead && !p.HasExitCode:
-			c.setManagedState(ctx, r.id, "exited", nil, "进程已结束；当前 tmux 未提供退出码", "")
-			c.Term.Kill(ctx, r.name)
 		case p.Dead:
-			code := p.ExitCode
-			msg := ""
-			if code != 0 {
-				msg = fmt.Sprintf("进程以退出码 %d 结束", code)
+			// 先保存最后画面再结束 tmux 会话，否则 Agent 崩溃时的输出在 Kill 后就看不到了。
+			// 保存失败时本轮不改状态、不 Kill，下一轮对账重试。
+			if err := c.saveLastScreen(ctx, r.id, r.name); err != nil {
+				continue
 			}
-			c.setManagedState(ctx, r.id, "exited", &code, msg, "")
-			c.Term.Kill(ctx, r.name) // 画面已无新内容；退出码已保存
+			var code *int
+			msg := "进程已结束；当前 tmux 未提供退出码"
+			if p.HasExitCode {
+				v := p.ExitCode
+				code, msg = &v, ""
+				if v != 0 {
+					msg = fmt.Sprintf("进程以退出码 %d 结束", v)
+				}
+			}
+			c.setManagedState(ctx, r.id, "exited", code, msg, "")
+			c.Term.Kill(ctx, r.name) // 画面已保存，退出码已记录
 		case r.state == "starting":
 			c.setManagedState(ctx, r.id, "running", nil, "", "")
 		}
