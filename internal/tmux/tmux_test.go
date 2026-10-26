@@ -11,6 +11,9 @@ import (
 
 // 使用本机真实 tmux（独立 socket），未安装时跳过。
 func TestRealTmuxLifecycle(t *testing.T) {
+	// 模拟 launchd/systemd 下不含 UTF-8 的语言环境，tmux 在这种环境下会改写输出中的制表符。
+	t.Setenv("LC_ALL", "C")
+	t.Setenv("LANG", "C")
 	bin := Find("")
 	if bin == "" {
 		t.Skip("tmux 未安装")

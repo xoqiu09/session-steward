@@ -51,7 +51,9 @@ func (t *Tmux) run(ctx context.Context, args ...string) (string, error) {
 	}
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, t.Bin, append([]string{"-L", t.Socket, "-f", "/dev/null"}, args...)...)
+	// -u：LANG/LC_ALL 不含 UTF-8 时（launchd、systemd、cron 常见），tmux 客户端会把输出里的
+	// 制表符等控制字符替换成 "_"，list-panes 按制表符拆分的结果就全部丢失。
+	cmd := exec.CommandContext(ctx, t.Bin, append([]string{"-u", "-L", t.Socket, "-f", "/dev/null"}, args...)...)
 	var out, errb bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &errb
 	if err := cmd.Run(); err != nil {
