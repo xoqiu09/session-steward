@@ -196,6 +196,7 @@ export function TownView({ snap, conn, repoId, provider, sel, onSelectItem, onSe
     if (s.kind === 'character') onSelectSession(Number(s.key.replace('session-', '')))
     else if (s.kind === 'building') { const id = Number(s.key.replace('repo-', '')); if (Number.isFinite(id)) onSelectRepo(id) }
     else if (s.kind === 'review-desk') onQueue('review')
+    else if (s.kind === 'item') onSelectItem(s.key)
     else if (s.kind === 'approval') {
       const t = resolveDeepLink(shown, { kind: 'approval', id: s.key })
       if (t?.kind === 'item') onSelectItem(t.id)

@@ -12,6 +12,7 @@ import {
   type Box, type Camera, type Cell, type District, type Tier, type WorldLayout,
 } from './world'
 import type { WorldPlan } from './clusters'
+import { InteriorScene } from './InteriorScene'
 import { Campfire, Fence, Flowers, Pine, Pond, Rock, Windmill, YARD_TINT, terrainOf, type Terrain } from './scenery'
 
 /** 每个街区的待验收架、退件筐最多摆几个箱子，其余只计数。 */
@@ -351,6 +352,16 @@ function attentionOf(d: District, needsYou: (b: BuildingView) => boolean) {
 
 export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far'> & { kiosk?: boolean; rotateMs?: number; paused?: boolean; focusKey?: string; plan?: WorldPlan }) {
   const { model, needsYou, kiosk = false, rotateMs = 20_000, paused = false, focusKey, plan } = props
+  // 走进某栋建筑：显示它的室内；拖动、缩放、巡游都暂停。
+  const [inside, setInside] = useState<string | null>(null)
+  const insideB = inside ? model.buildings.find((b) => b.key === inside) ?? null : null
+  useEffect(() => {
+    if (!inside) return
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setInside(null) }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [inside])
+  const sceneSelect = (s: Selection) => { if (s.kind === 'building') { stop(); lastTouch.current = Date.now(); setInside(s.key) } else props.onSelect(s) }
   const world = useMemo(() => worldLayout(model.buildings, needsYou, plan), [model, needsYou, plan])
   const box = useRef<HTMLDivElement>(null)
   const [aspect, setAspect] = useState(1.6)
@@ -395,7 +406,7 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far'> & {
   const [stopIndex, setStopIndex] = useState(0)
   const [tick, setTick] = useState(0)
   useEffect(() => {
-    if (!kiosk || paused || stops.length < 2) return
+    if (!kiosk || paused || inside || stops.length < 2) return
     const t = window.setTimeout(() => {
       // 刚拖过或缩放过：这一轮先不动，过一会儿再试。
       if (Date.now() - lastTouch.current < 30_000) { setTick((n) => n + 1); return }
@@ -404,13 +415,14 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far'> & {
       flyTo(stops[next], 1400)
     }, rotateMs)
     return () => window.clearTimeout(t)
-  }, [kiosk, paused, stops, stopIndex, rotateMs, tick])
+  }, [kiosk, paused, inside, stops, stopIndex, rotateMs, tick])
 
   // 滚轮缩放：以光标为中心。
   useEffect(() => {
     const el = box.current
     if (!el) return
     const onWheel = (e: WheelEvent) => {
+      if (inside) return
       e.preventDefault()
       stop(); lastTouch.current = Date.now()
       const r = el.getBoundingClientRect()
@@ -421,7 +433,7 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far'> & {
   })
 
   const onPointerDown = (e: RPointerEvent<HTMLDivElement>) => {
-    if (e.button !== 0) return
+    if (e.button !== 0 || inside) return
     drag.current = { x: e.clientX, y: e.clientY, cam: camera, moved: false, id: e.pointerId }
   }
   const onPointerMove = (e: RPointerEvent<HTMLDivElement>) => {
@@ -447,7 +459,17 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far'> & {
   return (
     <div className="town-world" ref={box} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp}
       onClickCapture={(e) => { if (swallowClick.current) { swallowClick.current = false; e.stopPropagation(); e.preventDefault() } }}>
-      <WorldScene {...props} world={world} view={view} far={far} />
+      {insideB ? (
+        <>
+          <InteriorScene b={insideB} model={model} selected={props.selected} highlight={props.highlight} onSelect={props.onSelect} changed={props.changed} offline={props.offline} />
+          <div className="town-world-tools is-inside" onPointerDown={(e) => e.stopPropagation()}>
+            <button type="button" onClick={() => setInside(null)} title="回到世界（Esc）">← 回到世界</button>
+          </div>
+          <p className="town-world-hint">{insideB.name} · 室内：工作台是工作项，点任何东西看详情</p>
+        </>
+      ) : (
+        <>
+      <WorldScene {...props} onSelect={sceneSelect} world={world} view={view} far={far} />
       <div className="town-world-tools" onPointerDown={(e) => e.stopPropagation()}>
         <button type="button" onClick={() => zoomBy(0.7)} aria-label="放大" title="放大（也可以滚动滚轮）">＋</button>
         <button type="button" onClick={() => zoomBy(1.4)} aria-label="缩小" title="缩小">－</button>
@@ -456,6 +478,8 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far'> & {
       </div>
       <MiniMap world={world} view={view} needsYou={needsYou} onJump={(p) => { lastTouch.current = Date.now(); flyTo(clampCamera({ cx: p[0], cy: p[1], w: Math.min(camera.w, 1500) }, world.bounds), 600) }} />
       <p className="town-world-hint">拖动地图移动 · 滚轮缩放 · 拉远看全部项目</p>
+        </>
+      )}
     </div>
   )
 }

@@ -10,6 +10,7 @@ export type Selection =
   | { kind: 'parcel'; key: string }
   | { kind: 'approval'; key: string }
   | { kind: 'review-desk'; key: 'review-desk' }
+  | { kind: 'item'; key: string }
 
 interface SceneProps {
   model: TownModel
@@ -532,7 +533,7 @@ export function Character({ at, c, selected, dimClass, onSelect }: { at: Pt; c: 
   )
 }
 
-function Crate({ at, fill, tape, size = 1 }: { at: Pt; fill: string; tape: string; size?: number }) {
+export function Crate({ at, fill, tape, size = 1 }: { at: Pt; fill: string; tape: string; size?: number }) {
   const hw = 10 * size, hh = 5 * size, h = 11 * size
   const [x, y] = at
   const T: Pt = [x, y - hh * 2 - h], L: Pt = [x - hw, y - hh - h], R: Pt = [x + hw, y - hh - h], F: Pt = [x, y - h]

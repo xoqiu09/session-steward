@@ -141,3 +141,6 @@
 @media (prefers-reduced-motion: reduce) {
   .town-view .town-windmill, .town-view .town-flame, .town-view .town-shimmer { animation: none; }
 }
+.town-view .town-svg.is-interior { position: absolute; inset: 0; width: 100%; height: 100%; }
+.town-view .town-world-tools.is-inside { left: 12px; right: auto; }
+.town-view .town-world-tools.is-inside button { font-weight: 700; }
