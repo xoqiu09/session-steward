@@ -8,6 +8,7 @@ import { orderedProjects } from '../projectActivity'
 import { resolveDeepLink } from '../live'
 import TownScene, { type LayoutName, type Selection } from './TownScene'
 import { WorldStage } from './WorldScene'
+import { planWorld } from './clusters'
 import type { BuildingView } from './townModel'
 import { buildTown, type Highlight, type TownModel } from './townModel'
 import { acceptSnapshot } from './feed'
@@ -161,6 +162,8 @@ export function TownView({ snap, conn, repoId, provider, sel, onSelectItem, onSe
   const shape: LayoutName = layout ?? (narrow ? 'portrait' : 'wide')
   const asWorld = world && shape === 'wide'
   const urgent = useCallback((b: BuildingView) => needsYou(b, model.pendingApprovals), [model])
+  // 村庄与野外按完整快照里近 7 天的活动和关联来分；只在快照变化时重算，位置才稳定。
+  const plan = useMemo(() => planWorld(model.buildings.filter((b) => b.repo).map((b) => b.repo!), shown, Date.parse(shown.now) || Date.now()), [model, shown])
   const pages = useMemo(() => pageBuildings(model.buildings, PER_PAGE[shape], (b) => needsYou(b, model.pendingApprovals)), [model, shape])
   const [pageRaw, setPage] = useState(0)
   const page = clampPage(pageRaw, pages.length)
@@ -238,7 +241,7 @@ export function TownView({ snap, conn, repoId, provider, sel, onSelectItem, onSe
         {offline && <div className="town-offline" role="status"><strong>状态待更新</strong><span>连接中断，画面停在 {hm(shown.now)}，不代表 Agent 仍在工作。</span></div>}
         {asWorld
           ? <WorldStage model={model} needsYou={urgent} selected={selected} highlight={highlight} onSelect={onSelect} changed={changed} offline={offline}
-              kiosk={kiosk} rotateMs={rotateMs} paused={paused} focusKey={selKey} />
+              kiosk={kiosk} rotateMs={rotateMs} paused={paused} focusKey={selKey} plan={plan} />
           : <TownScene model={model} buildings={pages[page]} layout={shape} selected={selected} highlight={highlight} onSelect={onSelect} changed={changed} offline={offline} />}
         <ul className="town-legend" aria-label="图例">
           <li><i className="lg-building" />建筑 = 项目</li>

@@ -1,6 +1,7 @@
 // 小镇世界：每个项目一个街区，围绕中央广场一圈圈排开；相机可拖动、缩放、巡游。纯函数，便于测试。
 import { iso, type Pt } from './iso'
 import type { BuildingView } from './townModel'
+import type { WorldPlan } from './clusters'
 
 /** 一个街区占的格子（含右侧和前方的道路）。 */
 export const CELL_W = 11
@@ -11,6 +12,8 @@ export const INNER_D = 8.2
 
 export interface Cell { cx: number; cy: number }
 
+export type DistrictKind = 'central' | 'village' | 'wild'
+
 export interface District {
   key: string
   b: BuildingView
@@ -18,13 +21,25 @@ export interface District {
   /** 街区左上角的格子坐标。 */
   ox: number
   oy: number
-  /** 第几圈：1 紧挨广场。 */
+  /** 第几圈（离中央广场的格子距离）。 */
   ring: number
+  kind: DistrictKind
+  /** 所属村庄；中央和野外为空。 */
+  village?: string
+}
+
+export interface VillageArea {
+  key: string
+  name: string
+  /** 村口小广场所在的格子。 */
+  square: Cell
+  cells: Cell[]
 }
 
 export interface WorldLayout {
   districts: District[]
   plaza: { ox: number; oy: number }
+  villages: VillageArea[]
   /** 世界的格子范围（含边缘空地）。 */
   tiles: { gx0: number; gy0: number; gx1: number; gy1: number }
   /** 屏幕坐标下的世界范围。 */
@@ -33,17 +48,24 @@ export interface WorldLayout {
 
 export interface Box { x: number; y: number; w: number; h: number }
 
-/** 围绕 (0,0) 的格子，按圈由内向外；同一圈从画面上方顺时针排，第一圈先排正前方，离广场最近的位置留给最要紧的项目。 */
-export function spiralCells(n: number): Cell[] {
+const cheb = (c: Cell) => Math.max(Math.abs(c.cx), Math.abs(c.cy))
+const keyOf = (c: Cell) => `${c.cx},${c.cy}`
+
+/** 围绕 (0,0) 的格子，按圈由内向外；同一圈先放离镜头近、离中心近的格子。 */
+export function spiralCells(n: number, around: Cell = { cx: 0, cy: 0 }, skip: ReadonlySet<string> = new Set()): Cell[] {
   const out: Cell[] = []
-  for (let r = 1; out.length < n; r++) {
+  for (let r = 1; out.length < n && r < 64; r++) {
     const ring: Cell[] = []
     for (let cx = -r; cx <= r; cx++) for (let cy = -r; cy <= r; cy++) if (Math.max(Math.abs(cx), Math.abs(cy)) === r) ring.push({ cx, cy })
-    // 等距视角里 cx+cy 越小越靠上（越远）；先放离镜头近、离广场近的格子。
+    // 等距视角里 cx+cy 越小越靠上（越远）；先放离镜头近、离中心近的格子。
     ring.sort((a, b) => Math.abs(a.cx) + Math.abs(a.cy) - (Math.abs(b.cx) + Math.abs(b.cy)) || (b.cx + b.cy) - (a.cx + a.cy) || a.cx - b.cx)
-    out.push(...ring)
+    for (const c of ring) {
+      const cell = { cx: c.cx + around.cx, cy: c.cy + around.cy }
+      if (!skip.has(keyOf(cell))) out.push(cell)
+      if (out.length >= n) break
+    }
   }
-  return out.slice(0, n)
+  return out
 }
 
 /** 排序：等你处理的 > 有人在干活的 > 有待验收的 > 其余，组内保持原顺序。 */
@@ -60,18 +82,64 @@ function boxOfTiles(gx0: number, gy0: number, gx1: number, gy1: number, top = 14
   return { x, y, w: Math.max(...xs) - x, h: Math.max(...ys) + bottom - y }
 }
 
-export function worldLayout(buildings: readonly BuildingView[], needsYou: (b: BuildingView) => boolean): WorldLayout {
-  const ordered = districtOrder(buildings, needsYou)
-  const cells = spiralCells(ordered.length)
-  const districts = ordered.map((b, i) => {
-    const cell = cells[i]
-    return { key: b.key, b, cell, ox: cell.cx * CELL_W, oy: cell.cy * CELL_D, ring: Math.max(Math.abs(cell.cx), Math.abs(cell.cy)) }
-  })
-  const all = [{ cx: 0, cy: 0 }, ...cells]
+const DIRS: Cell[] = [{ cx: 1, cy: 0 }, { cx: 0, cy: 1 }, { cx: -1, cy: 0 }, { cx: 0, cy: -1 }, { cx: 1, cy: 1 }, { cx: -1, cy: 1 }, { cx: 1, cy: -1 }, { cx: -1, cy: -1 }]
+
+/** 分组排布。没有 plan 时（测试、旧数据）全部围着中央广场。 */
+export function worldLayout(buildings: readonly BuildingView[], needsYou: (b: BuildingView) => boolean, plan?: WorldPlan): WorldLayout {
+  const taken = new Set<string>([keyOf({ cx: 0, cy: 0 })])
+  const districts: District[] = []
+  const place = (b: BuildingView, cell: Cell, kind: DistrictKind, village?: string) => {
+    taken.add(keyOf(cell))
+    districts.push({ key: b.key, b, cell, ox: cell.cx * CELL_W, oy: cell.cy * CELL_D, ring: cheb(cell), kind, village })
+  }
+  const byRepo = new Map(buildings.filter((b) => b.repo).map((b) => [b.repo!.id, b]))
+  const inPlan = new Set<number>(plan ? [...plan.central, ...plan.villages.flatMap((v) => v.repoIds), ...plan.wild] : [])
+  // 不在 plan 里的（未归属、plan 之后新出现的）也放到中央。
+  const centralList = districtOrder(buildings.filter((b) => !b.repo || !plan || !inPlan.has(b.repo.id) || plan.central.includes(b.repo.id)), needsYou)
+  spiralCells(centralList.length, { cx: 0, cy: 0 }, taken).forEach((cell, i) => place(centralList[i], cell, 'central'))
+
+  const villages: VillageArea[] = []
+  if (plan) {
+    let radius = Math.max(1, ...districts.map((d) => d.ring)) + 2
+    plan.villages.forEach((v, i) => {
+      const members = districtOrder(v.repoIds.map((id) => byRepo.get(id)).filter((b): b is BuildingView => !!b), needsYou)
+      if (!members.length) return
+      const size = members.length <= 8 ? 1 : 2
+      const dir = DIRS[i % DIRS.length]
+      const dist = radius + size - 1 + Math.floor(i / DIRS.length) * 3
+      let square = { cx: dir.cx * dist, cy: dir.cy * dist }
+      while (taken.has(keyOf(square))) square = { cx: square.cx + dir.cx, cy: square.cy + dir.cy }
+      taken.add(keyOf(square))
+      const cells = spiralCells(members.length, square, taken)
+      cells.forEach((cell, j) => place(members[j], cell, 'village', v.key))
+      villages.push({ key: v.key, name: v.name, square, cells: [square, ...cells] })
+    })
+    // 野外：最外圈之外，隔一格摆一间小屋，绕着世界均匀散开。
+    const wild = plan.wild.map((id) => byRepo.get(id)).filter((b): b is BuildingView => !!b)
+    if (wild.length) {
+      radius = Math.max(1, ...districts.map((d) => d.ring), ...villages.map((v) => cheb(v.square) + 1)) + 1
+      let left = wild
+      for (let r = radius; left.length && r < radius + 20; r += 2) {
+        const ring: Cell[] = []
+        for (let cx = -r; cx <= r; cx++) for (let cy = -r; cy <= r; cy++) {
+          if (Math.max(Math.abs(cx), Math.abs(cy)) !== r || (cx + cy) % 2 !== 0) continue
+          const c = { cx, cy }
+          const near = [...taken].some((k) => { const [x, y] = k.split(',').map(Number); return Math.max(Math.abs(x - cx), Math.abs(y - cy)) < 2 })
+          if (!near) ring.push(c)
+        }
+        ring.sort((a, b) => Math.atan2(a.cy, a.cx) - Math.atan2(b.cy, b.cx))
+        const n = Math.min(left.length, ring.length)
+        for (let i = 0; i < n; i++) place(left[i], ring[Math.floor((i * ring.length) / n)], 'wild')
+        left = left.slice(n)
+      }
+    }
+  }
+
+  const all = [{ cx: 0, cy: 0 }, ...districts.map((d) => d.cell), ...villages.map((v) => v.square)]
   // 外面再留一圈空地（树林），世界不是刚好卡在最后一栋房子边上。
-  const gx0 = (Math.min(...all.map((c) => c.cx)) - 0.5) * CELL_W, gy0 = (Math.min(...all.map((c) => c.cy)) - 0.5) * CELL_D
+  const gx0 = (Math.min(...all.map((c) => c.cx)) - 0.6) * CELL_W, gy0 = (Math.min(...all.map((c) => c.cy)) - 0.6) * CELL_D
   const gx1 = (Math.max(...all.map((c) => c.cx)) + 1.5) * CELL_W, gy1 = (Math.max(...all.map((c) => c.cy)) + 1.5) * CELL_D
-  return { districts, plaza: { ox: 0, oy: 0 }, tiles: { gx0, gy0, gx1, gy1 }, bounds: boxOfTiles(gx0, gy0, gx1, gy1) }
+  return { districts, plaza: { ox: 0, oy: 0 }, villages, tiles: { gx0, gy0, gx1, gy1 }, bounds: boxOfTiles(gx0, gy0, gx1, gy1) }
 }
 
 /** 一个街区（或广场）在屏幕上的框，用来让相机对准它。 */

@@ -9,14 +9,17 @@ import {
 } from './TownScene'
 import {
   CELL_D, CELL_W, FAR_W, INNER_D, INNER_W, cellBox, clampCamera, fitCamera, lerpCamera, tourStops, viewBoxOf, worldLayout, zoomAt,
-  type Box, type Camera, type District, type WorldLayout,
+  type Box, type Camera, type Cell, type District, type WorldLayout,
 } from './world'
+import type { WorldPlan } from './clusters'
 
 /** 每个街区的待验收架、退件筐最多摆几个箱子，其余只计数。 */
 const SHELF_MAX = 3
 const BIN_MAX = 2
 /** 告示栏最多钉几张卡片。 */
 const BOARD_MAX = 4
+/** 视野宽于此时只画村庄名牌（村里的项目合并成一块），中央和野外项目仍各一块。 */
+const MAP_W = 3600
 
 const hash = (s: string) => { let h = 0; for (const ch of s) h = (h * 31 + ch.charCodeAt(0)) | 0; return Math.abs(h) }
 
@@ -47,7 +50,8 @@ export function WorldScene({ model, world, view, far, selected, highlight, onSel
   const cxs = new Set<number>(), cys = new Set<number>()
   for (let gx = gx0; gx < gx1; gx += CELL_W) cxs.add(Math.floor(gx / CELL_W))
   for (let gy = gy0; gy < gy1; gy += CELL_D) cys.add(Math.floor(gy / CELL_D))
-  const used = new Set(['0,0', ...world.districts.map((d) => `${d.cell.cx},${d.cell.cy}`)])
+  const used = new Set(['0,0', ...world.districts.map((d) => `${d.cell.cx},${d.cell.cy}`), ...world.villages.map((v) => `${v.square.cx},${v.square.cy}`)])
+  const streetCells: Cell[] = [{ cx: 0, cy: 0 }, ...world.districts.filter((d) => d.kind !== 'wild').map((d) => d.cell), ...world.villages.map((v) => v.square)]
   const empty: { ox: number; oy: number }[] = []
   for (const cx of cxs) for (const cy of cys) if (!used.has(`${cx},${cy}`)) empty.push({ ox: cx * CELL_W, oy: cy * CELL_D })
 
@@ -90,9 +94,12 @@ export function WorldScene({ model, world, view, far, selected, highlight, onSel
   const boardModel = { ...model, pendingApprovals: model.pendingApprovals.slice(0, BOARD_MAX) }
   const boardAt = iso(6.0, 8.0)
   const P = world.plaza
+  // 远景名牌跟着视野放大，拉得再远也认得出项目名。
+  const plateK = Math.min(3, Math.max(1, view.w / 3000))
+  const mapMode = view.w > MAP_W
 
   return (
-    <svg className={`town-svg is-world${far ? ' is-far' : ''}${offline ? ' is-offline' : ''}`} viewBox={`${view.x} ${view.y} ${view.w} ${view.h}`}
+    <svg className={`town-svg is-world${far ? ' is-far' : ''}${far && mapMode ? ' is-map' : ''}${offline ? ' is-offline' : ''}`} viewBox={`${view.x} ${view.y} ${view.w} ${view.h}`}
       role="group" aria-label="工作小镇世界">
       <defs>
         <pattern id="world-grass" width="60" height="30" patternUnits="userSpaceOnUse">
@@ -103,14 +110,25 @@ export function WorldScene({ model, world, view, far, selected, highlight, onSel
       {/* 大地与道路 */}
       <IsoBox gx={gx0} gy={gy0} w={gx1 - gx0} d={gy1 - gy0} h={26} z={-26} top="#d7e2bf" left="#b48a5e" right="#946c48" />
       <IsoTile gx={gx0} gy={gy0} w={gx1 - gx0} d={gy1 - gy0} fill="url(#world-grass)" />
-      {[...cxs].map((cx) => <IsoTile key={`rx${cx}`} gx={cx * CELL_W + INNER_W + 0.3} gy={gy0} w={CELL_W - INNER_W - 0.6} d={gy1 - gy0} fill="#e6d9bd" />)}
-      {[...cys].map((cy) => <IsoTile key={`ry${cy}`} gx={gx0} gy={cy * CELL_D + INNER_D + 0.3} w={gx1 - gx0} d={CELL_D - INNER_D - 0.6} fill="#e6d9bd" />)}
+      {/* 街道：只铺在中央和各村庄的格子上；野外是草地和树林 */}
+      {streetCells.map((c) => <IsoTile key={`st${c.cx},${c.cy}`} gx={c.cx * CELL_W - 1} gy={c.cy * CELL_D - 1} w={CELL_W + 0.1} d={CELL_D + 0.1} fill="#e6d9bd" />)}
+      {streetCells.map((c) => <IsoTile key={`yd${c.cx},${c.cy}`} gx={c.cx * CELL_W} gy={c.cy * CELL_D} w={INNER_W} d={INNER_D} fill="#dce7c4" />)}
+      {/* 村庄之间的土路：从村口小广场通到中央广场 */}
+      {world.villages.map((v) => {
+        const a = [v.square.cx * CELL_W + INNER_W / 2, v.square.cy * CELL_D + INNER_D / 2] as [number, number]
+        const b = [INNER_W / 2, INNER_D / 2] as [number, number]
+        return <Path key={`road-${v.key}`} from={a} to={b} />
+      })}
+      {/* 野外小屋脚下的空地 */}
+      {world.districts.filter((d) => d.kind === 'wild').map((d) => <IsoTile key={`cl${d.key}`} gx={d.ox + 0.2} gy={d.oy + 0.1} w={INNER_W - 0.4} d={INNER_D - 0.6} fill="#e3eccb" />)}
+      {/* 村口小广场：井和村名牌 */}
+      {world.villages.map((v) => <VillageSquare key={v.key} cell={v.square} name={v.name} />)}
 
       {/* 空地：树林 */}
       {empty.map(({ ox, oy }) => {
         const h = hash(`${ox},${oy}`)
-        return [0, 1, 2, 3].map((i) => {
-          const gx = ox + 1.2 + ((h >> (i * 3)) % 7), gy = oy + 1.2 + ((h >> (i * 4 + 1)) % 6)
+        return [0, 1, 2, 3, 4, 5].map((i) => {
+          const gx = ox + 0.8 + ((h >> (i * 3)) % 9), gy = oy + 0.8 + ((h >> (i * 4 + 1)) % 8)
           return <Tree key={`t${ox},${oy},${i}`} at={iso(gx, gy)} k={0.8 + ((h >> i) % 4) * 0.12} />
         })
       })}
@@ -195,8 +213,20 @@ export function WorldScene({ model, world, view, far, selected, highlight, onSel
 
       {/* 远景名牌：拉远时代替招牌、小人和包裹 */}
       <g className="town-far">
-        <FarPlate at={iso(P.ox + INNER_W / 2, P.oy + INNER_D / 2, 120)} title="中央广场" tone="plaza"
+        <FarPlate k={plateK} at={iso(P.ox + INNER_W / 2, P.oy + INNER_D / 2, 120 + 90 * plateK)} title="中央广场" tone="plaza"
           parts={[`等你决定 ${model.pendingApprovals.length}`, `待验收 ${reviewTotal}`, `失败 ${failedTotal}`]} />
+        {world.villages.map((v) => {
+          const members = world.districts.filter((d) => d.village === v.key)
+          const working = members.reduce((n, d) => n + d.b.characters.filter((c) => c.status === 'working').length, 0)
+          const review = members.reduce((n, d) => n + d.b.parcels.filter(onReviewDesk).length, 0)
+          const urgent = members.filter((d) => needsYou(d.b)).length
+          const parts = [`${members.length} 个项目`, ...(urgent ? [`等你决定 ${urgent}`] : []), ...(working ? [`工作中 ${working}`] : []), ...(review ? [`待验收 ${review}`] : [])]
+          return (
+            <g key={`fv-${v.key}`} className="town-map-only">
+              <FarPlate k={plateK * 1.15} at={iso(v.square.cx * CELL_W + INNER_W / 2, v.square.cy * CELL_D + INNER_D / 2, 60)} title={v.name} tone={urgent ? 'urgent' : 'plaza'} parts={parts} />
+            </g>
+          )
+        })}
         {world.districts.map((d) => {
           const working = d.b.characters.filter((c) => c.status === 'working').length
           const review = d.b.parcels.filter(onReviewDesk).length
@@ -204,13 +234,33 @@ export function WorldScene({ model, world, view, far, selected, highlight, onSel
           const open = d.b.items.filter((w) => w.status !== 'done' && w.status !== 'abandoned').length
           const parts = [working ? `工作中 ${working}` : `${d.b.characters.length} 个会话`, review ? `待验收 ${review}` : `${open} 项未完成`, ...(failed ? [`失败 ${failed}`] : [])]
           return (
-            <g key={`far-${d.key}`} className="town-obj" {...activate(() => onSelect({ kind: 'building', key: d.b.key }))} aria-label={`${d.b.name}：${parts.join('，')}`}>
-              <FarPlate at={iso(d.ox + 3.15, d.oy + 2.0, 150)} title={d.b.name} tone={needsYou(d.b) ? 'urgent' : working ? 'busy' : 'calm'} parts={parts} accent={buildingColors(d.b.repo?.id).accent} />
+            <g key={`far-${d.key}`} className={`town-obj${d.village ? ' town-hide-on-map' : ''}`} {...activate(() => onSelect({ kind: 'building', key: d.b.key }))} aria-label={`${d.b.name}：${parts.join('，')}`}>
+              <FarPlate k={plateK * (d.kind === 'wild' ? 0.8 : 1)} at={iso(d.ox + 3.15, d.oy + 2.0, 150)} title={d.b.name} tone={needsYou(d.b) ? 'urgent' : working ? 'busy' : 'calm'} parts={parts} accent={buildingColors(d.b.repo?.id).accent} />
             </g>
           )
         })}
       </g>
     </svg>
+  )
+}
+
+function VillageSquare({ cell, name }: { cell: Cell; name: string }) {
+  const ox = cell.cx * CELL_W, oy = cell.cy * CELL_D
+  const sign = iso(ox + 4.5, oy + 3.2, 70)
+  return (
+    <g aria-label={`村口：${name}`}>
+      <IsoTile gx={ox + 1.5} gy={oy + 1.2} w={6} d={5.6} fill="#eadfc6" stroke="#cdbb98" />
+      {/* 井 */}
+      <IsoBox gx={ox + 3.8} gy={oy + 3.4} w={1.4} d={1.4} h={14} top="#7d8a96" left="#a7b1bb" right="#8d98a3" />
+      <IsoBox gx={ox + 4.2} gy={oy + 3.8} w={0.6} d={0.6} h={1} z={14} top="#4b7bb0" left="#4b7bb0" right="#3f6a98" />
+      <line x1={iso(ox + 3.85, oy + 4.1)[0]} y1={iso(ox + 3.85, oy + 4.1)[1] - 14} x2={iso(ox + 3.85, oy + 4.1)[0]} y2={iso(ox + 3.85, oy + 4.1)[1] - 40} stroke="#6b4a2a" strokeWidth="2.5" />
+      <line x1={iso(ox + 5.15, oy + 4.1)[0]} y1={iso(ox + 5.15, oy + 4.1)[1] - 14} x2={iso(ox + 5.15, oy + 4.1)[0]} y2={iso(ox + 5.15, oy + 4.1)[1] - 40} stroke="#6b4a2a" strokeWidth="2.5" />
+      <polygon points={`${iso(ox + 3.6, oy + 4.1)[0]},${iso(ox + 3.6, oy + 4.1)[1] - 38} ${iso(ox + 4.5, oy + 4.1)[0]},${iso(ox + 4.5, oy + 4.1)[1] - 54} ${iso(ox + 5.4, oy + 4.1)[0]},${iso(ox + 5.4, oy + 4.1)[1] - 38}`} fill="#a6503a" stroke="#5a3a2a" />
+      <g className="town-sign" transform={`translate(${sign[0]},${sign[1]})`}>
+        <rect x={-(name.length * 15 + 28) / 2} y={-16} width={name.length * 15 + 28} height={30} rx="8" fill="#fffaf0" stroke="#8a6a3a" strokeWidth="2" />
+        <text y="5" textAnchor="middle" fontSize="15" fontWeight="800" fill="#5a3a1c">{name}</text>
+      </g>
+    </g>
   )
 }
 
@@ -227,14 +277,14 @@ function TownCrate({ at, fill, tape }: { at: Pt; fill: string; tape: string }) {
   )
 }
 
-function FarPlate({ at, title, parts, tone, accent = '#8a7a63' }: { at: Pt; title: string; parts: string[]; tone: 'urgent' | 'busy' | 'calm' | 'plaza'; accent?: string }) {
+function FarPlate({ at, title, parts, tone, accent = '#8a7a63', k = 1 }: { at: Pt; title: string; parts: string[]; tone: 'urgent' | 'busy' | 'calm' | 'plaza'; accent?: string; k?: number }) {
   const name = title.length > 16 ? `${title.slice(0, 15)}…` : title
   const line = parts.join(' · ')
   const w = Math.max(name.length * 26 * 0.7 + 60, line.length * 15 + 40)
   const fill = tone === 'urgent' ? '#fff4c2' : tone === 'plaza' ? '#eef0ff' : '#fffaf0'
   const border = tone === 'urgent' ? '#e0a400' : tone === 'plaza' ? '#5b6cd8' : tone === 'busy' ? '#e3a23d' : accent
   return (
-    <g transform={`translate(${at[0]},${at[1]})`}>
+    <g transform={`translate(${at[0]},${at[1]}) scale(${k})`}>
       <rect x={-w / 2} y={-44} width={w} height={84} rx="16" fill={fill} stroke={border} strokeWidth={tone === 'calm' ? 3 : 6} />
       <text y="-4" textAnchor="middle" fontSize="34" fontWeight="800" fill="#3a2a1c">{name}</text>
       <text y="28" textAnchor="middle" fontSize="22" fill="#6b5a44">{line}</text>
@@ -248,9 +298,9 @@ function attentionOf(d: District, needsYou: (b: BuildingView) => boolean) {
   return needsYou(d.b) || d.b.characters.some((c) => c.status === 'working') || d.b.parcels.some(onReviewDesk)
 }
 
-export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far'> & { kiosk?: boolean; rotateMs?: number; paused?: boolean; focusKey?: string }) {
-  const { model, needsYou, kiosk = false, rotateMs = 20_000, paused = false, focusKey } = props
-  const world = useMemo(() => worldLayout(model.buildings, needsYou), [model, needsYou])
+export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far'> & { kiosk?: boolean; rotateMs?: number; paused?: boolean; focusKey?: string; plan?: WorldPlan }) {
+  const { model, needsYou, kiosk = false, rotateMs = 20_000, paused = false, focusKey, plan } = props
+  const world = useMemo(() => worldLayout(model.buildings, needsYou, plan), [model, needsYou, plan])
   const box = useRef<HTMLDivElement>(null)
   const [aspect, setAspect] = useState(1.6)
   const [cam, setCam] = useState<Camera | null>(null)

@@ -124,3 +124,6 @@
   position: absolute; z-index: 3; left: 50%; top: 12px; transform: translateX(-50%); margin: 0; padding: 4px 10px;
   border-radius: 999px; background: rgba(255, 250, 240, 0.85); color: #7a6a55; font-size: 12px; pointer-events: none;
 }
+.town-view .town-svg.is-world .town-map-only { display: none; }
+.town-view .town-svg.is-world.is-map .town-map-only { display: inline; }
+.town-view .town-svg.is-world.is-map .town-hide-on-map { display: none; }
