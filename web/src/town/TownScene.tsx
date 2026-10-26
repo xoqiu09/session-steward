@@ -19,13 +19,14 @@ interface SceneProps {
   changed?: ReadonlySet<string>
   /** 断线中：画面是最后一版快照，状态前加“断线前”。 */
   offline?: boolean
+  /** 本页要画的建筑（分页后）；不传时画前几栋，其余提示去列表视图。 */
+  buildings?: BuildingView[]
+  /** wide：桌面横向一屏三栋；portrait：手机竖屏一栋，标签放大。 */
+  layout?: LayoutName
 }
 
 /** 招牌最多显示的字符数，全名在 aria-label 里。 */
 export const SIGN_MAX = 18
-
-const FAIL_RACK = { gx: 8.6, gy: 10.4 }
-const REVIEW_DESK = { gx: 3.6, gy: 10.4 }
 
 interface Plot {
   gx: number; gy: number; w: number; d: number
@@ -34,17 +35,76 @@ interface Plot {
   roof: string; roofSide: string; accent: string
 }
 
+export type LayoutName = 'wide' | 'portrait'
+
+interface Layout {
+  plots: Plot[]
+  ground: { gx: number; gy: number; w: number; d: number }
+  shadow: { cx: number; cy: number; rx: number; ry: number }
+  paths: [[number, number], [number, number]][]
+  plaza: { gx: number; gy: number; w: number; d: number }
+  plazaLabel: [number, number] | null
+  trees: [number, number, number][]
+  failRack: { gx: number; gy: number }
+  reviewDesk: { gx: number; gy: number }
+  /** 告示栏：bottom 以底边中点定位，top 以顶边中点定位（高度随卡片数变）。 */
+  board: { x: number; y: number; anchor: 'bottom' | 'top'; scale: number }
+  /** 角色下方状态牌与建筑招牌的放大倍数。 */
+  pillScale: number
+  signScale: number
+  overflowAt: Pt
+  viewBox: (boardH: number) => string
+}
+
+const PALETTE = [
+  { roof: '#c8674a', roofSide: '#a6503a', accent: '#c8674a' },
+  { roof: '#3f8f8a', roofSide: '#2f6f6b', accent: '#3f8f8a' },
+  { roof: '#6b6fb8', roofSide: '#53579a', accent: '#6b6fb8' },
+]
+
 const PLOTS: Plot[] = [
-  { gx: 0.8, gy: 0.6, w: 4.3, d: 2.8, facing: 'x', roof: '#c8674a', roofSide: '#a6503a', accent: '#c8674a' },
-  { gx: 6.9, gy: 0.6, w: 4.3, d: 2.8, facing: 'x', roof: '#3f8f8a', roofSide: '#2f6f6b', accent: '#3f8f8a' },
-  { gx: 13.0, gy: 0.6, w: 4.3, d: 2.8, facing: 'x', roof: '#6b6fb8', roofSide: '#53579a', accent: '#6b6fb8' },
+  { gx: 0.8, gy: 0.6, w: 4.3, d: 2.8, facing: 'x', ...PALETTE[0] },
+  { gx: 6.9, gy: 0.6, w: 4.3, d: 2.8, facing: 'x', ...PALETTE[1] },
+  { gx: 13.0, gy: 0.6, w: 4.3, d: 2.8, facing: 'x', ...PALETTE[2] },
 ]
 
 const BUILDING_H = 58
-const GRID_W = 18.6
-const GRID_D = 13
 
-const TREES: [number, number, number][] = [[0.5, 7.0, 1], [0.7, 9.6, 0.8], [18.0, 4.8, 1.1], [17.6, 8.2, 0.9], [0.9, 12.2, 0.9], [12.0, 0.4, 0.75], [5.9, 0.3, 0.7]]
+const LAYOUTS: Record<LayoutName, Layout> = {
+  wide: {
+    plots: PLOTS,
+    ground: { gx: 0, gy: 0, w: 18.6, d: 13 },
+    shadow: { cx: 105, cy: 300, rx: 560, ry: 250 },
+    paths: PLOTS.map((p) => [[p.gx + p.w / 2, p.gy + p.d], [p.gx + p.w / 2, 8.4]]),
+    plaza: { gx: 1, gy: 8, w: 15.6, d: 4.4 },
+    plazaLabel: [12.5, 12.9],
+    trees: [[0.5, 7.0, 1], [0.7, 9.6, 0.8], [18.0, 4.8, 1.1], [17.6, 8.2, 0.9], [0.9, 12.2, 0.9], [12.0, 0.4, 0.75], [5.9, 0.3, 0.7]],
+    failRack: { gx: 8.6, gy: 10.4 },
+    reviewDesk: { gx: 3.6, gy: 10.4 },
+    board: { x: iso(17, 12.9)[0], y: iso(17, 12.9)[1], anchor: 'bottom', scale: 1 },
+    pillScale: 1.22,
+    signScale: 1,
+    overflowAt: iso(18, 12.6),
+    viewBox: () => '-415 -150 990 665',
+  },
+  // 竖屏一栋：院子在上，验收台和退件架在下方广场，告示栏放在最下面。视野只框住这一栋，标签就能放大。
+  portrait: {
+    plots: [{ gx: 1, gy: 1, w: 4.3, d: 2.8, facing: 'x', ...PALETTE[0] }],
+    ground: { gx: -4, gy: -4, w: 26, d: 26 },
+    shadow: { cx: -25, cy: 260, rx: 260, ry: 360 },
+    paths: [[[3.15, 3.8], [7.6, 9.6]]],
+    plaza: { gx: 5.8, gy: 8.8, w: 8, d: 4.6 },
+    plazaLabel: null,
+    trees: [[6.2, 1.4, 0.8], [7.6, 4.6, 1], [10.4, 6.8, 0.9]],
+    failRack: { gx: 11.4, gy: 9.6 },
+    reviewDesk: { gx: 7, gy: 10.8 },
+    board: { x: -25, y: 374, anchor: 'top', scale: 1.15 },
+    pillScale: 1.45,
+    signScale: 1.15,
+    overflowAt: [-25, 360],
+    viewBox: (boardH) => `-222 -100 392 ${Math.ceil(374 + (boardH + 20) * 1.15 + 16 + 100)}`,
+  },
+}
 
 const slot = (j: number) => 0.6 + j * 1.6
 
@@ -84,20 +144,23 @@ function parcelMatches(p: ParcelView, h: Highlight, staleSession: boolean): bool
   return false
 }
 
-export default function TownScene({ model, selected, highlight, onSelect, changed = new Set(), offline = false }: SceneProps) {
+export default function TownScene({ model, selected, highlight, onSelect, changed = new Set(), offline = false, buildings, layout = 'wide' }: SceneProps) {
+  const L = LAYOUTS[layout]
   const isSel = (kind: Selection['kind'], key: string) => selected?.kind === kind && selected.key === key
   const dim = (match: boolean) => (highlight && !match ? ' is-dim' : '')
   const flash = (key: string) => (changed.has(key) ? ' is-changed' : '')
 
-  const placed = model.buildings.slice(0, PLOTS.length)
-  const overflow = model.buildings.length - placed.length
+  const placed = (buildings ?? model.buildings).slice(0, L.plots.length)
+  // 竖屏每页一栋，屋顶颜色跟着项目走，翻页时分得清是哪一栋。
+  const plotOf = (i: number, b: BuildingView): Plot => (layout === 'portrait' ? { ...L.plots[i], ...PALETTE[(b.repo?.id ?? 0) % PALETTE.length] } : L.plots[i])
+  const overflow = buildings ? 0 : model.buildings.length - placed.length
 
   // 角色位置：画工位、依赖线和标签都用它。每栋只画前 MAX_SEATS 个，顺序由调用方决定。
   const charPos = new Map<string, Pt>()
   const itemOwner = new Map<string, string>()
   const seats: { key: string; c: CharacterView; plot: Plot; gx: number; gy: number }[] = []
   placed.forEach((b, i) => {
-    const p = PLOTS[i]
+    const p = plotOf(i, b)
     b.characters.slice(0, MAX_SEATS).forEach((c, j) => {
       const [gx, gy] = yard(p, slot(j), 2.2)
       charPos.set(c.key, iso(gx, gy))
@@ -106,6 +169,7 @@ export default function TownScene({ model, selected, highlight, onSelect, change
     })
   })
 
+  // 退件架与验收台汇总全部项目，不随分页变化。
   const allParcels = model.buildings.flatMap((b) => b.parcels)
   const failedParcels = allParcels.filter((p) => p.phase === 'failed')
   const reviewParcels = allParcels.filter(onReviewDesk)
@@ -119,7 +183,7 @@ export default function TownScene({ model, selected, highlight, onSelect, change
       slots.push({ p: r, at: iso(seat.gx + dx - 0.05, seat.gy + dy - 0.05, 12), stale, moving: !stale })
     }
   }
-  const rackBase = iso(FAIL_RACK.gx + 0.7, FAIL_RACK.gy + 0.55)
+  const rackBase = iso(L.failRack.gx + 0.7, L.failRack.gy + 0.55)
   failedParcels.forEach((p, i) => {
     const at: Pt = [rackBase[0] + (i - (failedParcels.length - 1) / 2) * 18, rackBase[1] - 10 - i * 3]
     slots.push({
@@ -129,13 +193,13 @@ export default function TownScene({ model, selected, highlight, onSelect, change
   })
   reviewParcels.forEach((p, i) => {
     slots.push({
-      p, at: iso(REVIEW_DESK.gx + 1.9 + i * 1.1, REVIEW_DESK.gy + 0.55, 16), stale: false, moving: false,
+      p, at: iso(L.reviewDesk.gx + 1.9 + i * 1.1, L.reviewDesk.gy + 0.55, 16), stale: false, moving: false,
       label: <Tag at={[0, -34 - i * 26]} text={p.item?.id ?? '?'} bg="#eef0ff" fg="#2f3a8f" small border="#5b6cd8" />,
     })
   })
 
   return (
-    <svg className={`town-svg${offline ? ' is-offline' : ''}`} viewBox="-415 -150 990 665" role="group" aria-label="工作小镇场景">
+    <svg className={`town-svg${offline ? ' is-offline' : ''} is-${layout}`} viewBox={L.viewBox(boardHeight(model.pendingApprovals.length))} role="group" aria-label="工作小镇场景">
       <defs>
         <pattern id="town-grass" width="60" height="30" patternUnits="userSpaceOnUse">
           <path d="M0 15 L30 0 L60 15 L30 30 Z" fill="none" stroke="#b9cba0" strokeWidth="0.8" />
@@ -146,28 +210,28 @@ export default function TownScene({ model, selected, highlight, onSelect, change
       </defs>
 
       {/* 桌面投影与底座 */}
-      <ellipse cx="105" cy="300" rx="560" ry="250" fill="#5b4632" opacity="0.18" filter="url(#town-soft)" />
-      <IsoBox gx={0} gy={0} w={GRID_W} d={GRID_D} h={22} z={-22} top="#d7e2bf" left="#b48a5e" right="#946c48" />
-      <IsoTile gx={0} gy={0} w={GRID_W} d={GRID_D} fill="url(#town-grass)" />
+      <ellipse cx={L.shadow.cx} cy={L.shadow.cy} rx={L.shadow.rx} ry={L.shadow.ry} fill="#5b4632" opacity="0.18" filter="url(#town-soft)" />
+      <IsoBox {...L.ground} h={22} z={-22} top="#d7e2bf" left="#b48a5e" right="#946c48" />
+      <IsoTile {...L.ground} fill="url(#town-grass)" />
 
       {/* 石板路：各院子通向中央广场 */}
-      {PLOTS.map((p) => <Path key={p.gx} from={[p.gx + p.w / 2, p.gy + p.d]} to={[p.gx + p.w / 2, 8.4]} />)}
-      <IsoTile gx={1} gy={8} w={15.6} d={4.4} fill="#e9dcc2" stroke="#cdbb98" />
-      <text className="town-ground-label" {...xy(iso(12.5, 12.9))}>中央广场</text>
+      {L.paths.map(([from, to]) => <Path key={from.join()} from={from} to={to} />)}
+      <IsoTile {...L.plaza} fill="#e9dcc2" stroke="#cdbb98" />
+      {L.plazaLabel && <text className="town-ground-label" {...xy(iso(...L.plazaLabel))}>中央广场</text>}
 
-      {TREES.map(([gx, gy, k]) => <Tree key={`${gx}-${gy}`} at={iso(gx, gy)} k={k} />)}
+      {L.trees.map(([gx, gy, k]) => <Tree key={`${gx}-${gy}`} at={iso(gx, gy)} k={k} />)}
 
       {placed.map((b, i) => (
-        <Building key={b.key} plot={PLOTS[i]} b={b} selected={isSel('building', b.key)} dimClass={dim(false)} onSelect={() => onSelect({ kind: 'building', key: b.key })} />
+        <Building key={b.key} plot={plotOf(i, b)} signScale={L.signScale} b={b} selected={isSel('building', b.key)} dimClass={dim(false)} onSelect={() => onSelect({ kind: 'building', key: b.key })} />
       ))}
 
       {seats.map((seat) => <Desk key={`${seat.key}-desk`} gx={seat.gx - 0.35} gy={seat.gy - 1.05} facing={seat.plot.facing} />)}
 
-      <FailRack count={failedParcels.length} />
+      <FailRack at={L.failRack} count={failedParcels.length} />
 
-      <ReviewDesk count={reviewParcels.length} selected={isSel('review-desk', 'review-desk')} dimDesk={dim(highlight === 'review')} onSelect={onSelect} />
+      <ReviewDesk at={L.reviewDesk} count={reviewParcels.length} selected={isSel('review-desk', 'review-desk')} dimDesk={dim(highlight === 'review')} onSelect={onSelect} />
 
-      <DecisionBoard model={model} isSel={(k) => isSel('approval', k)} dimClass={dim(highlight === 'waiting')} onSelect={onSelect} />
+      <DecisionBoard place={L.board} model={model} isSel={(k) => isSel('approval', k)} dimClass={dim(highlight === 'waiting')} onSelect={onSelect} />
 
       {/* 包裹层：同一个 run 只有一个节点，换位置时平移过去。
           按 run id 固定顺序渲染：节点在 DOM 里被挪动会打断过渡动画。 */}
@@ -201,13 +265,13 @@ export default function TownScene({ model, selected, highlight, onSelect, change
         const { style, st } = charLook(c)
         const label = characterStatusLabel[c.status]
         return (
-          <g key={`${c.key}-pill`} style={{ transform: `translate(${at[0]}px,${at[1]}px) scale(1.22)` }}
+          <g key={`${c.key}-pill`} style={{ transform: `translate(${at[0]}px,${at[1]}px) scale(${L.pillScale})` }}
             className={`town-obj town-move${dim(highlight ? charMatches(c, highlight) : true)}`} aria-hidden onClick={() => onSelect({ kind: 'character', key: c.key })}>
             <StatusPill at={[0, 17]} name={c.name} status={offline && c.status === 'working' ? `断线前·${label}` : label} bg={st.bg} fg={st.fg} edge={style.body} />
           </g>
         )
       })}
-      {overflow > 0 && <Tag at={iso(18, 12.6)} text={`另有 ${overflow} 个项目在列表视图`} bg="#fffaf0" fg="#6b5a44" />}
+      {overflow > 0 && <Tag at={L.overflowAt} text={`另有 ${overflow} 个项目在列表视图`} bg="#fffaf0" fg="#6b5a44" />}
     </svg>
   )
 }
@@ -240,7 +304,7 @@ function measure(text: string, fs: number): number {
   return w
 }
 
-function Building({ plot: p, b, selected, dimClass, onSelect }: { plot: Plot; b: BuildingView; selected: boolean; dimClass: string; onSelect: () => void }) {
+function Building({ plot: p, b, selected, dimClass, onSelect, signScale = 1 }: { plot: Plot; b: BuildingView; selected: boolean; dimClass: string; onSelect: () => void; signScale?: number }) {
   const active = b.items.filter((w) => w.status !== 'done' && w.status !== 'abandoned').length
   const done = b.items.filter((w) => w.status === 'done').length
   const hidden = Math.max(0, b.characters.length - MAX_SEATS)
@@ -281,7 +345,7 @@ function Building({ plot: p, b, selected, dimClass, onSelect }: { plot: Plot; b:
         </g>
       )}
       {/* 招牌：长名截断，全名在 aria-label */}
-      <g transform={`translate(${label[0]},${label[1]})`}>
+      <g transform={`translate(${label[0]},${label[1]}) scale(${signScale})`}>
         <line x1="0" y1="10" x2="0" y2="26" stroke="#7a5a3a" strokeWidth="1.5" />
         <rect x={-signW / 2} y={-14} width={signW} height={26} rx="6" fill="#fffaf0" stroke={selected ? '#2d6cdf' : p.accent} strokeWidth={selected ? 3 : 2} />
         <text y="4" textAnchor="middle" fontSize="14" fontWeight="700" fill="#3a2a1c">{sign}</text>
@@ -447,8 +511,8 @@ function Parcel({ at, p, stale, moving, selected, dimClass, onSelect, label }: {
   )
 }
 
-function FailRack({ count }: { count: number }) {
-  const { gx, gy } = FAIL_RACK
+function FailRack({ at, count }: { at: { gx: number; gy: number }; count: number }) {
+  const { gx, gy } = at
   const base = iso(gx + 0.7, gy + 0.55)
   return (
     <g aria-label={`退件架：${count} 个失败运行`}>
@@ -472,8 +536,8 @@ function StatusPill({ at, name, status, bg, fg, edge }: { at: Pt; name: string; 
   )
 }
 
-function ReviewDesk({ count, selected, dimDesk, onSelect }: { count: number; selected: boolean; dimDesk: string; onSelect: (s: Selection) => void }) {
-  const { gx, gy } = REVIEW_DESK
+function ReviewDesk({ at, count, selected, dimDesk, onSelect }: { at: { gx: number; gy: number }; count: number; selected: boolean; dimDesk: string; onSelect: (s: Selection) => void }) {
+  const { gx, gy } = at
   const label = iso(gx - 0.2, gy + 0.55, 50)
   return (
     <g>
@@ -499,13 +563,20 @@ function ReviewDesk({ count, selected, dimDesk, onSelect }: { count: number; sel
 
 const KIND_SHORT: Record<string, string> = { permission: '权限', merge: '合并', decision: '决定', attention: '提醒' }
 
-function DecisionBoard({ model, isSel, dimClass, onSelect }: { model: TownModel; isSel: (k: string) => boolean; dimClass: string; onSelect: (s: Selection) => void }) {
-  const [x, y] = iso(17, 12.9)
+/** 告示栏高度（不含立柱），随待决定卡片数变化。 */
+function boardHeight(cards: number): number {
+  return 46 + Math.max(1, cards) * 34
+}
+
+function DecisionBoard({ place, model, isSel, dimClass, onSelect }: { place: Layout['board']; model: TownModel; isSel: (k: string) => boolean; dimClass: string; onSelect: (s: Selection) => void }) {
   const cards = model.pendingApprovals
-  const h = 46 + Math.max(1, cards.length) * 34
+  const h = boardHeight(cards.length)
+  // 以底边中点为原点画，外层按版式平移、缩放。
+  const x = 0, y = 0
   const top = y - h - 20
+  const oy = place.anchor === 'bottom' ? place.y : place.y + (h + 20) * place.scale
   return (
-    <g className={dimClass}>
+    <g className={dimClass} transform={`translate(${place.x},${oy}) scale(${place.scale})`}>
       <line x1={x - 62} y1={y} x2={x - 62} y2={top + 8} stroke="#6b4a2a" strokeWidth="4" />
       <line x1={x + 62} y1={y} x2={x + 62} y2={top + 8} stroke="#6b4a2a" strokeWidth="4" />
       <rect x={x - 74} y={top} width="148" height={h} rx="6" fill="#a87a48" stroke="#6b4a2a" strokeWidth="2" />

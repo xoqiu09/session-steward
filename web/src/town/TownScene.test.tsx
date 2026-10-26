@@ -66,3 +66,25 @@ describe('TownScene', () => {
     expect(chips).toMatch(/等你决定<b>2<\/b>/)
   })
 })
+
+describe('TownScene 分页与竖屏', () => {
+  test('传入本页建筑时只画这几栋，退件架和验收台仍汇总全部项目', () => {
+    const model = buildTown(demoSnapshot)
+    const page = model.buildings.filter((b) => b.name === 'town-workshop')
+    const html = renderToStaticMarkup(<TownScene model={model} buildings={page} selected={null} highlight={null} onSelect={() => {}} />)
+    expect(html).toContain('项目建筑 town-workshop')
+    expect(html).not.toContain('项目建筑 pixel-ledger')
+    expect(html).toContain('退件架：1 个失败运行')
+    expect(html).toContain('待决定 A-1')
+    expect(html).not.toContain('另有')
+  })
+
+  test('竖屏版式只框住一栋，视野随告示卡片数变高', () => {
+    const model = buildTown(demoSnapshot)
+    const html = renderToStaticMarkup(<TownScene model={model} layout="portrait" selected={null} highlight={null} onSelect={() => {}} />)
+    expect(html).toContain('town-svg is-portrait')
+    expect((html.match(/项目建筑 /g) ?? []).length).toBe(1)
+    const height = (m: typeof model) => Number(/viewBox="-222 -100 392 (\d+)"/.exec(renderToStaticMarkup(<TownScene model={m} layout="portrait" selected={null} highlight={null} onSelect={() => {}} />))![1])
+    expect(height({ ...model, pendingApprovals: [] })).toBeLessThan(height(model))
+  })
+})
