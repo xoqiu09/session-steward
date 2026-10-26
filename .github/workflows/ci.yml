@@ -20,6 +20,10 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+      # 托管会话的真实 tmux 测试在未安装 tmux 时会跳过
+      - name: Install tmux
+        run: |
+          if [ "$RUNNER_OS" = macOS ]; then brew install tmux; else sudo apt-get update && sudo apt-get install -y tmux; fi
       - run: go vet ./...
       - run: go test -race ./...
       - name: Cross-compile
