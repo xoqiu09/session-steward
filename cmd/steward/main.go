@@ -5,6 +5,7 @@
 //	steward install [claude|codex|all]    追加 hooks 条目
 //	steward uninstall [claude|codex|all]  移除 hooks 条目
 //	steward status                查看 hooks 安装与 Codex 信任状态
+//	steward service install|uninstall|restart|status  后台常驻（macOS launchd）
 package main
 
 import (
@@ -63,6 +64,8 @@ func main() {
 		err = m0()
 	case "status":
 		err = status()
+	case "service":
+		err = doService(arg(2, ""))
 	default:
 		usage()
 		os.Exit(2)
@@ -74,7 +77,7 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "用法: steward serve | open | remote [--rotate] | install [claude|codex|all] [--project DIR] | uninstall [claude|codex|all] [--project DIR] | status | m0")
+	fmt.Fprintln(os.Stderr, "用法: steward serve | open | remote [--rotate] | install [claude|codex|all] [--project DIR] | uninstall [claude|codex|all] [--project DIR] | status | service install|uninstall|restart|status | m0")
 }
 
 func arg(i int, d string) string {

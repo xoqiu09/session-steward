@@ -95,6 +95,60 @@ bin/steward uninstall [claude|codex|all]
 
 适配器在 hooks 模式下始终以退出码 0 结束，普通事件不向 stdout 输出任何内容。服务不可用时事件写入本地暂存，下次发送成功后补发；也可以手动运行 `steward-hook flush`，它会打印剩余条数和累计丢弃数。
 
+## 后台常驻（macOS launchd）
+
+手动运行的 `steward serve` 会随终端关闭而退出。想让面板一直可用，可以把服务注册为当前用户的 LaunchAgent：
+
+```sh
+bin/steward service install    # 写入 ~/Library/LaunchAgents/io.github.xoqiu09.session-steward.plist 并加载
+bin/steward service status     # plist 是否由 steward 写入、launchd 是否已加载、state / pid / 上次退出码
+bin/steward service restart    # 让 launchd 重启服务进程
+bin/steward service uninstall  # 停止服务并删除这份 plist
+```
+
+- 默认不安装，需要你手动运行 `service install`。
+- plist 运行的是执行 `install` 时那个 `steward` 的绝对路径（解析符号链接后），参数为 `serve`。`RunAtLoad` 和 `KeepAlive` 都开启：登录后自动启动，进程退出后 launchd 会重新拉起（launchd 两次启动之间至少间隔 10 秒）。
+- launchd 不继承登录 shell 的环境，plist 里会写入：`STEWARD_HOME`（当前数据目录的绝对路径）、UTF-8 的 `LANG`（当前 `LANG` 不含 UTF-8 时用 `en_US.UTF-8`）、安装时的 `PATH`（托管会话靠它找到 `claude`、`codex`、`git`），以及设置了的 `CODEX_HOME`。之后修改了这些变量，重新运行一次 `service install` 即可更新。
+- 日志写到 `$STEWARD_HOME/logs/serve.out.log` 和 `serve.err.log`（服务日志在 `serve.err.log`）。日志不会自动轮转，卸载时保留。
+- 只操作自己这份 plist：文件里带标识 `steward-service-v1`。同名文件不带标识时，`install` 拒绝覆盖，`uninstall` 也拒绝删除。plist 没有变化且服务已加载时，`install` 什么也不做。
+- 用 `launchctl bootstrap gui/$UID` / `bootout gui/$UID/<标签>` 加载和卸载，`restart` 用 `launchctl kickstart -k`。
+- `steward service` 不能用 `go run` 运行：`go run` 的二进制是临时文件，会被删除。请先构建。
+
+**同一个数据目录和端口只能有一个 `serve`。** 两个 `serve` 共用 `STEWARD_HOME` 会同时写同一个 SQLite 库；后启动的那个绑定端口失败后退出，launchd 又会每隔约 10 秒拉起一次。因此 `service install` 发现监听地址已被占用、而服务尚未加载时会拒绝安装，并提示先停止已有的 `steward serve`（Ctrl-C 或结束该进程）。确认占用端口的不是 steward 时，可加 `--force` 跳过这项检查。服务装好后不要再手动运行 `steward serve`。用 `STEWARD_HOME=/tmp/steward-demo` 和另一个端口运行演示不受影响；后台服务只有一个，用另一个 `STEWARD_HOME` 再运行 `service install` 会把它切换过去。
+
+**更新 steward：**
+
+- 在原位置重新构建（例如 `make build`，产物仍是 `bin/steward`），然后运行 `bin/steward service restart`，launchd 会用新的二进制重新启动。
+- `steward` 换了位置时，从新位置运行 `steward service install`，plist 会指向新路径并重新加载。也可以先 `uninstall` 再 `install`。
+- 不要删除或移动 plist 指向的那个 `steward`，否则 launchd 无法启动服务（`service status` 会显示非零的上次退出码）。
+- `steward-hook` 的更新方式不变：重新构建后仍需运行一次 `steward install`。
+
+### 在其他设备上查看小镇（只读）
+
+服务常驻后，可以在手机或另一台电脑上查看面板和小镇。只能在你自己的私有网络（例如 Tailscale tailnet）内这样做：
+
+1. 本机常驻：`steward service install`（见上文）。
+2. 只在 tailnet 内转发：`tailscale serve --bg --https=443 http://127.0.0.1:7788`。不要用 `tailscale funnel` 或其他公网代理。代理必须保留原始 `Host` 头（`tailscale serve` 默认如此），否则远程请求会被当作本机请求，一直无法登录。
+3. 在 `$STEWARD_HOME/config.json` 的 `remote_hosts` 填写这台 Mac 的 tailnet 主机名，例如 `["mac.<tailnet>.ts.net"]`，再运行 `steward service restart`：配置只在服务启动时读取。
+4. 运行 `steward remote` 打印远程登录链接。链接本身就是凭据，只在自己的设备上打开，不要分享。`steward remote --rotate` 会生成新链接并让旧链接失效，同样要运行 `steward service restart` 后才生效。
+5. 在另一台设备上打开这个链接，登录后会跳到面板首页（登录状态保留 30 天）。然后打开 `https://<主机名>/?view=town` 进入小镇；挂在副屏或手机上常开时，用 `https://<主机名>/?kiosk=1` 进入桌面模式（自动轮播项目）。这两个入口在小镇相关 PR 合并后才有。
+
+远程是只读的：可以看小镇、简报和队列，也可以点开详情；托管会话的终端画面（包括只读画面）在远程看不到。审批、验收、编辑简报等所有写操作都要回到本机面板做，服务端会拒绝远程的写请求。
+
+Linux 暂不支持 `steward service`。可以自己写一个 systemd 用户单元，例如 `~/.config/systemd/user/steward.service`：
+
+```ini
+[Service]
+ExecStart=/path/to/bin/steward serve
+Environment=LANG=C.UTF-8
+Restart=always
+
+[Install]
+WantedBy=default.target
+```
+
+然后运行 `systemctl --user enable --now steward`。这个示例没有经过测试。
+
 ## 把会话归属到工作项
 
 工作项编号格式为 `ABC-123`（字母开头，最多 16 个字母数字，加 1–6 位数字）。可以先在面板中创建，也可以由 Agent 用 `begin` 一次创建并关联。
@@ -264,6 +318,7 @@ cmd/steward/        服务与管理命令
 cmd/steward-hook/   hooks 适配器和 claim/ask/deliver/report/flush
 internal/config/    数据目录、配置、凭据
 internal/install/   hooks 安装/卸载、Codex 信任检测
+internal/service/   后台常驻（macOS LaunchAgent）
 internal/hook/      适配器逻辑和本地暂存
 internal/event/     统一事件格式、hook 输入解析、脱敏
 internal/server/    HTTP 接口、鉴权、SSE
