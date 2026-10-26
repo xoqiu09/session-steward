@@ -15,6 +15,7 @@ import type { WorldPlan } from './clusters'
 import { InteriorScene } from './InteriorScene'
 import { Campfire, Fence, Flowers, Pine, Pond, Rock, Windmill, YARD_TINT, terrainOf, type Terrain } from './scenery'
 import { statusChips, statusOf, sumStatus, type StatusCounts } from './status'
+import { AGENTS, agentChips, agentCounts, agentLegend, agentOf, mainAgent, sumAgents, type Agent } from './agents'
 
 /** 每个街区的待验收架、退件筐最多摆几个箱子，其余只计数。 */
 const SHELF_MAX = 3
@@ -37,6 +38,8 @@ interface SceneProps {
   changed?: ReadonlySet<string>
   offline?: boolean
   needsYou: (b: BuildingView) => boolean
+  /** “按 Agent 看”打开时：按 Agent 着色；focus 非空时只突出这个 Agent 的会话和项目。 */
+  agents?: { focus: Agent | null } | null
 }
 
 /** 四档建筑：占地、墙色、高度、窗户层数。 */
@@ -52,7 +55,7 @@ function districtPlot(d: District): Plot {
   return { gx: d.ox + 1, gy: d.oy + 0.6, w: t.w, d: t.d, facing: 'x', ...buildingColors(d.b.repo?.id) }
 }
 
-export function WorldScene({ model, world, view, far, selected, highlight, onSelect, changed = new Set(), offline = false, needsYou }: SceneProps) {
+export function WorldScene({ model, world, view, far, selected, highlight, onSelect, changed = new Set(), offline = false, needsYou, agents = null }: SceneProps) {
   const isSel = (kind: Selection['kind'], key: string) => selected?.kind === kind && selected.key === key
   const dim = (match: boolean) => (highlight && !match ? ' is-dim' : '')
   const flash = (key: string) => (changed.has(key) ? ' is-changed' : '')
@@ -105,6 +108,10 @@ export function WorldScene({ model, world, view, far, selected, highlight, onSel
     .sort((a, b) => a.depth - b.depth || a.cx - b.cx)
   const byKey = new Map(world.districts.map((d) => [d.key, d]))
   const statusAt = new Map(world.districts.map((d) => [d.key, statusOf(d.b, model.pendingApprovals)]))
+  const agentAt = new Map(world.districts.map((d) => [d.key, agentCounts(d.b)]))
+  const focus = agents?.focus ?? null
+  const fadeDistrict = (key: string) => (focus && agentAt.get(key)![focus] === 0 ? ' is-dim' : '')
+  const fadeChar = (c: BuildingView['characters'][number]) => (focus && agentOf(c.session) !== focus ? ' is-dim' : '')
 
   const allParcels = model.buildings.flatMap((b) => b.parcels)
   const reviewTotal = allParcels.filter(onReviewDesk).length
@@ -193,8 +200,10 @@ export function WorldScene({ model, world, view, far, selected, highlight, onSel
         const review = d.b.parcels.filter(onReviewDesk).length
         const failed = d.b.parcels.filter((p) => p.phase === 'failed').length
         const h = hash(d.key)
+        const lead = agents ? mainAgent(agentAt.get(d.key)!) : null
         return (
-          <g key={d.key}>
+          <g key={d.key} className={fadeDistrict(d.key) || undefined}>
+            {lead && <AgentYard d={d} color={AGENTS.find((a) => a.key === lead)!.color} />}
             <Path from={[plot.gx + plot.w / 2, plot.gy + plot.d]} to={[plot.gx + plot.w / 2, d.oy + INNER_D + 0.6]} />
             {terrainAt.get(`${d.cell.cx},${d.cell.cy}`) === 'forest' || terrainAt.get(`${d.cell.cx},${d.cell.cy}`) === 'hill'
               ? <Pine at={iso(d.ox + 7.9, d.oy + 1.1)} k={0.9 + (h % 3) * 0.1} />
@@ -232,9 +241,10 @@ export function WorldScene({ model, world, view, far, selected, highlight, onSel
             ))}
             {seatsOf.get(d.key)!.map(({ key: k, c, gx, gy }) => (
               <Character key={k} at={iso(gx, gy)} c={c} selected={isSel('character', c.key)}
-                dimClass={dim(highlight ? charMatches(c, highlight) : true) + flash(c.key)} onSelect={() => onSelect({ kind: 'character', key: c.key })} />
+                dimClass={(fadeChar(c) || dim(highlight ? charMatches(c, highlight) : true)) + flash(c.key)} onSelect={() => onSelect({ kind: 'character', key: c.key })} />
             ))}
             <Tree at={iso(d.ox + 0.4, d.oy + 7.4)} k={0.7 + ((h >> 3) % 3) * 0.1} />
+            {agents && <AgentFlags gx={plot.gx - 0.3} gy={plot.gy + plot.d + 0.2} counts={agentAt.get(d.key)!} />}
           </g>
         )
       })}
@@ -259,7 +269,7 @@ export function WorldScene({ model, world, view, far, selected, highlight, onSel
           const label = characterStatusLabel[c.status]
           return (
             <g key={`${c.key}-pill`} style={{ transform: `translate(${at[0]}px,${at[1]}px) scale(1.22)` }}
-              className={`town-obj town-move${dim(highlight ? charMatches(c, highlight) : true)}`} aria-hidden onClick={() => onSelect({ kind: 'character', key: c.key })}>
+              className={`town-obj town-move${fadeChar(c) || dim(highlight ? charMatches(c, highlight) : true)}`} aria-hidden onClick={() => onSelect({ kind: 'character', key: c.key })}>
               <StatusPill at={[0, 17]} name={c.name} status={offline && c.status === 'working' ? `断线前·${label}` : label} bg={st.bg} fg={st.fg} edge={style.body} />
             </g>
           )
@@ -271,10 +281,11 @@ export function WorldScene({ model, world, view, far, selected, highlight, onSel
         {world.villages.map((v) => {
           const members = world.districts.filter((d) => d.village === v.key)
           const st = sumStatus(members.map((d) => statusAt.get(d.key)!))
+          const ag = sumAgents(members.map((d) => agentAt.get(d.key)!))
           return (
-            <g key={`fv-${v.key}`} className="town-map-only">
+            <g key={`fv-${v.key}`} className={`town-map-only${focus && ag[focus] === 0 ? ' is-dim' : ''}`}>
               <FarPlate k={plateK * 1.15} at={iso(v.square.cx * CELL_W + INNER_W / 2, v.square.cy * CELL_D + INNER_D / 2, villageLift(v.square, plateK))} title={`${v.name} · ${members.length} 个项目`}
-                tone={toneOf(st, 'plaza')} chips={plateChips(st, 0)} note="村里很安静" />
+                tone={toneOf(st, 'plaza')} chips={agents ? withWaiting(agentChips(ag), st) : plateChips(st, 0)} note={agents ? '村里没有会话' : '村里很安静'} />
             </g>
           )
         })}
@@ -282,10 +293,10 @@ export function WorldScene({ model, world, view, far, selected, highlight, onSel
           const st = statusAt.get(d.key)!
           const failed = d.b.parcels.filter((p) => p.phase === 'failed').length
           const open = d.b.items.filter((w) => w.status !== 'done' && w.status !== 'abandoned').length
-          const chips = plateChips(st, failed)
-          const note = open ? `${open} 项未完成 · 没人在干活` : '安静'
+          const chips = agents ? withWaiting(agentChips(agentAt.get(d.key)!), st) : plateChips(st, failed)
+          const note = agents ? '没有会话' : open ? `${open} 项未完成 · 没人在干活` : '安静'
           return (
-            <g key={`far-${d.key}`} className={`town-obj${d.village ? ' town-hide-on-map' : ''}`} {...activate(() => onSelect({ kind: 'building', key: d.b.key }))}
+            <g key={`far-${d.key}`} className={`town-obj${d.village ? ' town-hide-on-map' : ''}${fadeDistrict(d.key)}`} {...activate(() => onSelect({ kind: 'building', key: d.b.key }))}
               aria-label={`${d.b.name}：${chips.length ? chips.map((c) => c.text).join('，') : note}`}>
               <FarPlate k={plateK * (d.kind === 'wild' ? 0.8 : 1)} at={iso(d.ox + 3.15, d.oy + 2.0, 150 + Math.max(0, TIERS[d.tier].shape.h - BUILDING_H))} title={d.b.name}
                 tone={toneOf(st, 'calm')} chips={chips} note={note} accent={buildingColors(d.b.repo?.id).accent} />
@@ -294,7 +305,8 @@ export function WorldScene({ model, world, view, far, selected, highlight, onSel
         })}
         {/* 广场名牌最后画：全镇合计，不被村庄名牌盖住 */}
         <FarPlate k={plateK} at={iso(P.ox + INNER_W / 2, P.oy + INNER_D / 2, 120 + 90 * plateK)} title="中央广场" tone="plaza"
-          chips={plateChips({ ...sumStatus([...statusAt.values()]), waiting: model.pendingApprovals.length }, failedTotal)} note="今天很安静" />
+          chips={agents ? agentChips(sumAgents([...agentAt.values()])) : plateChips({ ...sumStatus([...statusAt.values()]), waiting: model.pendingApprovals.length }, failedTotal)}
+          note={agents ? '没有会话' : '今天很安静'} />
       </g>
     </svg>
   )
@@ -349,6 +361,35 @@ type Tone = 'urgent' | 'blocked' | 'busy' | 'calm' | 'plaza'
 
 function plateChips(st: StatusCounts, failed: number): Chip[] {
   return [...statusChips(st), ...(failed ? [{ text: `失败 ${failed}`, dot: '#7a3a32' }] : [])]
+}
+
+/** 按 Agent 看时名牌列各 Agent 的会话数，等你决定仍然保留。 */
+function withWaiting(chips: Chip[], st: StatusCounts): Chip[] {
+  return st.waiting ? [...chips, ...statusChips({ ...st, working: 0, review: 0, blocked: 0 })] : chips
+}
+
+/** 院子描上主 Agent 的颜色。 */
+function AgentYard({ d, color }: { d: District; color: string }) {
+  return <IsoTile gx={d.ox + 0.15} gy={d.oy + 0.15} w={INNER_W - 0.3} d={INNER_D - 0.3} fill={color} opacity={0.14} className="town-agent-yard" />
+}
+
+/** 门口插小旗：每个在场的 Agent 一面，旗上写会话数。 */
+function AgentFlags({ gx, gy, counts }: { gx: number; gy: number; counts: ReturnType<typeof agentCounts> }) {
+  const present = AGENTS.filter((a) => counts[a.key] > 0)
+  return (
+    <g aria-hidden>
+      {present.map((a, i) => {
+        const [x, y] = iso(gx + i * 0.7, gy)
+        return (
+          <g key={a.key} transform={`translate(${x},${y})`}>
+            <line x1="0" y1="0" x2="0" y2="-34" stroke="#6b4a2a" strokeWidth="2" />
+            <path d="M0,-34 L22,-29 L0,-22 Z" fill={a.color} stroke="rgba(0,0,0,.25)" />
+            <text x="8" y="-25.5" textAnchor="middle" fontSize="8" fontWeight="800" fill="#fff">{counts[a.key]}</text>
+          </g>
+        )
+      })}
+    </g>
+  )
 }
 
 /** 名牌边框：等你决定 > 受阻 > 工作中 > 平常。 */
@@ -414,6 +455,9 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far'> & {
   const { model, needsYou, kiosk = false, rotateMs = 20_000, paused = false, focusKey, plan } = props
   // 走进某栋建筑：显示它的室内；拖动、缩放、巡游都暂停。
   const [inside, setInside] = useState<string | null>(null)
+  const [byAgent, setByAgent] = useState(false)
+  const [agentFocus, setAgentFocus] = useState<Agent | null>(null)
+  const legend = useMemo(() => agentLegend(model.buildings), [model])
   const insideB = inside ? model.buildings.find((b) => b.key === inside) ?? null : null
   useEffect(() => {
     if (!inside) return
@@ -529,13 +573,25 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far'> & {
         </>
       ) : (
         <>
-      <WorldScene {...props} onSelect={sceneSelect} world={world} view={view} far={far} />
+      <WorldScene {...props} onSelect={sceneSelect} world={world} view={view} far={far} agents={byAgent ? { focus: agentFocus } : null} />
       <div className="town-world-tools" onPointerDown={(e) => e.stopPropagation()}>
         <button type="button" onClick={() => zoomBy(0.7)} aria-label="放大" title="放大（也可以滚动滚轮）">＋</button>
         <button type="button" onClick={() => zoomBy(1.4)} aria-label="缩小" title="缩小">－</button>
         <button type="button" onClick={() => { lastTouch.current = Date.now(); flyTo(fitAll()) }} title="看全部街区">全景</button>
         <button type="button" onClick={() => { lastTouch.current = Date.now(); flyTo(fitCamera(cellBox(world.plaza.ox, world.plaza.oy), aspect, 1.1)) }} title="回到中央广场">广场</button>
+        <button type="button" aria-pressed={byAgent} className={byAgent ? 'is-on' : undefined} onClick={() => { setByAgent(!byAgent); setAgentFocus(null) }} title="按会话来自哪个 Agent 着色">按 Agent 看</button>
       </div>
+      {byAgent && (
+        <div className="town-agent-legend" role="group" aria-label="按 Agent 筛选" onPointerDown={(e) => e.stopPropagation()}>
+          <button type="button" aria-pressed={agentFocus == null} onClick={() => setAgentFocus(null)}>全部</button>
+          {legend.map((a) => (
+            <button key={a.key} type="button" aria-pressed={agentFocus === a.key} disabled={a.sessions === 0}
+              onClick={() => setAgentFocus(agentFocus === a.key ? null : a.key)}>
+              <i style={{ background: a.color }} />{a.label}<small>{a.sessions} 个会话 · {a.projects} 个项目</small>
+            </button>
+          ))}
+        </div>
+      )}
       <MiniMap world={world} view={view} needsYou={needsYou} pending={model.pendingApprovals} onJump={(p) => { lastTouch.current = Date.now(); flyTo(clampCamera({ cx: p[0], cy: p[1], w: Math.min(camera.w, 1500) }, world.bounds), 600) }} />
       <p className="town-world-hint">拖动地图移动 · 滚轮缩放 · 拉远看全部项目</p>
         </>

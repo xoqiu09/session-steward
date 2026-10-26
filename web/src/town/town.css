@@ -158,3 +158,19 @@
 @media (prefers-reduced-motion: reduce) {
   .town-view .town-stroll, .town-view .town-spark { animation: none; }
 }
+
+/* 按 Agent 看 */
+.town-view .town-world-tools button.is-on { background: #2f3a8f; color: #fff; border-color: #2f3a8f; }
+.town-view .town-agent-legend {
+  position: absolute; z-index: 3; top: 56px; right: 12px; display: flex; flex-direction: column; gap: 4px; padding: 8px;
+  border-radius: 12px; background: rgba(255, 250, 240, 0.94); border: 1px solid var(--town-line, #e2d5bd);
+}
+.town-view .town-agent-legend button {
+  display: grid; grid-template-columns: 12px auto; column-gap: 8px; align-items: center; text-align: left;
+  padding: 5px 10px; border-radius: 8px; border: 1px solid transparent; background: none; font-size: 13px; font-weight: 700; cursor: pointer;
+}
+.town-view .town-agent-legend button[aria-pressed="true"] { background: #fff; border-color: #c9b896; }
+.town-view .town-agent-legend button:disabled { opacity: 0.45; cursor: default; }
+.town-view .town-agent-legend i { width: 12px; height: 12px; border-radius: 50%; grid-row: span 2; }
+.town-view .town-agent-legend small { grid-column: 2; font-size: 11px; font-weight: 400; color: #7a6a55; }
+.town-view .town-agent-legend button:first-child { display: block; }
