@@ -189,6 +189,11 @@ tbody tr:hover { background: #fafaf7; }
 .runs, .events { padding-left: 18px; margin: 4px 0; }
 .runs li { display: flex; gap: 6px; align-items: center; padding: 3px 0; flex-wrap: wrap; }
 .events li { padding: 2px 0; display: flex; gap: 6px; font-size: 12px; }
+/* 时间与类型不参与收缩，长内容只截断自己，避免“5 分钟前”被挤成竖排 */
+.events li > .muted, .events li > code { flex: none; white-space: nowrap; }
+.events li > .ellipsis { flex: 1; }
+.events-fold > summary { cursor: pointer; font-weight: 600; margin: 14px 0 4px; }
+.events-fold > summary small { font-weight: 400; }
 
 .new-item { display: flex; flex-direction: column; gap: 10px; }
 .new-item label { display: flex; flex-direction: column; gap: 4px; color: var(--muted); font-size: 12px; }

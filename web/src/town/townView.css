@@ -53,6 +53,8 @@
 .kiosk-drawer:has(.run-desk) { width: min(1000px, 70vw); background: var(--rd-bg, #faf9f6); }
 .kiosk-drawer-head { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; gap: 8px; padding: 10px 12px; background: var(--panel); border-bottom: 1px solid var(--line); }
 .kiosk-drawer-head strong { margin-right: auto; }
+/* 抽屉顶栏已有“关闭”，隐藏详情和运行台自带的 ✕，只留一个关闭入口 */
+.kiosk-drawer .detail-head > .btn.right, .kiosk-drawer .rd-close { display: none; }
 @media (max-width: 899px) {
   .app.is-kiosk { height: auto; min-height: 100vh; min-height: 100dvh; }
   .kiosk-drawer:has(.run-desk) { width: 100vw; }
