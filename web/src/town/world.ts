@@ -26,6 +26,17 @@ export interface District {
   kind: DistrictKind
   /** 所属村庄；中央和野外为空。 */
   village?: string
+  /** 建筑档次：0 小木屋、1 房子、2 工坊、3 大楼。 */
+  tier: Tier
+}
+
+export type Tier = 0 | 1 | 2 | 3
+
+/** 建筑档次看项目体量：未完成的工作项、近 7 天活动量、正在这里干活的会话。 */
+export function buildingTier(b: BuildingView, activity = 0): Tier {
+  const open = b.items.filter((w) => w.status !== 'done' && w.status !== 'abandoned').length
+  const score = open + Math.min(activity, 45) / 3 + b.characters.length * 2
+  return score >= 16 ? 3 : score >= 8 ? 2 : score >= 3 ? 1 : 0
 }
 
 export interface VillageArea {
@@ -90,7 +101,8 @@ export function worldLayout(buildings: readonly BuildingView[], needsYou: (b: Bu
   const districts: District[] = []
   const place = (b: BuildingView, cell: Cell, kind: DistrictKind, village?: string) => {
     taken.add(keyOf(cell))
-    districts.push({ key: b.key, b, cell, ox: cell.cx * CELL_W, oy: cell.cy * CELL_D, ring: cheb(cell), kind, village })
+    const tier = buildingTier(b, b.repo ? plan?.activity.get(b.repo.id) ?? 0 : 0)
+    districts.push({ key: b.key, b, cell, ox: cell.cx * CELL_W, oy: cell.cy * CELL_D, ring: cheb(cell), kind, village, tier })
   }
   const byRepo = new Map(buildings.filter((b) => b.repo).map((b) => [b.repo!.id, b]))
   const inPlan = new Set<number>(plan ? [...plan.central, ...plan.villages.flatMap((v) => v.repoIds), ...plan.wild] : [])

@@ -85,3 +85,18 @@ describe('村庄与野外', () => {
     expect(wild.ring).toBeGreaterThan(central.ring)
   })
 })
+
+describe('建筑档次', () => {
+  const b = (open: number, sessions = 0) => ({
+    key: 'repo-x', repo: repo(9, 'x'), name: 'x', hiddenCharacters: 0, parcels: [],
+    items: Array.from({ length: open }, (_, i) => fakeItem({ id: `X-${i}`, repo_id: 9, title: 't', status: 'in_progress' })),
+    characters: Array.from({ length: sessions }, () => ({}) as never),
+  })
+  it('按未完成工作项、近期活动和在场会话分四档', async () => {
+    const { buildingTier } = await import('./world')
+    expect(buildingTier(b(1) as never)).toBe(0)
+    expect(buildingTier(b(4) as never)).toBe(1)
+    expect(buildingTier(b(6, 1) as never)).toBe(2)
+    expect(buildingTier(b(10, 1), 30)).toBe(3)
+  })
+})

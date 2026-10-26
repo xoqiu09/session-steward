@@ -3,13 +3,13 @@ import { useEffect, useMemo, useRef, useState, type PointerEvent as RPointerEven
 import { IsoBox, IsoTile, iso, type Pt } from './iso'
 import { MAX_SEATS, characterStatusLabel, type BuildingView, type Highlight, type ParcelView, type TownModel } from './townModel'
 import {
-  Building, Character, DecisionBoard, Desk, FailRack, Parcel, Path, ReviewDesk, StatusPill, Tag, Tree,
+  BUILDING_H, Building, HOUSE_SHAPE, Character, DecisionBoard, Desk, FailRack, Parcel, Path, ReviewDesk, StatusPill, Tag, Tree,
   activate, buildingColors, charLook, charMatches, onReviewDesk, parcelMatches, parcelTitle, slot, yard,
-  type Plot, type Selection,
+  type BuildingShape, type Plot, type Selection,
 } from './TownScene'
 import {
   CELL_D, CELL_W, FAR_W, INNER_D, INNER_W, cellBox, clampCamera, fitCamera, lerpCamera, tourStops, viewBoxOf, worldLayout, zoomAt,
-  type Box, type Camera, type Cell, type District, type WorldLayout,
+  type Box, type Camera, type Cell, type District, type Tier, type WorldLayout,
 } from './world'
 import type { WorldPlan } from './clusters'
 
@@ -36,8 +36,17 @@ interface SceneProps {
   needsYou: (b: BuildingView) => boolean
 }
 
+/** 四档建筑：占地、墙色、高度、窗户层数。 */
+const TIERS: Record<Tier, { shape: BuildingShape; w: number; d: number }> = {
+  0: { w: 3.0, d: 2.2, shape: { kind: 'cabin', name: '小木屋', h: 38, rise: 30, floors: 1, walls: { top: '#b48a5c', front: '#c99c6a', side: '#ad8152', edge: '#7a5636' } } },
+  1: { w: 4.3, d: 2.8, shape: HOUSE_SHAPE },
+  2: { w: 5.0, d: 3.0, shape: { kind: 'workshop', name: '工坊', h: 60, rise: 24, floors: 1, walls: { top: '#e9dcc4', front: '#efe1c8', side: '#dccaa8', edge: '#8f7350' } } },
+  3: { w: 4.2, d: 3.0, shape: { kind: 'tower', name: '大楼', h: 118, rise: 22, floors: 3, walls: { top: '#e7e2d6', front: '#f1ece0', side: '#dcd4c3', edge: '#8d8270' } } },
+}
+
 function districtPlot(d: District): Plot {
-  return { gx: d.ox + 1, gy: d.oy + 0.6, w: 4.3, d: 2.8, facing: 'x', ...buildingColors(d.b.repo?.id) }
+  const t = TIERS[d.tier]
+  return { gx: d.ox + 1, gy: d.oy + 0.6, w: t.w, d: t.d, facing: 'x', ...buildingColors(d.b.repo?.id) }
 }
 
 export function WorldScene({ model, world, view, far, selected, highlight, onSelect, changed = new Set(), offline = false, needsYou }: SceneProps) {
@@ -154,9 +163,9 @@ export function WorldScene({ model, world, view, far, selected, highlight, onSel
         const h = hash(d.key)
         return (
           <g key={d.key}>
-            <Path from={[d.ox + 3.15, d.oy + 3.4]} to={[d.ox + 3.15, d.oy + INNER_D + 0.6]} />
+            <Path from={[plot.gx + plot.w / 2, plot.gy + plot.d]} to={[plot.gx + plot.w / 2, d.oy + INNER_D + 0.6]} />
             <Tree at={iso(d.ox + 7.9, d.oy + 1.1)} k={0.8 + (h % 3) * 0.1} />
-            <Building plot={plot} b={d.b} selected={isSel('building', d.b.key)} dimClass={dim(false)} onSelect={() => onSelect({ kind: 'building', key: d.b.key })} />
+            <Building plot={plot} shape={TIERS[d.tier].shape} b={d.b} selected={isSel('building', d.b.key)} dimClass={dim(false)} onSelect={() => onSelect({ kind: 'building', key: d.b.key })} />
             {review > 0 && (
               <g className={`town-shelf${dim(highlight === 'review')}`}>
                 <IsoBox gx={d.ox + 6.2} gy={d.oy + 4.3} w={2.1} d={0.95} h={12} top="#e8d2a8" left="#b98a52" right="#9c7140" />
@@ -235,7 +244,7 @@ export function WorldScene({ model, world, view, far, selected, highlight, onSel
           const parts = [working ? `工作中 ${working}` : `${d.b.characters.length} 个会话`, review ? `待验收 ${review}` : `${open} 项未完成`, ...(failed ? [`失败 ${failed}`] : [])]
           return (
             <g key={`far-${d.key}`} className={`town-obj${d.village ? ' town-hide-on-map' : ''}`} {...activate(() => onSelect({ kind: 'building', key: d.b.key }))} aria-label={`${d.b.name}：${parts.join('，')}`}>
-              <FarPlate k={plateK * (d.kind === 'wild' ? 0.8 : 1)} at={iso(d.ox + 3.15, d.oy + 2.0, 150)} title={d.b.name} tone={needsYou(d.b) ? 'urgent' : working ? 'busy' : 'calm'} parts={parts} accent={buildingColors(d.b.repo?.id).accent} />
+              <FarPlate k={plateK * (d.kind === 'wild' ? 0.8 : 1)} at={iso(d.ox + 3.15, d.oy + 2.0, 150 + Math.max(0, TIERS[d.tier].shape.h - BUILDING_H))} title={d.b.name} tone={needsYou(d.b) ? 'urgent' : working ? 'busy' : 'calm'} parts={parts} accent={buildingColors(d.b.repo?.id).accent} />
             </g>
           )
         })}

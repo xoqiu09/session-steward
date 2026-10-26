@@ -331,14 +331,31 @@ export function parcelTitle(p: ParcelView, max: number) {
   return p.item?.title ? `${id} ${clip(p.item.title, max)}` : id
 }
 
-export function Building({ plot: p, b, selected, dimClass, onSelect, signScale = 1 }: { plot: Plot; b: BuildingView; selected: boolean; dimClass: string; onSelect: () => void; signScale?: number }) {
+/** 建筑外形：小镇默认是“房子”；大地图按项目体量换成小木屋、工坊或大楼。 */
+export interface BuildingShape {
+  kind: 'cabin' | 'house' | 'workshop' | 'tower'
+  name: string
+  h: number
+  rise: number
+  walls: { top: string; front: string; side: string; edge: string }
+  /** 每面墙上的窗户行数。 */
+  floors: number
+}
+
+export const HOUSE_SHAPE: BuildingShape = {
+  kind: 'house', name: '房子', h: BUILDING_H, rise: 34, floors: 1,
+  walls: { top: '#efe3cc', front: '#f6ecda', side: '#e4d4b8', edge: '#9b7b55' },
+}
+
+export function Building({ plot: p, b, selected, dimClass, onSelect, signScale = 1, shape = HOUSE_SHAPE }: { plot: Plot; b: BuildingView; selected: boolean; dimClass: string; onSelect: () => void; signScale?: number; shape?: BuildingShape }) {
+  const H = shape.h
   const active = b.items.filter((w) => w.status !== 'done' && w.status !== 'abandoned').length
   const done = b.items.filter((w) => w.status === 'done').length
   const hidden = Math.max(0, b.characters.length - MAX_SEATS)
   const sign = clip(b.name, SIGN_MAX)
   const tasks = buildingTasks(b.items)
   const signW = measure(sign, 14) + 26
-  const label = iso(p.gx + p.w / 2, p.gy + p.d / 2, BUILDING_H + 66)
+  const label = iso(p.gx + p.w / 2, p.gy + p.d / 2, H + 66)
   const corner = iso(p.gx + p.w, p.gy + p.d)
   // 窗户与门画在朝向镜头的长面上。
   const win = (u: number, v: number, ww: number, wh: number, color: string) => {
@@ -350,22 +367,37 @@ export function Building({ plot: p, b, selected, dimClass, onSelect, signScale =
     <g className={`town-obj town-building${selected ? ' is-selected' : ''}${dimClass}`}
       aria-label={`项目建筑 ${b.name}：${b.characters.length} 个会话，${active} 个未完成任务${hidden ? `，另有 ${hidden} 个会话不在画面中` : ''}`} {...activate(onSelect)}>
       <IsoTile gx={p.gx - 0.4} gy={p.gy - 0.4} w={p.w + 0.8} d={p.d + 0.8} fill="#c9b48e" opacity={0.5} />
-      <IsoBox gx={p.gx} gy={p.gy} w={p.w} d={p.d} h={BUILDING_H} top="#efe3cc" left={p.facing === 'x' ? '#f6ecda' : '#e4d4b8'} right={p.facing === 'x' ? '#e4d4b8' : '#f6ecda'} stroke="#9b7b55" />
+      <IsoBox gx={p.gx} gy={p.gy} w={p.w} d={p.d} h={H} top={shape.walls.top} left={p.facing === 'x' ? shape.walls.front : shape.walls.side} right={p.facing === 'x' ? shape.walls.side : shape.walls.front} stroke={shape.walls.edge} />
+      {shape.kind === 'workshop' && (
+        // 工坊侧面的披屋
+        <IsoBox gx={p.gx + p.w} gy={p.gy + 0.3} w={1.5} d={p.d - 0.6} h={H * 0.55} top="#a07a52" left={shape.walls.front} right={shape.walls.side} stroke={shape.walls.edge} />
+      )}
       {/* 门、窗 */}
       {win(long / 2 - 0.4, 0, 0.8, 30, p.accent)}
-      {win(0.45, 22, 0.9, 18, '#ffe2a0')}
-      {win(long - 1.35, 22, 0.9, 18, '#ffe2a0')}
-      <HipRoof gx={p.gx} gy={p.gy} w={p.w} d={p.d} z={BUILDING_H} rise={34} front={p.roof} side={p.roofSide} stroke="#5a3a2a" />
+      {Array.from({ length: shape.floors }, (_, f) => (
+        <g key={f}>
+          {win(0.45, 22 + f * 30, 0.9, 18, '#ffe2a0')}
+          {win(long - 1.35, 22 + f * 30, 0.9, 18, '#ffe2a0')}
+          {shape.kind !== 'cabin' && long > 4.6 && win(long / 2 + 0.7, 22 + f * 30, 0.8, 18, '#ffe2a0')}
+        </g>
+      ))}
+      <HipRoof gx={p.gx} gy={p.gy} w={p.w} d={p.d} z={H} rise={shape.rise} front={p.roof} side={p.roofSide} stroke="#5a3a2a" />
       {/* 烟囱 */}
-      <IsoBox gx={p.gx + (p.facing === 'x' ? p.w * 0.72 : 0.6)} gy={p.gy + (p.facing === 'x' ? 0.5 : p.d * 0.72)} w={0.45} d={0.45} h={28} z={BUILDING_H + 14} top="#8d5b45" left="#b07258" right="#94604a" />
+      <IsoBox gx={p.gx + (p.facing === 'x' ? p.w * 0.72 : 0.6)} gy={p.gy + (p.facing === 'x' ? 0.5 : p.d * 0.72)} w={0.45} d={0.45} h={28} z={H + 14} top="#8d5b45" left="#b07258" right="#94604a" />
+      {shape.kind === 'tower' && (
+        <g transform={`translate(${iso(p.gx + p.w / 2, p.gy + p.d / 2, H + shape.rise).join(',')})`} aria-hidden>
+          <line x1="0" y1="0" x2="0" y2="-34" stroke="#5a3a2a" strokeWidth="2" />
+          <path d="M0,-34 l20,6 l-20,7 z" fill={p.accent} />
+        </g>
+      )}
       {done > 0 && (
-        <g transform={`translate(${iso(p.gx + p.w * 0.28, p.gy + p.d / 2, BUILDING_H + 34).join(',')})`} aria-hidden>
+        <g transform={`translate(${iso(p.gx + p.w * 0.28, p.gy + p.d / 2, H + 34).join(',')})`} aria-hidden>
           <line x1="0" y1="0" x2="0" y2="-26" stroke="#6b4a2a" strokeWidth="1.8" />
           <path d="M0,-26 l16,4.5 l-16,5.5 z" fill="#4f9d5d" />
         </g>
       )}
       {b.characters.some((c) => c.status === 'working') && (
-        <g transform={`translate(${iso(p.gx + (p.facing === 'x' ? p.w * 0.72 : 0.8), p.gy + (p.facing === 'x' ? 0.7 : p.d * 0.72), BUILDING_H + 50).join(',')})`}>
+        <g transform={`translate(${iso(p.gx + (p.facing === 'x' ? p.w * 0.72 : 0.8), p.gy + (p.facing === 'x' ? 0.7 : p.d * 0.72), H + 50).join(',')})`}>
           <g className="town-smoke">
             <circle r="5" fill="#fff" opacity="0.7" />
             <circle cx="6" cy="-9" r="6" fill="#fff" opacity="0.5" />
@@ -378,7 +410,7 @@ export function Building({ plot: p, b, selected, dimClass, onSelect, signScale =
         <rect x={-signW / 2} y={-14} width={signW} height={26} rx="6" fill="#fffaf0" stroke={selected ? '#2d6cdf' : p.accent} strokeWidth={selected ? 3 : 2} />
         <text y="4" textAnchor="middle" fontSize="14" fontWeight="700" fill="#3a2a1c">{sign}</text>
         <text y="-22" textAnchor="middle" fontSize="10.5" fill="#6b5a44" className="town-sub">
-          {b.characters.length} 个会话 · {active} 个未完成{done ? ` · 已完成 ${done}` : ''}
+          {shape === HOUSE_SHAPE ? '' : `${shape.name} · `}{b.characters.length} 个会话 · {active} 个未完成{done ? ` · 已完成 ${done}` : ''}
         </text>
         {tasks.lines.map((t, i) => (
           <text key={t.id} y={-38 - (tasks.lines.length - 1 - i) * 14} textAnchor="middle" fontSize="10.5" fill="#3a2a1c" className="town-task">
