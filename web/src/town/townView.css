@@ -1,0 +1,12 @@
+/* 小镇视图外框：填满 SS 的 .stage，场景按剩余高度缩放 */
+.town-view { display: flex; flex-direction: column; gap: 8px; height: 100%; min-height: 0; padding: 8px 12px 12px; box-sizing: border-box; }
+.town-view .town-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
+.town-view .town-meta { margin-left: auto; font-size: 12px; color: #7a6a55; }
+.town-view .town-diorama { flex: 1; min-height: 360px; aspect-ratio: auto; max-height: none; }
+/* svg 不参与撑高，按容器剩余空间等比缩放 */
+.town-view .town-diorama > .town-svg { position: absolute; inset: 0; }
+@media (max-width: 900px) {
+  .town-view { height: auto; }
+  .town-view .town-diorama { flex: none; min-height: 0; }
+  .town-view .town-diorama > .town-svg { position: static; }
+}

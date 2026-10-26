@@ -1,0 +1,170 @@
+// 小镇视图：用 SS 的实时快照画工作小镇。只读；点选对象复用 SS 原有的工作项/会话详情与审批入口。
+import { useEffect, useMemo, useRef, useState } from 'react'
+import type { Conn } from '../api'
+import type { Repo, Run, Snapshot } from '../types'
+import { groupByRepo, scopedAttention, sessionBuckets } from '../model'
+import { queueLanes } from '../workbench'
+import { orderedProjects } from '../projectActivity'
+import { resolveDeepLink } from '../live'
+import TownScene, { type Selection } from './TownScene'
+import { buildTown, type Highlight, type TownModel } from './townModel'
+import { acceptSnapshot } from './feed'
+import './town.css'
+import './townView.css'
+
+type Sel = { kind: 'item'; id: string } | { kind: 'session'; id: number } | null
+
+const CHIPS: { key: Highlight; label: string }[] = [
+  { key: 'working', label: '工作中' },
+  { key: 'waiting', label: '等你决定' },
+  { key: 'failed', label: '失败' },
+  { key: 'review', label: '待验收' },
+  { key: 'stale', label: '状态待更新' },
+]
+
+const DAY = 24 * 3600_000
+const MAX_FAILED = 4
+
+const clock = new Intl.DateTimeFormat('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false })
+const hm = (iso: string) => (iso ? clock.format(new Date(iso)) : '—')
+
+const SKIP_OUTCOMES = new Set(['historical', 'attribution_reverted'])
+
+// 只把“现在”的东西放进小镇：近期会话、当前工作项、未结束的运行、近一天的失败、每个待验收项最近一次运行。
+// 告示栏只放 SS 关注队列里“需你处理”的请求（与顶部“审批／决定”同一口径）。
+export function townSlice(snap: Snapshot, repoId: number | 'all', provider: string): Snapshot {
+  const groups = groupByRepo(snap, { query: '', showDone: false, repoId, provider })
+  const sessions = sessionBuckets(snap, provider, repoId).recent
+  const items = groups.flatMap(g => g.items)
+  const itemIds = new Set(items.map(w => w.id))
+  const sessionIds = new Set(sessions.map(s => s.id))
+  const repoIds = new Set<number>()
+  for (const p of orderedProjects(snap, groups, provider)) if (p.group.repoId != null) repoIds.add(p.group.repoId)
+  for (const s of sessions) if (s.repo_id != null) repoIds.add(s.repo_id)
+  const order = [...repoIds]
+  const repos = order.map(id => (snap.repos ?? []).find(r => r.id === id)).filter((r): r is Repo => !!r)
+  const now = Date.parse(snap.now)
+  const runs = snap.runs ?? []
+  const open = runs.filter(r => !r.ended_at && sessionIds.has(r.session_id))
+  const failed = runs.filter(r => r.ended_at && /^(failed|error)/i.test(r.outcome) && itemIds.has(r.work_item_id) && now - Date.parse(r.ended_at) < DAY)
+    .sort((a, b) => b.ended_at.localeCompare(a.ended_at)).slice(0, MAX_FAILED)
+  // SS 里 Agent 交付体现为工作项进入 review，而不是 run.outcome；验收台按工作项取它最近一次已结束的运行。
+  const reviewIds = new Set(items.filter(w => w.status === 'review').map(w => w.id))
+  const delivered = new Map<string, Run>()
+  for (const r of runs) {
+    if (!r.ended_at || SKIP_OUTCOMES.has(r.outcome) || !reviewIds.has(r.work_item_id)) continue
+    const prev = delivered.get(r.work_item_id)
+    if (!prev || r.ended_at > prev.ended_at) delivered.set(r.work_item_id, r)
+  }
+  const lanes = queueLanes(scopedAttention(snap, repoId, provider), snap.now)
+  const action = [...lanes.permission, ...lanes.decision, ...lanes.merge.map(g => g.primary)]
+  return {
+    ...snap,
+    repos,
+    sessions,
+    work_items: items,
+    runs: [...open, ...failed, ...delivered.values()],
+    approvals: action,
+    deps: (snap.deps ?? []).filter(d => itemIds.has(d.upstream) && itemIds.has(d.downstream)),
+  }
+}
+
+function signature(model: TownModel): Map<string, string> {
+  const out = new Map<string, string>()
+  for (const b of model.buildings) {
+    for (const c of b.characters) out.set(c.key, `${c.status}|${c.item?.status ?? ''}`)
+    for (const p of b.parcels) out.set(p.key, p.phase)
+  }
+  return out
+}
+
+// 和上一版相比状态变了或新出现的对象，闪一下。
+function useChanged(model: TownModel | null): ReadonlySet<string> {
+  const prev = useRef<Map<string, string> | null>(null)
+  const [changed, setChanged] = useState<ReadonlySet<string>>(new Set())
+  useEffect(() => {
+    if (!model) return
+    const sig = signature(model)
+    const before = prev.current
+    prev.current = sig
+    if (!before) return
+    setChanged(new Set([...sig].filter(([k, v]) => before.get(k) !== v).map(([k]) => k)))
+    const t = window.setTimeout(() => setChanged(new Set()), 2600)
+    return () => window.clearTimeout(t)
+  }, [model])
+  return changed
+}
+
+export function TownView({ snap, conn, repoId, provider, sel, onSelectItem, onSelectSession, onSelectRepo, onQueue }: {
+  snap: Snapshot
+  conn: Conn
+  repoId: number | 'all'
+  provider: string
+  sel: Sel
+  onSelectItem: (id: string) => void
+  onSelectSession: (id: number) => void
+  onSelectRepo: (id: number) => void
+  onQueue: (lane: 'action' | 'review') => void
+}) {
+  // 旧快照（慢请求迟到）不覆盖新画面；同一版重复到达不重画。
+  // cursor 只在数据库被替换时才会变小，那时服务端时间是新的，按重置接受。
+  const [shown, setShown] = useState<Snapshot>(snap)
+  useEffect(() => {
+    setShown(prev => acceptSnapshot(prev, snap, snap.cursor < prev.cursor && Date.parse(snap.now) > Date.parse(prev.now)).snap)
+  }, [snap])
+  const [clientNow, setClientNow] = useState(() => new Date().toISOString())
+  useEffect(() => {
+    const t = window.setInterval(() => setClientNow(new Date().toISOString()), 30_000)
+    return () => window.clearInterval(t)
+  }, [])
+  const [highlight, setHighlight] = useState<Highlight | null>(null)
+  const slice = useMemo(() => townSlice(shown, repoId, provider), [shown, repoId, provider])
+  const model = useMemo(() => buildTown(slice, clientNow), [slice, clientNow])
+  const changed = useChanged(model)
+  const offline = conn === 'offline'
+
+  const selected: Selection | null = sel?.kind === 'session' ? { kind: 'character', key: `session-${sel.id}` } : null
+  const onSelect = (s: Selection) => {
+    if (s.kind === 'character') onSelectSession(Number(s.key.replace('session-', '')))
+    else if (s.kind === 'building') { const id = Number(s.key.replace('repo-', '')); if (Number.isFinite(id)) onSelectRepo(id) }
+    else if (s.kind === 'review-desk') onQueue('review')
+    else if (s.kind === 'approval') {
+      const t = resolveDeepLink(shown, { kind: 'approval', id: s.key })
+      if (t?.kind === 'item') onSelectItem(t.id)
+      else if (t?.kind === 'session') onSelectSession(t.id)
+      else onQueue('action')
+    } else if (s.kind === 'parcel') {
+      const run = (shown.runs ?? []).find(r => `run-${r.id}` === s.key)
+      if (run?.work_item_id) onSelectItem(run.work_item_id)
+      else if (run) onSelectSession(run.session_id)
+    }
+  }
+
+  return (
+    <div className={`town-view${offline ? ' is-offline' : ''}`}>
+      <div className="town-bar">
+        <nav className="town-chips" aria-label="按状态高亮">
+          {CHIPS.map(c => (
+            <button key={c.key} type="button" className={`town-chip is-${c.key}${highlight === c.key ? ' is-on' : ''}`} aria-pressed={highlight === c.key}
+              onClick={() => setHighlight(highlight === c.key ? null : c.key)}>
+              <i aria-hidden />{offline && c.key === 'working' ? '断线前工作中' : c.label}<b>{model.counts[c.key]}</b>
+            </button>
+          ))}
+        </nav>
+        <span className="town-meta" title="小镇只画当前的会话、工作项和运行；完整记录在列表与项目简报里">
+          快照 #{shown.cursor} · {hm(shown.now)}
+        </span>
+      </div>
+      <div className="town-diorama">
+        {offline && <div className="town-offline" role="status"><strong>状态待更新</strong><span>连接中断，画面停在 {hm(shown.now)}，不代表 Agent 仍在工作。</span></div>}
+        <TownScene model={model} selected={selected} highlight={highlight} onSelect={onSelect} changed={changed} offline={offline} />
+        <ul className="town-legend" aria-label="图例">
+          <li><i className="lg-building" />建筑 = 项目</li>
+          <li><i className="lg-char" />角色 = 一个会话</li>
+          <li><i className="lg-parcel" />包裹 = 一次运行</li>
+          <li><i className="lg-board" />告示栏 = 等你决定</li>
+        </ul>
+      </div>
+    </div>
+  )
+}

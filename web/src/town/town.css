@@ -1,0 +1,101 @@
+/* 工作小镇：暖色桌面上的微缩工作室。所有选择器都挂在 .town-view 下，不影响 SS 其它样式。 */
+.town-view {
+  --town-ink: #3a2a1c; --town-muted: #7a6a55; --town-card: #fffaf0; --town-line: #e2d5bd; --town-blue: #2d6cdf;
+  --town-working: #f4b740; --town-waiting: #ffd43b; --town-failed: #d2483d; --town-review: #5b6cd8; --town-stale: #a3a3a3;
+  color: var(--town-ink);
+}
+
+/* 状态高亮按钮 */
+.town-view .town-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.town-view .town-chip { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 999px; border: 1px solid var(--town-line); background: var(--town-card); color: var(--town-ink); font-size: 13px; cursor: pointer; }
+.town-view .town-chip i { width: 9px; height: 9px; border-radius: 50%; }
+.town-view .town-chip b { font-variant-numeric: tabular-nums; }
+.town-view .town-chip.is-working i { background: var(--town-working); }
+.town-view .town-chip.is-waiting i { background: var(--town-waiting); box-shadow: 0 0 0 2px #f0a500 inset; }
+.town-view .town-chip.is-failed i { background: var(--town-failed); }
+.town-view .town-chip.is-review i { background: var(--town-review); }
+.town-view .town-chip.is-stale i { background: var(--town-stale); }
+.town-view .town-chip.is-on { border-color: var(--town-ink); box-shadow: 0 0 0 1px var(--town-ink) inset; }
+.town-view .town-chip:focus-visible, .town-view .town-obj:focus-visible { outline: 2px solid var(--town-blue); outline-offset: 2px; }
+
+/* 桌面地台 */
+.town-view .town-diorama {
+  position: relative; border-radius: 18px; overflow: hidden; width: 100%;
+  aspect-ratio: 990 / 665; max-height: calc(100vh - 160px); min-height: 360px;
+  background: radial-gradient(closest-side at 50% 52%, #f7efe0, #e7dabf);
+  box-shadow: inset 0 0 0 1px rgba(120, 90, 50, 0.15);
+}
+/* 移轴：上下边缘轻微模糊，像对着桌上的模型拍照 */
+.town-view .town-diorama::before, .town-view .town-diorama::after {
+  content: ''; position: absolute; left: 0; right: 0; height: 14%; pointer-events: none; backdrop-filter: blur(2.5px); z-index: 1;
+}
+.town-view .town-diorama::before { top: 0; -webkit-mask-image: linear-gradient(#000, transparent); mask-image: linear-gradient(#000, transparent); }
+.town-view .town-diorama::after { bottom: 0; -webkit-mask-image: linear-gradient(transparent, #000); mask-image: linear-gradient(transparent, #000); }
+.town-view .town-svg { width: 100%; height: 100%; display: block; }
+.town-view .town-svg text { font-family: inherit; user-select: none; }
+.town-view .town-ground-label { font-size: 12px; fill: #a08a64; text-anchor: middle; letter-spacing: 0.3em; }
+
+/* 可点对象：悬停、淡化、选中 */
+.town-view .town-obj { cursor: pointer; transition: opacity 0.2s, filter 0.2s; }
+.town-view .town-obj:hover { filter: brightness(1.06) drop-shadow(0 0 4px rgba(45, 108, 223, 0.35)); }
+.town-view .town-obj:focus { outline: none; }
+.town-view .town-svg .is-dim { opacity: 0.28; filter: saturate(0.3); }
+.town-view .town-char.is-stale > g:not(.town-tag) { filter: grayscale(1) opacity(0.75); }
+
+/* 图例：放在 .town-diorama 里 */
+.town-view .town-legend {
+  position: absolute; left: 14px; bottom: 12px; z-index: 2; display: flex; flex-wrap: wrap; gap: 4px 14px;
+  margin: 0; padding: 6px 10px; list-style: none; border-radius: 10px;
+  font-size: 12px; color: var(--town-muted); background: rgba(255, 250, 240, 0.85);
+}
+.town-view .town-legend li { display: flex; align-items: center; gap: 5px; }
+.town-view .town-legend i { width: 12px; height: 12px; border-radius: 3px; }
+.town-view .town-lg-building, .town-view .town-legend .lg-building { background: #c8674a; }
+.town-view .town-lg-char, .town-view .town-legend .lg-char { background: #334055; border-radius: 50% !important; }
+.town-view .town-lg-parcel, .town-view .town-legend .lg-parcel { background: #d4a565; }
+.town-view .town-lg-board, .town-view .town-legend .lg-board { background: #ffe066; border: 1px solid #c9a227; }
+
+/* 断线横幅：放在 .town-diorama 里；场景本身由 TownScene offline 变灰 */
+.town-view .town-offline {
+  position: absolute; z-index: 3; top: 12px; left: 50%; transform: translateX(-50%); max-width: calc(100% - 24px);
+  display: flex; gap: 8px; align-items: center; padding: 8px 14px; border-radius: 10px;
+  background: #3a2a1c; color: #fffaf0; font-size: 13px; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2);
+}
+.town-view .town-svg.is-offline { filter: grayscale(0.85) contrast(0.9); }
+.town-view .town-svg.is-offline .town-bob, .town-view .town-svg.is-offline .town-slide,
+.town-view .town-svg.is-offline .town-smoke, .town-view .town-svg.is-offline .town-blink { animation: none !important; }
+
+/* 动效 */
+.town-view .town-bob { animation: town-bob 1.1s ease-in-out infinite; }
+@keyframes town-bob { 50% { transform: translateY(-2px); } }
+.town-view .town-slide { animation: town-slide 2.6s ease-in-out infinite; }
+@keyframes town-slide { 0%, 100% { transform: translate(0, 0); } 50% { transform: translate(-8px, -4px); } }
+.town-view .town-blink { animation: town-blink 1.2s steps(2) infinite; }
+@keyframes town-blink { 50% { opacity: 0.25; } }
+.town-view .town-blink-soft { animation: town-blink 3s ease-in-out infinite; }
+.town-view .town-smoke { animation: town-smoke 3.2s ease-out infinite; }
+@keyframes town-smoke { 0% { transform: translate(var(--x, 0), 0); opacity: 0; } 30% { opacity: 1; } 100% { opacity: 0; } }
+.town-view .town-zzz { animation: town-blink 2.4s ease-in-out infinite; }
+
+/* 实时更新：位置变化平移过去，状态变化闪一下 */
+.town-view .town-move { transition: transform 1.1s cubic-bezier(0.4, 0.1, 0.2, 1), opacity 0.2s, filter 0.2s; }
+.town-view .town-char, .town-view .town-move:not(.town-parcel) { animation: town-fade 0.5s ease-out; }
+@keyframes town-fade { from { opacity: 0; } }
+.town-view .town-pop { transform-box: fill-box; transform-origin: 50% 100%; animation: town-pop 0.45s ease-out; }
+@keyframes town-pop { from { opacity: 0; transform: scale(0.4); } }
+.town-view .town-pulse { opacity: 0; transform-box: fill-box; transform-origin: center; pointer-events: none; }
+.town-view .is-changed .town-pulse { animation: town-pulse 1.2s ease-out 2; }
+@keyframes town-pulse { 0% { opacity: 0.95; transform: scale(0.6); } 100% { opacity: 0; transform: scale(2); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .town-view .town-bob, .town-view .town-slide, .town-view .town-blink, .town-view .town-blink-soft, .town-view .town-smoke, .town-view .town-zzz,
+  .town-view .town-move, .town-view .town-pop, .town-view .town-char, .town-view .is-changed .town-pulse { transition: none !important; animation: none !important; }
+}
+
+@media (max-width: 900px) {
+  .town-view .town-diorama { aspect-ratio: auto; max-height: none; min-height: 0; }
+  .town-view .town-diorama::after { display: none; }
+  .town-view .town-svg { height: auto; }
+  .town-view .town-legend { position: static; border-radius: 0; }
+  .town-view .town-offline { position: static; transform: none; max-width: none; border-radius: 0; white-space: normal; }
+}
