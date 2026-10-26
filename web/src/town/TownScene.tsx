@@ -1,7 +1,8 @@
 // 微缩工作室：一张桌面上的等距小镇。建筑=项目，角色=会话，包裹=单次运行。只读，不提供批准/验收入口。
 import type { KeyboardEvent, ReactNode } from 'react'
 import { HipRoof, IsoBox, IsoTile, iso, pts, type Pt } from './iso'
-import { MAX_SEATS, characterStatusLabel, clip, parcelPhaseLabel, type BuildingView, type CharacterView, type Highlight, type ParcelView, type TownModel } from './townModel'
+import { MAX_SEATS, characterStatusLabel, clip, itemStatusLabel, parcelPhaseLabel, type BuildingView, type CharacterView, type Highlight, type ParcelView, type TownModel } from './townModel'
+import type { WorkItem } from '../types'
 
 export type Selection =
   | { kind: 'building'; key: string }
@@ -198,13 +199,13 @@ export default function TownScene({ model, selected, highlight, onSelect, change
     const at: Pt = [rackBase[0] + (i - (failedParcels.length - 1) / 2) * 18, rackBase[1] - 10 - i * 3]
     slots.push({
       p, at, stale: false, moving: false,
-      label: <Tag at={[0, -34 - (i % 2) * 18]} text={`${p.item?.id ?? p.run.work_item_id} 第 ${p.run.attempt} 次`} bg="#fff0ee" fg="#8f2a22" small border="#d2483d" />,
+      label: <Tag at={[0, -34 - (i % 2) * 18]} text={`${parcelTitle(p, 8)} · 第 ${p.run.attempt} 次`} bg="#fff0ee" fg="#8f2a22" small border="#d2483d" />,
     })
   })
   reviewParcels.forEach((p, i) => {
     slots.push({
       p, at: iso(L.reviewDesk.gx + 1.9 + i * 1.1, L.reviewDesk.gy + 0.55, 16), stale: false, moving: false,
-      label: <Tag at={[0, -34 - i * 26]} text={p.item?.id ?? '?'} bg="#eef0ff" fg="#2f3a8f" small border="#5b6cd8" />,
+      label: <Tag at={[0, -34 - i * 26]} text={parcelTitle(p, 12)} bg="#eef0ff" fg="#2f3a8f" small border="#5b6cd8" />,
     })
   })
 
@@ -314,11 +315,28 @@ function measure(text: string, fs: number): number {
   return w
 }
 
+const TASK_MAX = 14
+const TASK_ORDER: Record<WorkItem['status'], number> = { review: 0, blocked: 1, in_progress: 2, todo: 3, done: 4, abandoned: 5 }
+
+/** 招牌上方最多列两项当前任务：待验收、受阻优先，其余数量汇总。 */
+export function buildingTasks(items: readonly WorkItem[], max = 2) {
+  const open = items.filter((w) => w.status !== 'done' && w.status !== 'abandoned')
+    .slice().sort((a, b) => TASK_ORDER[a.status] - TASK_ORDER[b.status] || b.updated_at.localeCompare(a.updated_at))
+  return { lines: open.slice(0, max), more: Math.max(0, open.length - max) }
+}
+
+/** 包裹标签：编号 + 截短的任务标题，没有工作项时只写编号。 */
+export function parcelTitle(p: ParcelView, max: number) {
+  const id = p.item?.id ?? p.run.work_item_id ?? '?'
+  return p.item?.title ? `${id} ${clip(p.item.title, max)}` : id
+}
+
 function Building({ plot: p, b, selected, dimClass, onSelect, signScale = 1 }: { plot: Plot; b: BuildingView; selected: boolean; dimClass: string; onSelect: () => void; signScale?: number }) {
   const active = b.items.filter((w) => w.status !== 'done' && w.status !== 'abandoned').length
   const done = b.items.filter((w) => w.status === 'done').length
   const hidden = Math.max(0, b.characters.length - MAX_SEATS)
   const sign = clip(b.name, SIGN_MAX)
+  const tasks = buildingTasks(b.items)
   const signW = measure(sign, 14) + 26
   const label = iso(p.gx + p.w / 2, p.gy + p.d / 2, BUILDING_H + 66)
   const corner = iso(p.gx + p.w, p.gy + p.d)
@@ -362,6 +380,12 @@ function Building({ plot: p, b, selected, dimClass, onSelect, signScale = 1 }: {
         <text y="-22" textAnchor="middle" fontSize="10.5" fill="#6b5a44" className="town-sub">
           {b.characters.length} 个会话 · {active} 个未完成{done ? ` · 已完成 ${done}` : ''}
         </text>
+        {tasks.lines.map((t, i) => (
+          <text key={t.id} y={-38 - (tasks.lines.length - 1 - i) * 14} textAnchor="middle" fontSize="10.5" fill="#3a2a1c" className="town-task">
+            <tspan fontWeight="700" fill={t.status === 'review' ? '#2f3a8f' : t.status === 'blocked' ? '#8f2a22' : '#6b5a44'}>{itemStatusLabel[t.status]}</tspan> {clip(t.title, TASK_MAX)}
+          </text>
+        ))}
+        {tasks.more > 0 && <text y={-38 - tasks.lines.length * 14} textAnchor="middle" fontSize="10" fill="#7a6a55">等 {tasks.more} 项</text>}
       </g>
       {hidden > 0 && <Tag at={[corner[0], corner[1] - 22]} text={`另有 ${hidden} 位`} bg="#fffaf0" fg="#6b5a44" small border={p.accent} />}
     </g>

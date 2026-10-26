@@ -115,7 +115,7 @@ export function ItemDetail({ snap, id, onClose, onSelectSession }: { snap: Snaps
   )
 }
 
-export function SessionDetail({ snap, id, onClose, onSelectItem }: { snap: Snapshot; id: number; onClose: () => void; onSelectItem: (id: string) => void }) {
+export function SessionDetail({ snap, id, onClose, onSelectItem, foldEvents = false }: { snap: Snapshot; id: number; onClose: () => void; onSelectItem: (id: string) => void; foldEvents?: boolean }) {
   const s = (snap.sessions ?? []).find((x) => x.id === id)
   const act = useAction()
   const [bind, setBind] = useState('')
@@ -192,15 +192,22 @@ export function SessionDetail({ snap, id, onClose, onSelectItem }: { snap: Snaps
       {!s.work_item_id && <button disabled={isRemote()} className="btn primary" onClick={() => setCreating(!creating)}>{creating ? '收起创建表单' : '从此会话创建工作项'}</button>}
       {!isRemote() && creating && !s.work_item_id && <NewItem key={s.id} snap={snap} session={s} onCreated={onSelectItem} />}
       <ErrorLine msg={act.error} />
-      <h3>最近事件</h3>
-      <ol className="events">
-        {events.slice(0, 60).map((e) => (
-          <li key={String(e.event_id)}>
-            <span className="muted">{ago(String(e.occurred_at), snap.now)}</span> <code>{String(e.kind)}</code>{' '}
-            <span className="ellipsis">{String(e.preview ?? e.reason ?? e.text ?? '')}</span>
-          </li>
-        ))}
-      </ol>
+      {(() => {
+        const list = (
+          <ol className="events">
+            {events.slice(0, 60).map((e) => (
+              <li key={String(e.event_id)}>
+                <span className="muted">{ago(String(e.occurred_at), snap.now)}</span> <code>{String(e.kind)}</code>{' '}
+                <span className="ellipsis">{String(e.preview ?? e.reason ?? e.text ?? '')}</span>
+              </li>
+            ))}
+          </ol>
+        )
+        // 桌面模式里原始 hook 事件默认折叠，需要时再展开。
+        return foldEvents
+          ? <details className="events-fold"><summary>最近事件 <small className="muted">原始记录 {Math.min(events.length, 60)} 条</small></summary>{list}</details>
+          : <><h3>最近事件</h3>{list}</>
+      })()}
     </div>
   )
 }
