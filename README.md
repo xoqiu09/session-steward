@@ -61,6 +61,8 @@ bin/steward service uninstall
 
 同一个 `STEWARD_HOME` 和端口只能有一个 `serve`：安装前先停止手动启动的 `steward serve`（端口被占用时 `install` 会拒绝）。plist 指向执行 `install` 时那个 `steward` 的绝对路径；在原位置重新构建后运行 `service restart` 即可，换了位置就重新 `install`。日志写在 `$STEWARD_HOME/logs/`。Linux 暂不支持。详见[使用手册](docs/GUIDE.zh-CN.md#后台常驻macos-launchd)。
 
+想在手机或另一台电脑上只读查看面板和小镇：用 `tailscale serve` 只在 tailnet 内转发，在 `remote_hosts` 填主机名后运行 `steward service restart`，再用 `steward remote` 生成登录链接。步骤见[在其他设备上查看小镇](docs/GUIDE.zh-CN.md#在其他设备上查看小镇只读)。
+
 ### 用演示数据试一试
 
 使用独立的数据目录，不会碰 `~/.steward`、`~/.claude` 或 `~/.codex`。需要 `python3`、`curl` 和 `git`。

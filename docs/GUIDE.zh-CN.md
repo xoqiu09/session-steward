@@ -123,6 +123,18 @@ bin/steward service uninstall  # 停止服务并删除这份 plist
 - 不要删除或移动 plist 指向的那个 `steward`，否则 launchd 无法启动服务（`service status` 会显示非零的上次退出码）。
 - `steward-hook` 的更新方式不变：重新构建后仍需运行一次 `steward install`。
 
+### 在其他设备上查看小镇（只读）
+
+服务常驻后，可以在手机或另一台电脑上查看面板和小镇。只能在你自己的私有网络（例如 Tailscale tailnet）内这样做：
+
+1. 本机常驻：`steward service install`（见上文）。
+2. 只在 tailnet 内转发：`tailscale serve --bg --https=443 http://127.0.0.1:7788`。不要用 `tailscale funnel` 或其他公网代理。代理必须保留原始 `Host` 头（`tailscale serve` 默认如此），否则远程请求会被当作本机请求，一直无法登录。
+3. 在 `$STEWARD_HOME/config.json` 的 `remote_hosts` 填写这台 Mac 的 tailnet 主机名，例如 `["mac.<tailnet>.ts.net"]`，再运行 `steward service restart`：配置只在服务启动时读取。
+4. 运行 `steward remote` 打印远程登录链接。链接本身就是凭据，只在自己的设备上打开，不要分享。`steward remote --rotate` 会生成新链接并让旧链接失效，同样要运行 `steward service restart` 后才生效。
+5. 在另一台设备上打开这个链接，登录后会跳到面板首页（登录状态保留 30 天）。然后打开 `https://<主机名>/?view=town` 进入小镇；挂在副屏或手机上常开时，用 `https://<主机名>/?kiosk=1` 进入桌面模式（自动轮播项目）。这两个入口在小镇相关 PR 合并后才有。
+
+远程是只读的：可以看小镇、简报和队列，也可以点开详情；托管会话的终端画面（包括只读画面）在远程看不到。审批、验收、编辑简报等所有写操作都要回到本机面板做，服务端会拒绝远程的写请求。
+
 Linux 暂不支持 `steward service`。可以自己写一个 systemd 用户单元，例如 `~/.config/systemd/user/steward.service`：
 
 ```ini
