@@ -144,3 +144,17 @@
 .town-view .town-svg.is-interior { position: absolute; inset: 0; width: 100%; height: 100%; }
 .town-view .town-world-tools.is-inside { left: 12px; right: auto; }
 .town-view .town-world-tools.is-inside button { font-weight: 700; }
+
+/* 小人：闲着的沿院子来回溜达，干活的手边冒火花 */
+.town-view .town-stroll { animation: town-stroll 14s ease-in-out infinite; }
+@keyframes town-stroll {
+  0%, 12% { transform: translate(0, 0); }
+  38%, 50% { transform: translate(26px, 13px); }
+  76%, 88% { transform: translate(-18px, 9px); }
+  100% { transform: translate(0, 0); }
+}
+.town-view .town-spark { animation: town-blink 0.7s steps(2, jump-none) infinite; }
+.town-view .town-svg.is-offline .town-stroll, .town-view .town-svg.is-offline .town-spark { animation: none; }
+@media (prefers-reduced-motion: reduce) {
+  .town-view .town-stroll, .town-view .town-spark { animation: none; }
+}

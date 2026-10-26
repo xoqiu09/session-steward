@@ -477,6 +477,8 @@ export function Character({ at, c, selected, dimClass, onSelect }: { at: Pt; c: 
     <g style={{ transform: `translate(${at[0]}px,${at[1]}px) scale(1.22)` }}
       className={`town-obj town-move town-char is-${c.status}${selected ? ' is-selected' : ''}${dimClass}`}
       aria-label={`${c.name}，${characterStatusLabel[c.status]}${c.item ? `，任务 ${c.item.title}` : ''}`} {...activate(onSelect)}>
+      {/* 闲着的会话在院子里来回溜达；干活的手边冒火花 */}
+      <g className={c.status === 'idle' ? 'town-stroll' : undefined} style={c.status === 'idle' ? { animationDelay: `${-(s.id % 7) * 1.3}s` } : undefined}>
       <rect x="-17" y="-58" width="34" height="64" fill="transparent" />
       <ellipse className="town-pulse" rx="16" ry="7" fill="none" stroke="#ff9f1a" strokeWidth="2.5" />
       <ellipse rx="13" ry="5" fill="rgba(40,25,10,.22)" />
@@ -523,12 +525,18 @@ export function Character({ at, c, selected, dimClass, onSelect }: { at: Pt; c: 
         </g>
       )}
       {c.status === 'idle' && <text className="town-zzz" x="13" y="-56" fontSize="11" fill="#6b5a44">z z</text>}
+      {c.status === 'working' && (
+        <g className="town-spark" aria-hidden>
+          <path d="M13,-26 l5,-4 M14,-21 l7,0 M13,-16 l5,4" stroke="#ffb02e" strokeWidth="1.8" strokeLinecap="round" />
+        </g>
+      )}
       {stale && (
         <g>
           <path d="M6,-62 a7,7 0 0 1 12,-6 a8,8 0 0 1 15,3 a6,6 0 0 1 -2,11 h-23 a6,6 0 0 1 -2,-8 z" fill="#e9e9e9" stroke="#8a8a8a" />
           <text x="20" y="-56" textAnchor="middle" fontSize="9" fill="#555">?</text>
         </g>
       )}
+      </g>
     </g>
   )
 }

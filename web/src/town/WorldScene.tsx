@@ -14,6 +14,7 @@ import {
 import type { WorldPlan } from './clusters'
 import { InteriorScene } from './InteriorScene'
 import { Campfire, Fence, Flowers, Pine, Pond, Rock, Windmill, YARD_TINT, terrainOf, type Terrain } from './scenery'
+import { statusChips, statusOf, sumStatus, type StatusCounts } from './status'
 
 /** 每个街区的待验收架、退件筐最多摆几个箱子，其余只计数。 */
 const SHELF_MAX = 3
@@ -103,6 +104,7 @@ export function WorldScene({ model, world, view, far, selected, highlight, onSel
   const depthOrder = [{ key: '__plaza', depth: 0, cx: 0 }, ...world.districts.map((d) => ({ key: d.key, depth: d.cell.cx + d.cell.cy, cx: d.cell.cx }))]
     .sort((a, b) => a.depth - b.depth || a.cx - b.cx)
   const byKey = new Map(world.districts.map((d) => [d.key, d]))
+  const statusAt = new Map(world.districts.map((d) => [d.key, statusOf(d.b, model.pendingApprovals)]))
 
   const allParcels = model.buildings.flatMap((b) => b.parcels)
   const reviewTotal = allParcels.filter(onReviewDesk).length
@@ -216,6 +218,12 @@ export function WorldScene({ model, world, view, far, selected, highlight, onSel
                 <Tag at={iso(d.ox + 7.15, d.oy + 6.65, 40)} text={`失败 ${failed}`} bg="#d2483d" fg="#fff" small />
               </g>
             )}
+            {statusAt.get(d.key)!.blocked > 0 && (
+              <g className={`town-obj${dim(false)}`} {...activate(() => onSelect({ kind: 'building', key: d.b.key }))} aria-label={`${d.b.name}：受阻 ${statusAt.get(d.key)!.blocked} 项`}>
+                <Roadblock gx={plot.gx + plot.w / 2 + 0.9} gy={plot.gy + plot.d + 1.0} />
+                <Tag at={iso(plot.gx + plot.w / 2 + 1.5, plot.gy + plot.d + 1.0, 46)} text={`受阻 ${statusAt.get(d.key)!.blocked}`} bg="#d2483d" fg="#fff" small />
+              </g>
+            )}
             {seatsOf.get(d.key)!.map((seat) => <Desk key={`${seat.key}-desk`} gx={seat.gx - 0.35} gy={seat.gy - 1.05} facing={seat.plot.facing} />)}
             {slotsOf.get(d.key)!.map(({ p, at, stale, moving }) => (
               <Parcel key={p.key} at={at} p={p} stale={stale} moving={moving} selected={isSel('parcel', p.key)}
@@ -258,34 +266,35 @@ export function WorldScene({ model, world, view, far, selected, highlight, onSel
         })}
       </g>
 
-      {/* 远景名牌：拉远时代替招牌、小人和包裹 */}
+      {/* 远景名牌：拉远时代替招牌、小人和包裹。四种状态始终用同样的色点和顺序。 */}
       <g className="town-far">
-        <FarPlate k={plateK} at={iso(P.ox + INNER_W / 2, P.oy + INNER_D / 2, 120 + 90 * plateK)} title="中央广场" tone="plaza"
-          parts={[`等你决定 ${model.pendingApprovals.length}`, `待验收 ${reviewTotal}`, `失败 ${failedTotal}`]} />
         {world.villages.map((v) => {
           const members = world.districts.filter((d) => d.village === v.key)
-          const working = members.reduce((n, d) => n + d.b.characters.filter((c) => c.status === 'working').length, 0)
-          const review = members.reduce((n, d) => n + d.b.parcels.filter(onReviewDesk).length, 0)
-          const urgent = members.filter((d) => needsYou(d.b)).length
-          const parts = [`${members.length} 个项目`, ...(urgent ? [`等你决定 ${urgent}`] : []), ...(working ? [`工作中 ${working}`] : []), ...(review ? [`待验收 ${review}`] : [])]
+          const st = sumStatus(members.map((d) => statusAt.get(d.key)!))
           return (
             <g key={`fv-${v.key}`} className="town-map-only">
-              <FarPlate k={plateK * 1.15} at={iso(v.square.cx * CELL_W + INNER_W / 2, v.square.cy * CELL_D + INNER_D / 2, 60)} title={v.name} tone={urgent ? 'urgent' : 'plaza'} parts={parts} />
+              <FarPlate k={plateK * 1.15} at={iso(v.square.cx * CELL_W + INNER_W / 2, v.square.cy * CELL_D + INNER_D / 2, villageLift(v.square, plateK))} title={`${v.name} · ${members.length} 个项目`}
+                tone={toneOf(st, 'plaza')} chips={plateChips(st, 0)} note="村里很安静" />
             </g>
           )
         })}
         {world.districts.map((d) => {
-          const working = d.b.characters.filter((c) => c.status === 'working').length
-          const review = d.b.parcels.filter(onReviewDesk).length
+          const st = statusAt.get(d.key)!
           const failed = d.b.parcels.filter((p) => p.phase === 'failed').length
           const open = d.b.items.filter((w) => w.status !== 'done' && w.status !== 'abandoned').length
-          const parts = [working ? `工作中 ${working}` : `${d.b.characters.length} 个会话`, review ? `待验收 ${review}` : `${open} 项未完成`, ...(failed ? [`失败 ${failed}`] : [])]
+          const chips = plateChips(st, failed)
+          const note = open ? `${open} 项未完成 · 没人在干活` : '安静'
           return (
-            <g key={`far-${d.key}`} className={`town-obj${d.village ? ' town-hide-on-map' : ''}`} {...activate(() => onSelect({ kind: 'building', key: d.b.key }))} aria-label={`${d.b.name}：${parts.join('，')}`}>
-              <FarPlate k={plateK * (d.kind === 'wild' ? 0.8 : 1)} at={iso(d.ox + 3.15, d.oy + 2.0, 150 + Math.max(0, TIERS[d.tier].shape.h - BUILDING_H))} title={d.b.name} tone={needsYou(d.b) ? 'urgent' : working ? 'busy' : 'calm'} parts={parts} accent={buildingColors(d.b.repo?.id).accent} />
+            <g key={`far-${d.key}`} className={`town-obj${d.village ? ' town-hide-on-map' : ''}`} {...activate(() => onSelect({ kind: 'building', key: d.b.key }))}
+              aria-label={`${d.b.name}：${chips.length ? chips.map((c) => c.text).join('，') : note}`}>
+              <FarPlate k={plateK * (d.kind === 'wild' ? 0.8 : 1)} at={iso(d.ox + 3.15, d.oy + 2.0, 150 + Math.max(0, TIERS[d.tier].shape.h - BUILDING_H))} title={d.b.name}
+                tone={toneOf(st, 'calm')} chips={chips} note={note} accent={buildingColors(d.b.repo?.id).accent} />
             </g>
           )
         })}
+        {/* 广场名牌最后画：全镇合计，不被村庄名牌盖住 */}
+        <FarPlate k={plateK} at={iso(P.ox + INNER_W / 2, P.oy + INNER_D / 2, 120 + 90 * plateK)} title="中央广场" tone="plaza"
+          chips={plateChips({ ...sumStatus([...statusAt.values()]), waiting: model.pendingApprovals.length }, failedTotal)} note="今天很安静" />
       </g>
     </svg>
   )
@@ -329,17 +338,68 @@ function TownCrate({ at, fill, tape }: { at: Pt; fill: string; tape: string }) {
   )
 }
 
-function FarPlate({ at, title, parts, tone, accent = '#8a7a63', k = 1 }: { at: Pt; title: string; parts: string[]; tone: 'urgent' | 'busy' | 'calm' | 'plaza'; accent?: string; k?: number }) {
-  const name = title.length > 16 ? `${title.slice(0, 15)}…` : title
-  const line = parts.join(' · ')
-  const w = Math.max(name.length * 26 * 0.7 + 60, line.length * 15 + 40)
-  const fill = tone === 'urgent' ? '#fff4c2' : tone === 'plaza' ? '#eef0ff' : '#fffaf0'
-  const border = tone === 'urgent' ? '#e0a400' : tone === 'plaza' ? '#5b6cd8' : tone === 'busy' ? '#e3a23d' : accent
+/** 村庄名牌往远离广场的方向让一让：后面的村抬高，前面的村压低，免得和广场名牌叠在一起。 */
+function villageLift(square: Cell, k: number) {
+  const depth = square.cx + square.cy
+  return depth < 0 ? 60 + 70 * k : depth > 0 ? 60 - 40 * k : 60
+}
+
+type Chip = { text: string; dot: string }
+type Tone = 'urgent' | 'blocked' | 'busy' | 'calm' | 'plaza'
+
+function plateChips(st: StatusCounts, failed: number): Chip[] {
+  return [...statusChips(st), ...(failed ? [{ text: `失败 ${failed}`, dot: '#7a3a32' }] : [])]
+}
+
+/** 名牌边框：等你决定 > 受阻 > 工作中 > 平常。 */
+function toneOf(st: StatusCounts, rest: 'calm' | 'plaza'): Tone {
+  return st.waiting ? 'urgent' : st.blocked ? 'blocked' : st.working ? 'busy' : rest
+}
+
+const PLATE_FILL: Record<Tone, string> = { urgent: '#fff4c2', blocked: '#fde8e4', busy: '#fffaf0', calm: '#fffaf0', plaza: '#eef0ff' }
+const PLATE_EDGE: Record<Tone, string> = { urgent: '#e0a400', blocked: '#d2483d', busy: '#e3a23d', calm: '', plaza: '#5b6cd8' }
+
+/** 远景名牌：项目名一行，下面一排状态色点；什么都没有时写一句说明。 */
+function FarPlate({ at, title, chips, note, tone, accent = '#8a7a63', k = 1 }: { at: Pt; title: string; chips: Chip[]; note: string; tone: Tone; accent?: string; k?: number }) {
+  const name = title.length > 24 ? `${title.slice(0, 23)}…` : title
+  const widths = chips.map((c) => c.text.length * 21 + 34)
+  const rowW = widths.reduce((n, w) => n + w, 0) + Math.max(0, chips.length - 1) * 10
+  const w = Math.max(name.length * 24 + 60, chips.length ? rowW + 36 : note.length * 21 + 40)
+  let x = -rowW / 2
   return (
     <g transform={`translate(${at[0]},${at[1]}) scale(${k})`}>
-      <rect x={-w / 2} y={-44} width={w} height={84} rx="16" fill={fill} stroke={border} strokeWidth={tone === 'calm' ? 3 : 6} />
-      <text y="-4" textAnchor="middle" fontSize="34" fontWeight="800" fill="#3a2a1c">{name}</text>
-      <text y="28" textAnchor="middle" fontSize="22" fill="#6b5a44">{line}</text>
+      <rect x={-w / 2 + 3} y={-40} width={w} height={84} rx="16" fill="rgba(60,40,20,.18)" />
+      <rect x={-w / 2} y={-44} width={w} height={84} rx="16" fill={PLATE_FILL[tone]} stroke={PLATE_EDGE[tone] || accent} strokeWidth={tone === 'calm' ? 3 : 6} />
+      <rect x={-w / 2 + 14} y={-34} width={8} height={30} rx="4" fill={accent} />
+      <text y="-6" textAnchor="middle" fontSize="32" fontWeight="800" fill="#3a2a1c">{name}</text>
+      {chips.length ? chips.map((c, i) => {
+        const cw = widths[i], at0 = x
+        x += cw + 10
+        return (
+          <g key={c.text} transform={`translate(${at0},${8})`}>
+            <rect width={cw} height={26} rx="13" fill="#fff" stroke={c.dot} strokeWidth="2" />
+            <circle cx="15" cy="13" r="7" fill={c.dot} />
+            <text x={cw / 2 + 10} y="21" textAnchor="middle" fontSize="20" fontWeight="700" fill="#3a2a1c">{c.text}</text>
+          </g>
+        )
+      }) : <text y="28" textAnchor="middle" fontSize="21" fill="#8a7a63">{note}</text>}
+    </g>
+  )
+}
+
+/** 路障：一项工作受阻时立在项目门口，红白条纹，远远就能看见。 */
+function Roadblock({ gx, gy }: { gx: number; gy: number }) {
+  const [x, y] = iso(gx, gy)
+  return (
+    <g aria-hidden transform={`translate(${x},${y})`}>
+      <ellipse rx="20" ry="6" fill="rgba(40,25,10,.2)" />
+      <rect x="-15" y="-20" width="3" height="20" fill="#6b4a2a" />
+      <rect x="12" y="-20" width="3" height="20" fill="#6b4a2a" />
+      <g transform="skewY(-26)">
+        <rect x="-19" y="-24" width="38" height="9" rx="1.5" fill="#fff" stroke="#8a2a22" strokeWidth="1.2" />
+        {[0, 1, 2, 3].map((i) => <path key={i} d={`M${-17 + i * 10},-15 l6,-9 h4 l-6,9 z`} fill="#d2483d" />)}
+      </g>
+      <circle className="town-blink" cx="-13.5" cy="-24" r="3" fill="#ff6a3d" />
     </g>
   )
 }
@@ -347,7 +407,7 @@ function FarPlate({ at, title, parts, tone, accent = '#8a7a63', k = 1 }: { at: P
 // ---- 舞台：相机、拖动、缩放、小地图、巡游 ----
 
 function attentionOf(d: District, needsYou: (b: BuildingView) => boolean) {
-  return needsYou(d.b) || d.b.characters.some((c) => c.status === 'working') || d.b.parcels.some(onReviewDesk)
+  return needsYou(d.b) || d.b.characters.some((c) => c.status === 'working') || d.b.parcels.some(onReviewDesk) || d.b.items.some((w) => w.status === 'blocked')
 }
 
 export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far'> & { kiosk?: boolean; rotateMs?: number; paused?: boolean; focusKey?: string; plan?: WorldPlan }) {
@@ -476,7 +536,7 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far'> & {
         <button type="button" onClick={() => { lastTouch.current = Date.now(); flyTo(fitAll()) }} title="看全部街区">全景</button>
         <button type="button" onClick={() => { lastTouch.current = Date.now(); flyTo(fitCamera(cellBox(world.plaza.ox, world.plaza.oy), aspect, 1.1)) }} title="回到中央广场">广场</button>
       </div>
-      <MiniMap world={world} view={view} needsYou={needsYou} onJump={(p) => { lastTouch.current = Date.now(); flyTo(clampCamera({ cx: p[0], cy: p[1], w: Math.min(camera.w, 1500) }, world.bounds), 600) }} />
+      <MiniMap world={world} view={view} needsYou={needsYou} pending={model.pendingApprovals} onJump={(p) => { lastTouch.current = Date.now(); flyTo(clampCamera({ cx: p[0], cy: p[1], w: Math.min(camera.w, 1500) }, world.bounds), 600) }} />
       <p className="town-world-hint">拖动地图移动 · 滚轮缩放 · 拉远看全部项目</p>
         </>
       )}
@@ -484,7 +544,7 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far'> & {
   )
 }
 
-function MiniMap({ world, view, needsYou, onJump }: { world: WorldLayout; view: Box; needsYou: (b: BuildingView) => boolean; onJump: (p: Pt) => void }) {
+function MiniMap({ world, view, needsYou, pending, onJump }: { world: WorldLayout; view: Box; needsYou: (b: BuildingView) => boolean; pending: TownModel['pendingApprovals']; onJump: (p: Pt) => void }) {
   const b = world.bounds, t = world.tiles
   const diamond = (ox: number, oy: number) => [iso(ox, oy), iso(ox + INNER_W, oy), iso(ox + INNER_W, oy + INNER_D), iso(ox, oy + INNER_D)].map((p) => p.join(',')).join(' ')
   return (
@@ -499,7 +559,8 @@ function MiniMap({ world, view, needsYou, onJump }: { world: WorldLayout; view: 
       <polygon points={[iso(t.gx0, t.gy0), iso(t.gx1, t.gy0), iso(t.gx1, t.gy1), iso(t.gx0, t.gy1)].map((p) => p.join(',')).join(' ')} fill="#d7e2bf" />
       <polygon points={diamond(world.plaza.ox, world.plaza.oy)} fill="#5b6cd8" opacity="0.8" />
       {world.districts.map((d) => (
-        <polygon key={d.key} points={diamond(d.ox, d.oy)} fill={needsYou(d.b) ? '#e0a400' : buildingColors(d.b.repo?.id).roof} opacity="0.9" />
+        <polygon key={d.key} points={diamond(d.ox, d.oy)} fill={needsYou(d.b) ? '#e0a400' : buildingColors(d.b.repo?.id).roof} opacity="0.9"
+          stroke={statusOf(d.b, pending).blocked ? '#d2483d' : 'none'} strokeWidth={b.w / 70} />
       ))}
       <rect x={view.x} y={view.y} width={view.w} height={view.h} fill="none" stroke="#2d6cdf" strokeWidth={b.w / 90} />
     </svg>
