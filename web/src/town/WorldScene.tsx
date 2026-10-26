@@ -12,6 +12,7 @@ import {
   type Box, type Camera, type Cell, type District, type Tier, type WorldLayout,
 } from './world'
 import type { WorldPlan } from './clusters'
+import { Campfire, Fence, Flowers, Pine, Pond, Rock, Windmill, YARD_TINT, terrainOf, type Terrain } from './scenery'
 
 /** 每个街区的待验收架、退件筐最多摆几个箱子，其余只计数。 */
 const SHELF_MAX = 3
@@ -61,6 +62,11 @@ export function WorldScene({ model, world, view, far, selected, highlight, onSel
   for (let gy = gy0; gy < gy1; gy += CELL_D) cys.add(Math.floor(gy / CELL_D))
   const used = new Set(['0,0', ...world.districts.map((d) => `${d.cell.cx},${d.cell.cy}`), ...world.villages.map((v) => `${v.square.cx},${v.square.cy}`)])
   const streetCells: Cell[] = [{ cx: 0, cy: 0 }, ...world.districts.filter((d) => d.kind !== 'wild').map((d) => d.cell), ...world.villages.map((v) => v.square)]
+  // 地形：中央是草地；村庄和野外小屋按名字固定一种。
+  const terrainAt = new Map<string, Terrain>([['0,0', 'meadow']])
+  for (const v of world.villages) for (const c of v.cells) terrainAt.set(`${c.cx},${c.cy}`, terrainOf(v.key))
+  for (const d of world.districts) if (!terrainAt.has(`${d.cell.cx},${d.cell.cy}`)) terrainAt.set(`${d.cell.cx},${d.cell.cy}`, d.kind === 'wild' ? terrainOf(d.key) : 'meadow')
+  const tintOf = (c: Cell) => YARD_TINT[terrainAt.get(`${c.cx},${c.cy}`) ?? 'meadow']
   const empty: { ox: number; oy: number }[] = []
   for (const cx of cxs) for (const cy of cys) if (!used.has(`${cx},${cy}`)) empty.push({ ox: cx * CELL_W, oy: cy * CELL_D })
 
@@ -121,7 +127,7 @@ export function WorldScene({ model, world, view, far, selected, highlight, onSel
       <IsoTile gx={gx0} gy={gy0} w={gx1 - gx0} d={gy1 - gy0} fill="url(#world-grass)" />
       {/* 街道：只铺在中央和各村庄的格子上；野外是草地和树林 */}
       {streetCells.map((c) => <IsoTile key={`st${c.cx},${c.cy}`} gx={c.cx * CELL_W - 1} gy={c.cy * CELL_D - 1} w={CELL_W + 0.1} d={CELL_D + 0.1} fill="#e6d9bd" />)}
-      {streetCells.map((c) => <IsoTile key={`yd${c.cx},${c.cy}`} gx={c.cx * CELL_W} gy={c.cy * CELL_D} w={INNER_W} d={INNER_D} fill="#dce7c4" />)}
+      {streetCells.map((c) => <IsoTile key={`yd${c.cx},${c.cy}`} gx={c.cx * CELL_W} gy={c.cy * CELL_D} w={INNER_W} d={INNER_D} fill={tintOf(c)} />)}
       {/* 村庄之间的土路：从村口小广场通到中央广场 */}
       {world.villages.map((v) => {
         const a = [v.square.cx * CELL_W + INNER_W / 2, v.square.cy * CELL_D + INNER_D / 2] as [number, number]
@@ -129,17 +135,40 @@ export function WorldScene({ model, world, view, far, selected, highlight, onSel
         return <Path key={`road-${v.key}`} from={a} to={b} />
       })}
       {/* 野外小屋脚下的空地 */}
-      {world.districts.filter((d) => d.kind === 'wild').map((d) => <IsoTile key={`cl${d.key}`} gx={d.ox + 0.2} gy={d.oy + 0.1} w={INNER_W - 0.4} d={INNER_D - 0.6} fill="#e3eccb" />)}
+      {world.districts.filter((d) => d.kind === 'wild').map((d) => <IsoTile key={`cl${d.key}`} gx={d.ox + 0.2} gy={d.oy + 0.1} w={INNER_W - 0.4} d={INNER_D - 0.6} fill={tintOf(d.cell)} />)}
       {/* 村口小广场：井和村名牌 */}
-      {world.villages.map((v) => <VillageSquare key={v.key} cell={v.square} name={v.name} />)}
+      {world.villages.map((v) => <VillageSquare key={v.key} cell={v.square} name={v.name} terrain={terrainOf(v.key)} />)}
 
-      {/* 空地：树林 */}
+      {/* 空地：池塘、草甸（石头和花）、松林或树林，按格子固定 */}
       {empty.map(({ ox, oy }) => {
         const h = hash(`${ox},${oy}`)
-        return [0, 1, 2, 3, 4, 5].map((i) => {
-          const gx = ox + 0.8 + ((h >> (i * 3)) % 9), gy = oy + 0.8 + ((h >> (i * 4 + 1)) % 8)
-          return <Tree key={`t${ox},${oy},${i}`} at={iso(gx, gy)} k={0.8 + ((h >> i) % 4) * 0.12} />
-        })
+        const kind = h % 10
+        const spot = (i: number): [number, number] => [ox + 0.8 + ((h >> (i * 3)) % 9), oy + 0.8 + ((h >> (i * 4 + 1)) % 8)]
+        if (kind === 0) return (
+          <g key={`e${ox},${oy}`}>
+            <Pond gx={ox + 1.5} gy={oy + 1.5} w={6} d={5} />
+            <Tree at={iso(ox + 0.6, oy + 7.6)} k={0.9} />
+          </g>
+        )
+        if (kind <= 2) return (
+          <g key={`e${ox},${oy}`}>
+            <Rock gx={spot(0)[0]} gy={spot(0)[1]} k={1.3} />
+            <Rock gx={spot(1)[0]} gy={spot(1)[1]} />
+            <Flowers gx={spot(2)[0]} gy={spot(2)[1]} seed={h} />
+            <Flowers gx={spot(3)[0]} gy={spot(3)[1]} seed={h >> 5} />
+            <Tree at={iso(...spot(4))} k={0.9} />
+          </g>
+        )
+        const pines = kind >= 7
+        return (
+          <g key={`e${ox},${oy}`}>
+            {[0, 1, 2, 3, 4, 5].map((i) => {
+              const [gx, gy] = spot(i)
+              const k = 0.8 + ((h >> i) % 4) * 0.12
+              return pines ? <Pine key={i} at={iso(gx, gy)} k={k} /> : <Tree key={i} at={iso(gx, gy)} k={k} />
+            })}
+          </g>
+        )
       })}
 
       {depthOrder.map(({ key }) => {
@@ -164,7 +193,15 @@ export function WorldScene({ model, world, view, far, selected, highlight, onSel
         return (
           <g key={d.key}>
             <Path from={[plot.gx + plot.w / 2, plot.gy + plot.d]} to={[plot.gx + plot.w / 2, d.oy + INNER_D + 0.6]} />
-            <Tree at={iso(d.ox + 7.9, d.oy + 1.1)} k={0.8 + (h % 3) * 0.1} />
+            {terrainAt.get(`${d.cell.cx},${d.cell.cy}`) === 'forest' || terrainAt.get(`${d.cell.cx},${d.cell.cy}`) === 'hill'
+              ? <Pine at={iso(d.ox + 7.9, d.oy + 1.1)} k={0.9 + (h % 3) * 0.1} />
+              : <Tree at={iso(d.ox + 7.9, d.oy + 1.1)} k={0.8 + (h % 3) * 0.1} />}
+            {terrainAt.get(`${d.cell.cx},${d.cell.cy}`) === 'hill' && <Rock gx={d.ox + 8.0} gy={d.oy + 2.8} k={1.2} />}
+            <Flowers gx={d.ox + 0.7} gy={d.oy + 4.4} seed={h} />
+            <Flowers gx={d.ox + 8.3} gy={d.oy + 7.0} seed={h >> 4} />
+            {d.kind === 'wild' && <Campfire gx={d.ox + 7.0} gy={d.oy + 2.6} />}
+            {d.kind === 'wild' && <Fence gx={d.ox + 0.3} gy={d.oy + INNER_D - 0.5} len={1.9} />}
+            {d.kind === 'wild' && <Fence gx={d.ox + 4.6} gy={d.oy + INNER_D - 0.5} len={4.0} />}
             <Building plot={plot} shape={TIERS[d.tier].shape} b={d.b} selected={isSel('building', d.b.key)} dimClass={dim(false)} onSelect={() => onSelect({ kind: 'building', key: d.b.key })} />
             {review > 0 && (
               <g className={`town-shelf${dim(highlight === 'review')}`}>
@@ -253,12 +290,17 @@ export function WorldScene({ model, world, view, far, selected, highlight, onSel
   )
 }
 
-function VillageSquare({ cell, name }: { cell: Cell; name: string }) {
+function VillageSquare({ cell, name, terrain }: { cell: Cell; name: string; terrain: Terrain }) {
   const ox = cell.cx * CELL_W, oy = cell.cy * CELL_D
   const sign = iso(ox + 4.5, oy + 3.2, 70)
   return (
     <g aria-label={`村口：${name}`}>
       <IsoTile gx={ox + 1.5} gy={oy + 1.2} w={6} d={5.6} fill="#eadfc6" stroke="#cdbb98" />
+      {terrain === 'lake' && <Pond gx={ox + 0.3} gy={oy + 5.2} w={3.4} d={2.6} />}
+      {terrain === 'hill' && <><Rock gx={ox + 0.6} gy={oy + 6.2} k={1.5} /><Rock gx={ox + 1.6} gy={oy + 7.0} /></>}
+      {terrain === 'forest' && <><Pine at={iso(ox + 0.7, oy + 6.4)} k={1.1} /><Pine at={iso(ox + 1.6, oy + 7.4)} k={0.9} /></>}
+      <Windmill gx={ox + 6.6} gy={oy + 0.6} />
+      <Flowers gx={ox + 2.0} gy={oy + 1.6} seed={ox * 7 + oy} />
       {/* 井 */}
       <IsoBox gx={ox + 3.8} gy={oy + 3.4} w={1.4} d={1.4} h={14} top="#7d8a96" left="#a7b1bb" right="#8d98a3" />
       <IsoBox gx={ox + 4.2} gy={oy + 3.8} w={0.6} d={0.6} h={1} z={14} top="#4b7bb0" left="#4b7bb0" right="#3f6a98" />

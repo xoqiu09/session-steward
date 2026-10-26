@@ -100,3 +100,12 @@ describe('建筑档次', () => {
     expect(buildingTier(b(10, 1), 30)).toBe(3)
   })
 })
+
+describe('地形主题', () => {
+  it('按名字固定，同名永远同一种，四种都会出现', async () => {
+    const { terrainOf } = await import('./scenery')
+    expect(terrainOf('v-1')).toBe(terrainOf('v-1'))
+    const kinds = new Set(Array.from({ length: 40 }, (_, i) => terrainOf(`repo-${i}`)))
+    expect([...kinds].sort()).toEqual(['forest', 'hill', 'lake', 'meadow'])
+  })
+})
