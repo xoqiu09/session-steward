@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, test } from 'vitest'
-import TownScene, { TownChips, TownLegend, type Selection } from './TownScene'
+import TownScene, { TownChips, TownLegend, buildingColors, type Selection } from './TownScene'
 import { buildTown } from './townModel'
 import { demoSnapshot, fakeSession } from './fixtures'
 import type { Snapshot } from '../types'
@@ -64,5 +64,57 @@ describe('TownScene', () => {
     const chips = renderToStaticMarkup(<TownChips counts={buildTown(demoSnapshot).counts} highlight="waiting" onHighlight={() => {}} />)
     expect(chips).toContain('town-chip is-waiting is-on')
     expect(chips).toMatch(/等你决定<b>2<\/b>/)
+  })
+})
+
+describe('TownScene 分页与竖屏', () => {
+  test('传入本页建筑时只画这几栋，退件架和验收台仍汇总全部项目', () => {
+    const model = buildTown(demoSnapshot)
+    const page = model.buildings.filter((b) => b.name === 'town-workshop')
+    const html = renderToStaticMarkup(<TownScene model={model} buildings={page} selected={null} highlight={null} onSelect={() => {}} />)
+    expect(html).toContain('项目建筑 town-workshop')
+    expect(html).not.toContain('项目建筑 pixel-ledger')
+    expect(html).toContain('退件架：1 个失败运行')
+    expect(html).toContain('待决定 A-1')
+    expect(html).not.toContain('另有')
+  })
+
+  test('竖屏版式只框住一栋，视野随告示卡片数变高', () => {
+    const model = buildTown(demoSnapshot)
+    const html = renderToStaticMarkup(<TownScene model={model} layout="portrait" selected={null} highlight={null} onSelect={() => {}} />)
+    expect(html).toContain('town-svg is-portrait')
+    expect((html.match(/项目建筑 /g) ?? []).length).toBe(1)
+    const height = (m: typeof model) => Number(/viewBox="-222 -100 392 (\d+)"/.exec(renderToStaticMarkup(<TownScene model={m} layout="portrait" selected={null} highlight={null} onSelect={() => {}} />))![1])
+    expect(height({ ...model, pendingApprovals: [] })).toBeLessThan(height(model))
+  })
+})
+
+describe('建筑颜色按项目固定', () => {
+  const extra = [4, 5, 6, 7].map((id) => ({ id, name: `extra-${id}`, common_dir: '', is_git: true, target_ref: 'main' }))
+  const model = buildTown({ ...demoSnapshot, repos: [...demoSnapshot.repos!, ...extra] })
+  const draw = (names: string[]) => renderToStaticMarkup(<TownScene model={model} buildings={names.map((n) => model.buildings.find((b) => b.name === n)!)} selected={null} highlight={null} onSelect={() => {}} />)
+  // 某栋建筑那一段 markup 里的颜色。
+  const roofOf = (html: string, name: string) => {
+    const start = html.indexOf(`项目建筑 ${name}：`)
+    const end = html.indexOf('项目建筑 ', start + 1)
+    return [...html.slice(start, end < 0 ? undefined : end).matchAll(/fill="(#[0-9a-f]{6})"/g)].map((m) => m[1])
+  }
+
+  test('同一项目在第 1 页、第 2 页和不同位置上颜色相同', () => {
+    const page1 = draw(['pixel-ledger', 'extra-4', 'extra-5'])
+    const page2 = draw(['extra-6', 'extra-7', 'pixel-ledger'])
+    const want = buildingColors(1).roof
+    expect(roofOf(page1, 'pixel-ledger')).toContain(want)
+    expect(roofOf(page2, 'pixel-ledger')).toContain(want)
+    // 第 1 页同一位置换成别的项目，颜色跟着项目走而不是跟着位置。
+    expect(roofOf(draw(['extra-5', 'extra-4', 'pixel-ledger']), 'extra-5')).toContain(buildingColors(5).roof)
+    expect(roofOf(draw(['extra-5', 'extra-4', 'pixel-ledger']), 'extra-5')).not.toContain(want)
+  })
+
+  test('颜色只取决于 repo.id，相邻项目不同，未归属用中性色', () => {
+    expect(buildingColors(4)).toEqual(buildingColors(4))
+    expect(buildingColors(4).roof).not.toBe(buildingColors(5).roof)
+    expect(buildingColors(null)).toEqual(buildingColors(undefined))
+    expect(buildingColors(null).roof).not.toBe(buildingColors(0).roof)
   })
 })

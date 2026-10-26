@@ -1,14 +1,16 @@
 // 小镇视图：用 SS 的实时快照画工作小镇。只读；点选对象复用 SS 原有的工作项/会话详情与审批入口。
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode, type TouchEvent } from 'react'
 import type { Conn } from '../api'
 import type { Repo, Run, Snapshot } from '../types'
 import { groupByRepo, scopedAttention, sessionBuckets } from '../model'
 import { queueLanes } from '../workbench'
 import { orderedProjects } from '../projectActivity'
 import { resolveDeepLink } from '../live'
-import TownScene, { type Selection } from './TownScene'
+import TownScene, { type LayoutName, type Selection } from './TownScene'
 import { buildTown, type Highlight, type TownModel } from './townModel'
 import { acceptSnapshot } from './feed'
+import { clampPage, needsYou, pageBuildings, pageOfCharacter } from './paging'
+import { DEFAULT_ROTATE_S } from './route'
 import './town.css'
 import './townView.css'
 
@@ -95,7 +97,26 @@ function useChanged(model: TownModel | null): ReadonlySet<string> {
   return changed
 }
 
-export function TownView({ snap, conn, repoId, provider, sel, onSelectItem, onSelectSession, onSelectRepo, onQueue }: {
+/** 手机竖屏宽度以下换成一栋一页的竖版小镇。 */
+export const PORTRAIT_QUERY = '(max-width: 640px)'
+
+function useMedia(query: string): boolean {
+  const get = () => typeof window !== 'undefined' && !!window.matchMedia?.(query).matches
+  const [match, setMatch] = useState(get)
+  useEffect(() => {
+    const mq = window.matchMedia?.(query)
+    if (!mq) return
+    const on = () => setMatch(mq.matches)
+    on()
+    mq.addEventListener('change', on)
+    return () => mq.removeEventListener('change', on)
+  }, [query])
+  return match
+}
+
+const PER_PAGE: Record<LayoutName, number> = { wide: 3, portrait: 1 }
+
+export function TownView({ snap, conn, repoId, provider, sel, onSelectItem, onSelectSession, onSelectRepo, onQueue, kiosk = false, rotateMs = DEFAULT_ROTATE_S * 1000, paused = false, layout, bar }: {
   snap: Snapshot
   conn: Conn
   repoId: number | 'all'
@@ -105,6 +126,15 @@ export function TownView({ snap, conn, repoId, provider, sel, onSelectItem, onSe
   onSelectSession: (id: number) => void
   onSelectRepo: (id: number) => void
   onQueue: (lane: 'action' | 'review') => void
+  /** 桌面模式：自动轮播项目页。 */
+  kiosk?: boolean
+  rotateMs?: number
+  /** 详情抽屉打开时暂停轮播。 */
+  paused?: boolean
+  /** 不传时按窗口宽度自动选择。 */
+  layout?: LayoutName
+  /** 状态条右侧的附加内容（桌面模式的连接状态、退出入口）。 */
+  bar?: ReactNode
 }) {
   // 旧快照（慢请求迟到）不覆盖新画面；同一版重复到达不重画。
   // cursor 只在数据库被替换时才会变小，那时服务端时间是新的，按重置接受。
@@ -123,6 +153,35 @@ export function TownView({ snap, conn, repoId, provider, sel, onSelectItem, onSe
   const changed = useChanged(model)
   const offline = conn === 'offline'
 
+  const narrow = useMedia(PORTRAIT_QUERY)
+  const shape: LayoutName = layout ?? (narrow ? 'portrait' : 'wide')
+  const pages = useMemo(() => pageBuildings(model.buildings, PER_PAGE[shape], (b) => needsYou(b, model.pendingApprovals)), [model, shape])
+  const [pageRaw, setPage] = useState(0)
+  const page = clampPage(pageRaw, pages.length)
+  const turn = (step: number) => setPage(((page + step) % pages.length + pages.length) % pages.length)
+  const rotating = kiosk && !paused && pages.length > 1
+  useEffect(() => {
+    if (!rotating) return
+    const t = window.setTimeout(() => setPage((p) => (clampPage(p, pages.length) + 1) % pages.length), rotateMs)
+    return () => window.clearTimeout(t)
+  }, [rotating, page, pages.length, rotateMs])
+  // 从深链或列表选中一个会话时，翻到它所在的那页。
+  const selKey = sel?.kind === 'session' ? `session-${sel.id}` : ''
+  useEffect(() => {
+    if (!selKey) return
+    const i = pageOfCharacter(pages, selKey)
+    if (i >= 0) setPage(i)
+  }, [selKey])
+  const swipe = useRef<{ x: number; y: number } | null>(null)
+  const onTouchStart = (e: TouchEvent) => { const t = e.touches[0]; swipe.current = t ? { x: t.clientX, y: t.clientY } : null }
+  const onTouchEnd = (e: TouchEvent) => {
+    const a = swipe.current, t = e.changedTouches[0]
+    swipe.current = null
+    if (!a || !t || pages.length < 2) return
+    const dx = t.clientX - a.x, dy = t.clientY - a.y
+    if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.5) turn(dx < 0 ? 1 : -1)
+  }
+
   const selected: Selection | null = sel?.kind === 'session' ? { kind: 'character', key: `session-${sel.id}` } : null
   const onSelect = (s: Selection) => {
     if (s.kind === 'character') onSelectSession(Number(s.key.replace('session-', '')))
@@ -140,8 +199,9 @@ export function TownView({ snap, conn, repoId, provider, sel, onSelectItem, onSe
     }
   }
 
+  const pinned = pages.length > 1 ? pages[0].filter((b) => pages.every((pg) => pg.includes(b))).length : 0
   return (
-    <div className={`town-view${offline ? ' is-offline' : ''}`}>
+    <div className={`town-view${offline ? ' is-offline' : ''}${kiosk ? ' is-kiosk' : ''}`}>
       <div className="town-bar">
         <nav className="town-chips" aria-label="按状态高亮">
           {CHIPS.map(c => (
@@ -151,13 +211,26 @@ export function TownView({ snap, conn, repoId, provider, sel, onSelectItem, onSe
             </button>
           ))}
         </nav>
+        {pages.length > 1 && (
+          <div className="town-pager" role="group" aria-label={`项目分页，第 ${page + 1} 页，共 ${pages.length} 页`}
+            title={`共 ${model.buildings.length} 个项目${pinned ? `；${pinned} 个等你处理的项目固定在每页` : ''}${rotating ? `；每 ${Math.round(rotateMs / 1000)} 秒自动翻页` : ''}`}>
+            <button type="button" className="town-page-btn" aria-label="上一页" onClick={() => turn(-1)}>‹</button>
+            <span className="town-dots">
+              {pages.map((_, i) => <button key={i} type="button" className={`town-dot${i === page ? ' is-on' : ''}`} aria-label={`第 ${i + 1} 页`} aria-current={i === page ? 'page' : undefined} onClick={() => setPage(i)} />)}
+            </span>
+            <button type="button" className="town-page-btn" aria-label="下一页" onClick={() => turn(1)}>›</button>
+            <span className="town-page-label">{page + 1}/{pages.length} · {model.buildings.length} 个项目</span>
+            {rotating && <i key={page} className="town-page-timer" style={{ animationDuration: `${rotateMs}ms` }} aria-hidden />}
+          </div>
+        )}
         <span className="town-meta" title="小镇只画当前的会话、工作项和运行；完整记录在列表与项目简报里">
           快照 #{shown.cursor} · {hm(shown.now)}
         </span>
+        {bar}
       </div>
-      <div className="town-diorama">
+      <div className="town-diorama" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
         {offline && <div className="town-offline" role="status"><strong>状态待更新</strong><span>连接中断，画面停在 {hm(shown.now)}，不代表 Agent 仍在工作。</span></div>}
-        <TownScene model={model} selected={selected} highlight={highlight} onSelect={onSelect} changed={changed} offline={offline} />
+        <TownScene model={model} buildings={pages[page]} layout={shape} selected={selected} highlight={highlight} onSelect={onSelect} changed={changed} offline={offline} />
         <ul className="town-legend" aria-label="图例">
           <li><i className="lg-building" />建筑 = 项目</li>
           <li><i className="lg-char" />角色 = 一个会话</li>

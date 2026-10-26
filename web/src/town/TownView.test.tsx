@@ -77,3 +77,42 @@ describe('TownView', () => {
     expect(html).toContain('断线前工作中')
   })
 })
+
+describe('TownView 分页与版式', () => {
+  const extra = [4, 5, 6, 7].map((id) => ({ id, name: `extra-${id}`, common_dir: '', is_git: true, target_ref: 'main' }))
+  const many: Snapshot = {
+    ...snap,
+    repos: [...snap.repos!, ...extra],
+    sessions: [...snap.sessions!, ...extra.map((r) => fakeSession({ id: r.id * 10, provider: 'codex', state: 'running', repo_id: r.id, last_activity_at: '2026-10-26T05:58:00Z' }))],
+    approvals: [...snap.approvals!, fakeApproval({ id: 'A-7', kind: 'decision', status: 'pending', session_id: 70, repo_id: 7, preview: '选哪个模板？' })],
+  }
+  const render = (props: { kiosk?: boolean; layout?: 'wide' | 'portrait' } = {}) => renderToStaticMarkup(
+    <TownView snap={many} conn="live" repoId="all" provider="all" sel={null} onSelectItem={() => {}} onSelectSession={() => {}} onSelectRepo={() => {}} onQueue={() => {}} {...props} />)
+  const buildings = (html: string) => [...html.matchAll(/项目建筑 ([\w-]+)：/g)].map((m) => m[1])
+
+  it('项目多于三栋时分页，等你处理的项目排在第一页最前面，不再提示去列表视图', () => {
+    const html = render({ layout: 'wide' })
+    expect(html).toContain('town-pager')
+    expect(html).toContain('1/3 · 5 个项目')
+    expect(html).not.toContain('另有')
+    expect(buildings(html)).toEqual(['demo-repo', 'extra-7', 'extra-4'])
+  })
+
+  it('竖屏一页一栋，标签用竖屏版式', () => {
+    const html = render({ layout: 'portrait' })
+    expect(html).toContain('town-svg is-portrait')
+    expect(html).toContain('1/5 · 5 个项目')
+    expect(buildings(html)).toEqual(['demo-repo'])
+  })
+
+  it('桌面模式带上 is-kiosk，并且仍是只读场景：没有批准或验收按钮', () => {
+    const html = render({ kiosk: true, layout: 'wide' })
+    expect(html).toContain('town-view is-kiosk')
+    expect(html).not.toMatch(/允许本次|批准合并|标记完成/)
+  })
+
+  it('只有一页时不显示分页', () => {
+    expect(renderToStaticMarkup(<TownView snap={snap} conn="live" repoId="all" provider="all" sel={null} layout="wide"
+      onSelectItem={() => {}} onSelectSession={() => {}} onSelectRepo={() => {}} onQueue={() => {}} />)).not.toContain('town-pager')
+  })
+})

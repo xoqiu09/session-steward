@@ -15,6 +15,7 @@ import { NewManaged } from './Managed'
 import { ReviewPanel } from './P2'
 import { isRemote, remoteReadOnlyMessage } from './access'
 import { TownView } from './town/TownView'
+import { fullPanelHref, kioskHref, parseTownRoute } from './town/route'
 
 type Tab = 'queue' | 'items' | 'sessions' | 'launch' | 'review'
 type Sel = { kind: 'item'; id: string } | { kind: 'session'; id: number } | null
@@ -28,14 +29,22 @@ export default function App() {
   const [showDone, setShowDone] = useState(false)
   const [repoId, setRepoId] = useState<number | 'all'>('all')
   const [provider, setProvider] = useState<string>('all')
-  const [view, setView] = useState<'overview' | 'town' | 'canvas' | 'list'>('overview')
+  const [route, setRoute] = useState(() => parseTownRoute(window.location.search, window.location.hash))
+  const [view, setView] = useState<'overview' | 'town' | 'canvas' | 'list'>(() => (route.town ? 'town' : 'overview'))
+  // 桌面模式里点告示栏、验收台时，在抽屉里打开关注队列。
+  const [kioskQueue, setKioskQueue] = useState(false)
   const [expandAll, setExpandAll] = useState(false)
   const [sessionScope, setSessionScope] = useState<SessionScope>('recent')
   const [attributionOpen, setAttributionOpen] = useState(false)
 
   const [deep, setDeep] = useState<Deep>(() => parseDeepLink(window.location.hash))
   useEffect(() => {
-    const on = () => setDeep(parseDeepLink(window.location.hash))
+    const on = () => {
+      setDeep(parseDeepLink(window.location.hash))
+      const r = parseTownRoute(window.location.search, window.location.hash)
+      if (r.town) setView('town')
+      if (r.kiosk) setRoute(r)
+    }
     window.addEventListener('hashchange', on)
     return () => window.removeEventListener('hashchange', on)
   }, [])
@@ -65,6 +74,47 @@ export default function App() {
   const openAttributions = () => { setSel(null); setAttributionOpen(true) }
   const selectItem = (id: string) => { setAttributionOpen(false); setSel({ kind: 'item', id }) }
   const selectSession = (id: number) => { setAttributionOpen(false); setSel({ kind: 'session', id }) }
+  const openQueue = (lane: 'action' | 'review') => { setSel(null); setAttributionOpen(false); setTab('queue'); setQueueFocus(lane); setKioskQueue(true) }
+  const detail = sel ? (
+    sel.kind === 'item' ? (
+      <ItemDetail key={sel.id} snap={snap} id={sel.id} onClose={() => setSel(null)} onSelectSession={selectSession} />
+    ) : (
+      <SessionDetail key={sel.id} snap={snap} id={sel.id} onClose={() => setSel(null)} onSelectItem={selectItem} />
+    )
+  ) : null
+  const queuePanel = <Queue snap={snap} onSelectItem={selectItem} repoId={repoId} provider={provider} reviewOpen={queueFocus === 'review'} onReviewOpenChange={open => setQueueFocus(open ? 'review' : 'action')} />
+
+  if (route.kiosk) {
+    const drawer = sel != null || kioskQueue
+    const closeDrawer = () => { setSel(null); setKioskQueue(false) }
+    const path = window.location.pathname
+    return (
+      <div className="app is-kiosk" onKeyDown={(e) => { if (e.key === 'Escape' && drawer) closeDrawer() }}>
+        <main className="kiosk-main">
+          <TownView snap={snap} conn={conn} repoId={repoId} provider={provider} sel={sel} onSelectItem={selectItem} onSelectSession={selectSession}
+            onSelectRepo={(id) => setRepoId(id)} onQueue={openQueue} kiosk rotateMs={route.rotateMs} paused={drawer}
+            bar={<span className="kiosk-tools">
+              {repoId !== 'all' && <button className="btn small" onClick={() => setRepoId('all')} title="点建筑会只看这个项目">← 全部项目</button>}
+              <span className={`conn conn-${conn}`}>{conn === 'live' ? '实时' : conn === 'offline' ? '已断开，重连中' : '连接中'}</span>
+              {isRemote() && <span className="remote-tag" title={remoteReadOnlyMessage}>远程只读</span>}
+              <a className="btn small" href={fullPanelHref(path, null)} title="回到 Session Steward 完整面板">退出桌面模式</a>
+            </span>} />
+        </main>
+        {drawer && <div className="kiosk-scrim" onClick={closeDrawer} aria-hidden />}
+        {drawer && (
+          <aside className="side kiosk-drawer" role="dialog" aria-modal="true" aria-label={sel ? '详情' : '关注队列'}>
+            <div className="kiosk-drawer-head">
+              <strong>{sel ? (sel.kind === 'item' ? `工作项 ${sel.id}` : `会话 #${sel.id}`) : '关注队列'}</strong>
+              <a className="btn small" href={fullPanelHref(path, sel)}>在完整面板打开</a>
+              <button className="btn small" onClick={closeDrawer} autoFocus>关闭</button>
+            </div>
+            {isRemote() && <p className="warn-box" role="status">{remoteReadOnlyMessage}</p>}
+            {detail ?? <div className="side-body">{queuePanel}</div>}
+          </aside>
+        )}
+      </div>
+    )
+  }
 
   return (
     <div className="app">
@@ -90,6 +140,7 @@ export default function App() {
             <button className={view === 'canvas' ? 'on' : ''} onClick={() => setView('canvas')}>画布</button>
             <button className={view === 'list' ? 'on' : ''} onClick={() => setView('list')}>列表</button>
           </div>
+          {view === 'town' && <a className="btn small" href={kioskHref(window.location.pathname)} title="全屏小镇，适合挂在副屏或手机上；自动轮播项目">桌面模式</a>}
           {view === 'canvas' && <button className="btn small" onClick={() => setExpandAll((v) => !v)}>{expandAll ? '默认折叠' : '全部展开'}</button>}
           {quietCount > 0 && <button className="btn small" onClick={() => { setSel(null); setAttributionOpen(false); setTab('sessions'); setSessionScope('quiet') }}>已收起会话 {quietCount}</button>}
           <button className="btn small" onClick={openAttributions}>近期归属待确认 {attributionPending}</button>
@@ -124,13 +175,7 @@ export default function App() {
         </div>
       </main>
       <aside className="side">
-        {attributionOpen ? <AttributionPanel snap={snap} repoId={repoId} provider={provider} onClose={() => setAttributionOpen(false)} onSelectItem={selectItem} /> : sel ? (
-          sel.kind === 'item' ? (
-            <ItemDetail key={sel.id} snap={snap} id={sel.id} onClose={() => setSel(null)} onSelectSession={selectSession} />
-          ) : (
-            <SessionDetail key={sel.id} snap={snap} id={sel.id} onClose={() => setSel(null)} onSelectItem={selectItem} />
-          )
-        ) : (
+        {attributionOpen ? <AttributionPanel snap={snap} repoId={repoId} provider={provider} onClose={() => setAttributionOpen(false)} onSelectItem={selectItem} /> : detail ?? (
           <>
             <nav className="tabs" role="tablist">
               <button role="tab" aria-selected={tab === 'queue'} className={tab === 'queue' ? 'on' : ''} onClick={() => { setTab('queue'); setQueueFocus('action') }}>关注队列 {counts.action > 0 && <span className="badge" title="需要你审批或决定">{counts.action}</span>}</button>
@@ -140,7 +185,7 @@ export default function App() {
               <button role="tab" aria-selected={tab === 'review'} className={tab === 'review' ? 'on' : ''} onClick={() => setTab('review')}>复盘</button>
             </nav>
             <div className="side-body">
-              {tab === 'queue' && <><Queue snap={snap} onSelectItem={selectItem} repoId={repoId} provider={provider} reviewOpen={queueFocus === 'review'} onReviewOpenChange={open => setQueueFocus(open ? 'review' : 'action')} /><button className="attribution-summary" onClick={openAttributions}>近期会话待归属 {attributionPending}<small>查看候选依据，按项目批量确认或撤销</small></button></>}
+              {tab === 'queue' && <>{queuePanel}<button className="attribution-summary" onClick={openAttributions}>近期会话待归属 {attributionPending}<small>查看候选依据，按项目批量确认或撤销</small></button></>}
               {tab === 'items' && <WorkItemsPanel snap={snap} items={groups.flatMap((g) => g.items)} history={groups.flatMap(g => g.history ?? [])} repoId={repoId} onSelect={selectItem} />}
               {tab === 'review' && <ReviewPanel />}
               {tab === 'launch' && !isRemote() && <NewManaged snap={snap} initialRepoId={repoId === 'all' ? undefined : repoId} onLaunched={(m) => selectItem(m.work_item_id)} />}
