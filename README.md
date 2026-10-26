@@ -50,6 +50,17 @@ bin/steward open             # 打印登录链接并打开面板
 - Codex 需要你在 Codex 里信任新的 hooks 后才会运行。`bin/steward status` 会列出还没完成的项。
 - 之后新会话就会出现在面板里。要生成项目简报，Agent 需要用 `steward-hook begin` / `report` / `deliver` 回报；hooks 会给每个会话一段可直接复制的提示。详见[使用手册](docs/GUIDE.zh-CN.md)。
 
+### 后台常驻（macOS）
+
+```sh
+bin/steward service install    # 注册为当前用户的 LaunchAgent：登录后自动启动，退出后自动拉起
+bin/steward service status
+bin/steward service restart    # 重新构建 steward 后运行
+bin/steward service uninstall
+```
+
+同一个 `STEWARD_HOME` 和端口只能有一个 `serve`：安装前先停止手动启动的 `steward serve`（端口被占用时 `install` 会拒绝）。plist 指向执行 `install` 时那个 `steward` 的绝对路径；在原位置重新构建后运行 `service restart` 即可，换了位置就重新 `install`。日志写在 `$STEWARD_HOME/logs/`。Linux 暂不支持。详见[使用手册](docs/GUIDE.zh-CN.md#后台常驻macos-launchd)。
+
 ### 用演示数据试一试
 
 使用独立的数据目录，不会碰 `~/.steward`、`~/.claude` 或 `~/.codex`。需要 `python3`、`curl` 和 `git`。

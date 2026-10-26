@@ -95,6 +95,48 @@ bin/steward uninstall [claude|codex|all]
 
 适配器在 hooks 模式下始终以退出码 0 结束，普通事件不向 stdout 输出任何内容。服务不可用时事件写入本地暂存，下次发送成功后补发；也可以手动运行 `steward-hook flush`，它会打印剩余条数和累计丢弃数。
 
+## 后台常驻（macOS launchd）
+
+手动运行的 `steward serve` 会随终端关闭而退出。想让面板一直可用，可以把服务注册为当前用户的 LaunchAgent：
+
+```sh
+bin/steward service install    # 写入 ~/Library/LaunchAgents/io.github.xoqiu09.session-steward.plist 并加载
+bin/steward service status     # plist 是否由 steward 写入、launchd 是否已加载、state / pid / 上次退出码
+bin/steward service restart    # 让 launchd 重启服务进程
+bin/steward service uninstall  # 停止服务并删除这份 plist
+```
+
+- 默认不安装，需要你手动运行 `service install`。
+- plist 运行的是执行 `install` 时那个 `steward` 的绝对路径（解析符号链接后），参数为 `serve`。`RunAtLoad` 和 `KeepAlive` 都开启：登录后自动启动，进程退出后 launchd 会重新拉起（launchd 两次启动之间至少间隔 10 秒）。
+- launchd 不继承登录 shell 的环境，plist 里会写入：`STEWARD_HOME`（当前数据目录的绝对路径）、UTF-8 的 `LANG`（当前 `LANG` 不含 UTF-8 时用 `en_US.UTF-8`）、安装时的 `PATH`（托管会话靠它找到 `claude`、`codex`、`git`），以及设置了的 `CODEX_HOME`。之后修改了这些变量，重新运行一次 `service install` 即可更新。
+- 日志写到 `$STEWARD_HOME/logs/serve.out.log` 和 `serve.err.log`（服务日志在 `serve.err.log`）。日志不会自动轮转，卸载时保留。
+- 只操作自己这份 plist：文件里带标识 `steward-service-v1`。同名文件不带标识时，`install` 拒绝覆盖，`uninstall` 也拒绝删除。plist 没有变化且服务已加载时，`install` 什么也不做。
+- 用 `launchctl bootstrap gui/$UID` / `bootout gui/$UID/<标签>` 加载和卸载，`restart` 用 `launchctl kickstart -k`。
+- `steward service` 不能用 `go run` 运行：`go run` 的二进制是临时文件，会被删除。请先构建。
+
+**同一个数据目录和端口只能有一个 `serve`。** 两个 `serve` 共用 `STEWARD_HOME` 会同时写同一个 SQLite 库；后启动的那个绑定端口失败后退出，launchd 又会每隔约 10 秒拉起一次。因此 `service install` 发现监听地址已被占用、而服务尚未加载时会拒绝安装，并提示先停止已有的 `steward serve`（Ctrl-C 或结束该进程）。确认占用端口的不是 steward 时，可加 `--force` 跳过这项检查。服务装好后不要再手动运行 `steward serve`。用 `STEWARD_HOME=/tmp/steward-demo` 和另一个端口运行演示不受影响；后台服务只有一个，用另一个 `STEWARD_HOME` 再运行 `service install` 会把它切换过去。
+
+**更新 steward：**
+
+- 在原位置重新构建（例如 `make build`，产物仍是 `bin/steward`），然后运行 `bin/steward service restart`，launchd 会用新的二进制重新启动。
+- `steward` 换了位置时，从新位置运行 `steward service install`，plist 会指向新路径并重新加载。也可以先 `uninstall` 再 `install`。
+- 不要删除或移动 plist 指向的那个 `steward`，否则 launchd 无法启动服务（`service status` 会显示非零的上次退出码）。
+- `steward-hook` 的更新方式不变：重新构建后仍需运行一次 `steward install`。
+
+Linux 暂不支持 `steward service`。可以自己写一个 systemd 用户单元，例如 `~/.config/systemd/user/steward.service`：
+
+```ini
+[Service]
+ExecStart=/path/to/bin/steward serve
+Environment=LANG=C.UTF-8
+Restart=always
+
+[Install]
+WantedBy=default.target
+```
+
+然后运行 `systemctl --user enable --now steward`。这个示例没有经过测试。
+
 ## 把会话归属到工作项
 
 工作项编号格式为 `ABC-123`（字母开头，最多 16 个字母数字，加 1–6 位数字）。可以先在面板中创建，也可以由 Agent 用 `begin` 一次创建并关联。
@@ -264,6 +306,7 @@ cmd/steward/        服务与管理命令
 cmd/steward-hook/   hooks 适配器和 claim/ask/deliver/report/flush
 internal/config/    数据目录、配置、凭据
 internal/install/   hooks 安装/卸载、Codex 信任检测
+internal/service/   后台常驻（macOS LaunchAgent）
 internal/hook/      适配器逻辑和本地暂存
 internal/event/     统一事件格式、hook 输入解析、脱敏
 internal/server/    HTTP 接口、鉴权、SSE

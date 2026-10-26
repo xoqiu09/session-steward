@@ -24,6 +24,7 @@
 
 - 小镇视图：视图切换里新增“小镇”，把当前工作画成桌上的微缩工作室。项目是建筑，每个近期会话是一个带编号的角色（同一 Agent 的多个会话分开），未结束的运行是工位上的包裹，近一天的失败放到退件架，待验收工作项放到“你的验收台”，告示栏只放关注队列里需你处理的请求（与顶部“审批／决定”同一口径）。点选角色、包裹、告示卡打开原有的会话或工作项详情，审批仍在原处处理；小镇只读，不做验收、不派单。迟到的旧快照（cursor 变小且服务端时间更旧）不覆盖画面；断开连接时画面变灰并注明停在哪一刻，“工作中”改称“断线前工作中”。每栋建筑最多画 3 个会话，其余标“另有 N 位”。
 
+- 后台常驻（仅 macOS）：`steward service install|uninstall|restart|status` 把 `steward serve` 注册为当前用户的 LaunchAgent（`io.github.xoqiu09.session-steward`），登录后自动启动、退出后由 launchd 重新拉起，写入 UTF-8 `LANG`、安装时的 `PATH` 和 `STEWARD_HOME`，日志在 `$STEWARD_HOME/logs/`。只操作自己写入的 plist（带标识 `steward-service-v1`），不覆盖也不删除同名的他人文件；监听端口已被占用且服务未加载时拒绝安装，避免两个 `serve` 共用同一数据目录。默认不安装。Linux 暂不支持。
 - 数据库使用 `PRAGMA user_version` 记录 schema 版本，并按顺序执行迁移。首个公开版本的结构为 v1，此前创建的库按 v1 兼容升级；v2 新增托管会话最后画面表。库版本高于程序支持的版本时拒绝打开。
 - `make go` 通过 `-ldflags "-X main.BuildCommit=$(git describe --always --dirty)"` 为 `steward` 和 `steward-hook` 注入版本号。
 
