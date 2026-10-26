@@ -60,7 +60,17 @@ const PALETTE = [
   { roof: '#c8674a', roofSide: '#a6503a', accent: '#c8674a' },
   { roof: '#3f8f8a', roofSide: '#2f6f6b', accent: '#3f8f8a' },
   { roof: '#6b6fb8', roofSide: '#53579a', accent: '#6b6fb8' },
+  { roof: '#c99a3a', roofSide: '#a57c2a', accent: '#c99a3a' },
+  { roof: '#5f8f4e', roofSide: '#4a7240', accent: '#5f8f4e' },
+  { roof: '#a65a7e', roofSide: '#864665', accent: '#a65a7e' },
 ]
+const UNASSIGNED = { roof: '#9a8f80', roofSide: '#7c7366', accent: '#9a8f80' }
+
+/** 建筑颜色按项目固定（repo.id 取模），翻页、换位置、切换桌面模式都不变；相邻编号的项目颜色不同。 */
+export function buildingColors(repoId: number | null | undefined): { roof: string; roofSide: string; accent: string } {
+  if (repoId == null) return UNASSIGNED
+  return PALETTE[((repoId % PALETTE.length) + PALETTE.length) % PALETTE.length]
+}
 
 const PLOTS: Plot[] = [
   { gx: 0.8, gy: 0.6, w: 4.3, d: 2.8, facing: 'x', ...PALETTE[0] },
@@ -151,8 +161,8 @@ export default function TownScene({ model, selected, highlight, onSelect, change
   const flash = (key: string) => (changed.has(key) ? ' is-changed' : '')
 
   const placed = (buildings ?? model.buildings).slice(0, L.plots.length)
-  // 竖屏每页一栋，屋顶颜色跟着项目走，翻页时分得清是哪一栋。
-  const plotOf = (i: number, b: BuildingView): Plot => (layout === 'portrait' ? { ...L.plots[i], ...PALETTE[(b.repo?.id ?? 0) % PALETTE.length] } : L.plots[i])
+  // 地块只定位置，颜色跟着项目走。
+  const plotOf = (i: number, b: BuildingView): Plot => ({ ...L.plots[i], ...buildingColors(b.repo?.id) })
   const overflow = buildings ? 0 : model.buildings.length - placed.length
 
   // 角色位置：画工位、依赖线和标签都用它。每栋只画前 MAX_SEATS 个，顺序由调用方决定。
