@@ -4,7 +4,14 @@ import { DEFAULT_ROTATE_S, fullPanelHref, kioskHref, parseTownRoute } from './ro
 
 describe('parseTownRoute', () => {
   it('没有参数时是普通面板', () => {
-    expect(parseTownRoute('', '')).toEqual({ town: false, kiosk: false, rotateMs: DEFAULT_ROTATE_S * 1000 })
+    expect(parseTownRoute('', '')).toEqual({ town: false, kiosk: false, rotateMs: DEFAULT_ROTATE_S * 1000, world: false })
+  })
+
+  it('?world=1 或 #world 打开大地图预览，并直接进入小镇', () => {
+    expect(parseTownRoute('?world=1', '')).toMatchObject({ town: true, world: true, kiosk: false })
+    expect(parseTownRoute('?kiosk=1&world=1', '')).toMatchObject({ town: true, world: true, kiosk: true })
+    expect(parseTownRoute('', '#world')).toMatchObject({ world: true })
+    expect(parseTownRoute('?world=0', '')).toMatchObject({ world: false, town: false })
   })
 
   it('?view=town 只打开小镇，不进桌面模式', () => {

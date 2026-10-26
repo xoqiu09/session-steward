@@ -9,6 +9,8 @@ export interface TownRoute {
   kiosk: boolean
   /** 桌面模式下每页停留的毫秒数。 */
   rotateMs: number
+  /** 预览：大地图世界（?world=1 或 #world），每个项目一个街区，可拖动缩放。 */
+  world: boolean
 }
 
 export const DEFAULT_ROTATE_S = 20
@@ -28,7 +30,8 @@ export function parseTownRoute(search: string, hash: string): TownRoute {
   const town = kiosk || q.get('view') === 'town' || flag(h, 'town')
   const raw = Number(q.get('rotate') ?? h.get('rotate') ?? DEFAULT_ROTATE_S)
   const sec = Number.isFinite(raw) && raw > 0 ? Math.min(MAX_ROTATE_S, Math.max(MIN_ROTATE_S, raw)) : DEFAULT_ROTATE_S
-  return { town, kiosk, rotateMs: sec * 1000 }
+  const world = flag(q, 'world') || flag(h, 'world')
+  return { town: town || world, kiosk, rotateMs: sec * 1000, world }
 }
 
 /** 桌面模式的入口链接，保留当前路径。 */
