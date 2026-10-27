@@ -1,6 +1,6 @@
 #!/bin/sh
 # 打包 macOS 预编译版本：scripts/release.sh v0.3.0
-# 产物在 dist-release/：每个架构一个 tar.gz（steward、steward-hook、通知助手 Session Steward.app），外加 SHA256SUMS。
+# 产物在 dist-release/：每个架构一个命令行 tar.gz（steward、steward-hook、通知助手）和一个 App zip，外加 SHA256SUMS。
 # web/dist 已提交在仓库里，这里不需要 Node。通知助手需要 Xcode 命令行工具，没有时跳过（通知退回旧方式）。
 set -eu
 version=${1:?用法: scripts/release.sh <版本号，例如 v0.3.0>}
@@ -32,6 +32,12 @@ Session Steward $version（macOS $arch，未签名）
 TXT
 	tar -C "$out" -czf "$out/$name.tar.gz" "$name"
 	rm -rf "$dir"
+	# App 版：拖进“应用程序”就能用（需要 Xcode 命令行工具）
+	if command -v xcrun >/dev/null 2>&1; then
+		APP_OUT="$out/app-$arch" sh scripts/build-app.sh "$arch" "$version" >/dev/null
+		ditto -c -k --keepParent "$out/app-$arch/Session Steward.app" "$out/Session-Steward_${version}_macOS_${arch}.app.zip"
+		rm -rf "$out/app-$arch"
+	fi
 done
-(cd "$out" && shasum -a 256 ./*.tar.gz | sed 's#\./##' > SHA256SUMS)
+(cd "$out" && shasum -a 256 ./*.tar.gz ./*.zip 2>/dev/null | sed 's#\./##' > SHA256SUMS)
 cat "$out/SHA256SUMS"

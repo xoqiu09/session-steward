@@ -24,6 +24,6 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" dist-release/*.tar.gz dist-release/SHA256SUMS \
+          gh release create "$GITHUB_REF_NAME" dist-release/*.tar.gz dist-release/*.zip dist-release/SHA256SUMS \
             --draft --title "Session Steward $GITHUB_REF_NAME" \
-            --notes "macOS 预编译版本（未签名）。一行安装：\`curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/main/scripts/install.sh | sh\`，或下载对应架构的包后看里面的“安装说明.txt”。校验：\`shasum -a 256 -c SHA256SUMS\`。"
+            --notes "macOS 预编译版本（未签名）。App：下载对应芯片的 .app.zip，解压后拖进“应用程序”，首次打开见 README“App 安装”。命令行一行安装：\`curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/main/scripts/install.sh | sh\`，或下载对应架构的包后看里面的“安装说明.txt”。校验：\`shasum -a 256 -c SHA256SUMS\`。"
