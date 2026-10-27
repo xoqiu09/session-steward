@@ -1,14 +1,16 @@
 // 小镇顶部的“这台 / 全部设备”切换，全部设备时列出每台的在线状态。
 import { ago } from '../model'
-import type { Snapshot } from '../types'
+import type { HubStatus, Snapshot } from '../types'
 import type { HubScope } from './hub'
 
-export function HubSwitch({ scope, onScope, merged, error, now }: { scope: HubScope; onScope: (s: HubScope) => void; merged: Snapshot | null; error: string; now: string }) {
+export function HubSwitch({ scope, onScope, merged, error, now, status }: { scope: HubScope; onScope: (s: HubScope) => void; merged: Snapshot | null; error: string; now: string; status?: HubStatus | null }) {
   const devs = merged?.devices ?? []
+  const pushErr = status?.role === 'agent' ? status.last_error : ''
   return (
     <span className="hub-switch" role="group" aria-label="看哪台电脑">
       <button type="button" className={scope === 'here' ? 'on' : ''} aria-pressed={scope === 'here'} onClick={() => onScope('here')}>这台</button>
       <button type="button" className={scope === 'all' ? 'on' : ''} aria-pressed={scope === 'all'} onClick={() => onScope('all')}>全部设备{devs.length ? ` ${devs.length}` : ''}</button>
+      {pushErr && <span className="hub-err" title={`推送到 ${status?.url ?? '中心机'} 失败：${pushErr}`}>推送失败</span>}
       {scope === 'all' && error && <span className="hub-err" title={error}>连不上中心机</span>}
       {scope === 'all' && devs.map((d) => (
         <span key={d.id} className={`hub-dev${d.online ? ' is-on' : ''}`} title={d.online ? `${d.name}：在线` : `${d.name}：离线，显示的是 ${ago(d.received_at, now)}的样子`}>
