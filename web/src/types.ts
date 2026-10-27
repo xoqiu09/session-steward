@@ -1,6 +1,8 @@
 export type Provider = 'claude' | 'codex' | 'other' | string
 
 export interface Repo {
+  /** 只在“全部设备”合并视图里有：项目在哪台电脑上。 */
+  device?: string
   id: number
   name: string
   common_dir: string
@@ -146,6 +148,10 @@ export interface Approval {
 }
 
 export interface Snapshot {
+  /** 只在“全部设备”合并视图里有。 */
+  devices?: HubDevice[]
+  /** 回放快照（小镇时间条）才有：那一刻的时间。只读。 */
+  replay_at?: string
 	features?: ProjectFeature[] | null
   cursor: number
   now: string
@@ -242,3 +248,33 @@ export interface AttributionDecision {
   repo_id?: number
   title?: string
 }
+
+// ---- 历史回看 ----
+export interface DayStat {
+  day: string
+  tokens: Tokens
+  by_provider: Record<string, number>
+  by_model: Record<string, number>
+  sessions: number; prompts: number; tools: number; subagents: number
+  delivered: number; accepted: number; returned: number; blocked: number; failed: number
+}
+export interface HistoryResp { from: string; to: string; tokens_enabled: boolean; days: DayStat[] }
+export interface DayChange { from: string; to: string; at: string }
+export interface DayItem { id: string; title: string; repo_id: number | null; changes: DayChange[] }
+export interface DaySession {
+  id: number; provider: Provider; repo_id: number | null; work_item_id: string; first: string; last: string
+  prompts: number; tools: number; tool_failed: number; subagents: number; tokens: Tokens
+}
+export interface DayDetail { day: string; items: DayItem[]; sessions: DaySession[] }
+export interface TurnUsage extends Tokens { start: string }
+export interface SubagentUsage { id: string; type: string; description: string; finished: boolean; start: string; end: string; total: Tokens }
+export interface SessionUsageDetail {
+  enabled: boolean; found: boolean
+  self: { models: Record<string, Tokens>; turns: TurnUsage[]; total: Tokens }
+  subagents: SubagentUsage[]
+  with_subagents: Tokens
+}
+
+// ---- 多设备 ----
+export interface HubDevice { id: string; name: string; self: boolean; received_at: string; online: boolean }
+export interface HubStatus { role: '' | 'hub' | 'agent'; device?: string; device_id?: string; url?: string; last_push_at?: string; last_error?: string }

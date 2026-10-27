@@ -30,6 +30,8 @@ type Server struct {
 	// 远程访问（默认关闭）：允许的反向代理 HTTPS 主机名，以及远程设备 token。
 	RemoteHosts []string
 	RemoteToken string
+	// 多设备合并（默认 nil，关闭）。
+	Hub *Hub
 }
 
 func (s *Server) remoteHost(host string) bool {
@@ -181,6 +183,14 @@ func (s *Server) Handler() http.Handler {
 	}))
 	mux.HandleFunc("GET /api/stream", s.panel(s.handleStream))
 	mux.HandleFunc("GET /api/sessions/{id}/events", s.panel(s.handleSessionEvents))
+	mux.HandleFunc("GET /api/sessions/{id}/usage", s.panel(s.handleSessionUsage))
+	mux.HandleFunc("GET /api/history", s.panel(s.handleHistory))
+	// 多设备：推送和取回只认共享密钥（中心机经 Tailscale 被其他设备访问）；面板用的两个接口仍要面板登录。
+	mux.HandleFunc("POST /api/hub/push", s.handleHubPush)
+	mux.HandleFunc("GET /api/hub/pull", s.handleHubPull)
+	mux.HandleFunc("GET /api/hub/snapshot", s.panel(s.handleHubSnapshot))
+	mux.HandleFunc("GET /api/hub/status", s.panel(s.handleHubStatus))
+	mux.HandleFunc("GET /api/history/day", s.panel(s.handleHistoryDay))
 	mux.HandleFunc("POST /api/sessions/{id}/bind", s.panel(s.handleBind))
 	mux.HandleFunc("POST /api/sessions/{id}/unbind", s.panel(s.handleUnbind))
 	mux.HandleFunc("POST /api/work-items", s.panel(s.handleCreateItem))
@@ -525,6 +535,21 @@ func (s *Server) handleDelivered(w http.ResponseWriter, r *http.Request) {
 // ---- 面板 ----
 
 func (s *Server) handleSnapshot(w http.ResponseWriter, r *http.Request) {
+	// ?at=RFC3339：回放过去某一时刻（只读，小镇时间条用）。
+	if v := r.URL.Query().Get("at"); v != "" {
+		at, err := core.ReplayParse(v)
+		if err != nil {
+			writeErr(w, err)
+			return
+		}
+		snap, err := s.Core.SnapshotAt(r.Context(), at)
+		if err != nil {
+			writeErr(w, err)
+			return
+		}
+		writeJSON(w, 200, snap)
+		return
+	}
 	snap, err := s.Core.Snapshot(r.Context())
 	if err != nil {
 		writeErr(w, err)
@@ -613,6 +638,42 @@ func (s *Server) handleSessionEvents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, 200, evs)
+}
+
+// handleSessionUsage：会话的 token 明细（按模型、按轮）和子 Agent。用量统计关闭时 enabled=false。
+func (s *Server) handleSessionUsage(w http.ResponseWriter, r *http.Request) {
+	id, err := pathInt(r, "id")
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	d, err := s.Core.SessionUsage(r.Context(), id)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, 200, d)
+}
+
+// handleHistory：历史日历，最近 days 天每天的活动、交付、验收和 token。
+func (s *Server) handleHistory(w http.ResponseWriter, r *http.Request) {
+	days, _ := strconv.Atoi(r.URL.Query().Get("days"))
+	h, err := s.Core.History(r.Context(), days, s.Core.UsageDetail != nil)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, 200, h)
+}
+
+// handleHistoryDay：某一天的小结，date=YYYY-MM-DD（本机时区）。
+func (s *Server) handleHistoryDay(w http.ResponseWriter, r *http.Request) {
+	d, err := s.Core.HistoryDay(r.Context(), r.URL.Query().Get("date"), s.Core.UsageDetail != nil)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, 200, d)
 }
 
 func (s *Server) handleBind(w http.ResponseWriter, r *http.Request) {

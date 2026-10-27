@@ -44,9 +44,11 @@ type Core struct {
 	SummaryRepos            []string
 	AutomaticMemoryProjects []string
 	SummaryRun              func(ctx context.Context, argv []string, stdin string) (string, error)
-	jobMu                   sync.Mutex
-	jobsClosing             bool
-	mergeMu                 sync.Mutex // 批准/撤回、扫描与最终更新 Git 在服务内串行。
+	// UsageDetail 为 nil 时不读 token 明细（用量统计默认关闭）。
+	UsageDetail DetailSource
+	jobMu       sync.Mutex
+	jobsClosing bool
+	mergeMu     sync.Mutex // 批准/撤回、扫描与最终更新 Git 在服务内串行。
 
 	mu      sync.Mutex
 	waiters map[string]chan Decision // 等待中的权限请求，key 为 approval id

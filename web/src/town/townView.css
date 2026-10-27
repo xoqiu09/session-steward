@@ -61,3 +61,20 @@
   .kiosk-main > .town-view { padding: 8px 12px 12px; }
   .town-view.is-kiosk .town-chip { font-size: 13px; padding: 5px 10px; }
 }
+
+/* 回放 */
+.town-view .town-replay-open { margin-left: 8px; padding: 3px 10px; border-radius: 8px; border: 1px solid #c9b896; background: #fff; font-size: 12px; cursor: pointer; }
+.town-view .town-replay {
+  position: absolute; z-index: 6; left: 50%; bottom: 14px; transform: translateX(-50%); width: min(820px, calc(100% - 24px));
+  display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 12px; background: rgba(40, 46, 80, 0.94); color: #fff; font-size: 13px;
+}
+.town-view .town-replay input[type="range"] { flex: 1; min-width: 120px; accent-color: #ffd36b; }
+.town-view .town-replay input[type="date"] { border-radius: 6px; border: 0; padding: 2px 4px; font-size: 12px; color: #2a2a3a; background: #fff; }
+.town-view .town-replay button { padding: 3px 9px; border-radius: 7px; border: 1px solid rgba(255,255,255,.35); background: transparent; color: #fff; font-size: 12px; cursor: pointer; white-space: nowrap; }
+.town-view .town-replay .town-replay-play { background: #ffd36b; color: #2a2a3a; border-color: #ffd36b; font-weight: 700; }
+.town-view .town-replay-label { white-space: nowrap; font-variant-numeric: tabular-nums; min-width: 128px; }
+.town-view .town-replay-banner {
+  position: absolute; z-index: 6; left: 50%; top: 52px; transform: translateX(-50%); padding: 4px 12px; border-radius: 999px;
+  background: #2f3a8f; color: #fff; font-size: 12px; pointer-events: none; white-space: nowrap; max-width: calc(100% - 24px); overflow: hidden; text-overflow: ellipsis;
+}
+

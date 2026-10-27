@@ -6,7 +6,7 @@ import { AISummaryBox } from './P2'
 import { managedFor, managedOfSession } from './live'
 import { PermissionCard } from './Queue'
 import { openApprovals } from './model'
-import type { ItemStatus, Session, Snapshot } from './types'
+import type { ItemStatus, Session, SessionUsageDetail, Snapshot } from './types'
 import { api } from './api'
 import { AgentBadge, CopyButton, ErrorLine, useAction } from './bits'
 import { canUndoAttribution } from './attribution'
@@ -17,6 +17,7 @@ import { repoLabel } from './workbench'
 import { RunDesk } from './ui/RunDesk'
 import { DeliveryReview } from './ui/DeliveryReview'
 import { SessionActivity } from './ui/SessionActivity'
+import { SessionUsagePanel } from './ui/SessionUsagePanel'
 import { BriefReadOnly } from './ui/BriefReadOnly'
 import {
   ago, freshnessLabel, itemSignal, itemStatusLabel, mergeStateLabel, nextItemId, providerLabel, repoPrefix, sessionBuckets, sessionName, sessionRepo, sessionSignal, sessionStateLabel, sessionsFor, type SessionScope,
@@ -119,10 +120,12 @@ export function SessionDetail({ snap, id, onClose, onSelectItem, foldEvents = fa
   const act = useAction()
   const [bind, setBind] = useState('')
   const [events, setEvents] = useState<Record<string, unknown>[]>([])
+  const [usage, setUsage] = useState<SessionUsageDetail | null>(null)
   const [creating, setCreating] = useState(false)
   const quiet = sessionBuckets(snap).quiet.some((x) => x.id === id)
   useEffect(() => {
     api.sessionEvents(id).then(setEvents).catch(() => setEvents([]))
+    api.sessionUsage(id).then(setUsage).catch(() => setUsage(null))
   }, [id, s?.last_activity_at])
   if (!s) return null
   const name = sessionName(snap, s)
@@ -192,7 +195,8 @@ export function SessionDetail({ snap, id, onClose, onSelectItem, foldEvents = fa
       {!isRemote() && creating && !s.work_item_id && <NewItem key={s.id} snap={snap} session={s} onCreated={onSelectItem} />}
       <ErrorLine msg={act.error} />
       {/* 桌面模式里默认折叠，需要时再展开。 */}
-      <SessionActivity events={events} now={snap.now} folded={foldEvents} />
+      <SessionUsagePanel usage={usage} />
+      <SessionActivity events={events} now={snap.now} folded={foldEvents} turnUsage={usage?.found ? usage.self.turns : undefined} />
     </div>
   )
 }

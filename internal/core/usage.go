@@ -58,10 +58,25 @@ func (c *Core) RefreshUsage(ctx context.Context, src UsageSource, since time.Dur
 	}
 	rows.Close()
 	changed := 0
+	detail, _ := src.(DetailSource)
 	for _, r := range list {
 		t, ok := src.Totals(r.provider, r.sid)
 		if !ok || t.Zero() {
 			continue
+		}
+		// 按天归档：总数变了，或这个会话还没有归档过时才重读明细。
+		if detail != nil {
+			var n int
+			_ = c.St.R().QueryRowContext(ctx, `SELECT COUNT(*) FROM usage_daily WHERE session_id=?`, r.id).Scan(&n)
+			var old usage.Totals
+			_ = c.St.R().QueryRowContext(ctx, `SELECT input,output,cache_read,cache_write FROM session_usage WHERE session_id=?`, r.id).Scan(&old.Input, &old.Output, &old.CacheRead, &old.CacheWrite)
+			if n == 0 || old != t {
+				if ch, err := c.archiveDaily(ctx, detail, r.id, r.provider, r.sid); err != nil {
+					return changed, err
+				} else if ch && old == t {
+					changed++
+				}
+			}
 		}
 		now := c.St.NowTS()
 		err := c.St.Tx(ctx, func(tx *sql.Tx) error {

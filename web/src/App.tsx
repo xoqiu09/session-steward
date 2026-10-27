@@ -14,6 +14,9 @@ import { actorLabel, liveSummary, parseDeepLink, projectActorRows, resolveDeepLi
 import { NewManaged } from './Managed'
 import { ReviewPanel } from './P2'
 import { isRemote, remoteReadOnlyMessage } from './access'
+import { HistoryView } from './history/HistoryView'
+import { useHub, remoteDeviceOf } from './hub/hub'
+import { HubSwitch } from './hub/HubSwitch'
 import { TownView } from './town/TownView'
 import { fullPanelHref, kioskHref, parseTownRoute } from './town/route'
 
@@ -22,6 +25,14 @@ type Sel = { kind: 'item'; id: string } | { kind: 'session'; id: number } | null
 
 export default function App() {
   const { snap, conn } = useSnapshot()
+  // 多设备：“全部设备”时小镇画合并视图；点到别台电脑上的东西只提示去那台处理。
+  const hub = useHub()
+  const [hubNotice, setHubNotice] = useState('')
+  useEffect(() => { if (!hubNotice) return; const t = window.setTimeout(() => setHubNotice(''), 4000); return () => window.clearTimeout(t) }, [hubNotice])
+  const townItem = (id: string) => { const d = hub.merged && remoteDeviceOf(hub.merged, 'item', id); if (d) setHubNotice(d); else selectItem(id) }
+  const townSession = (id: number) => { const d = hub.merged && remoteDeviceOf(hub.merged, 'session', id); if (d) setHubNotice(d); else selectSession(id) }
+  const hubSwitch = hub.enabled ? <HubSwitch scope={hub.scope} onScope={hub.setScope} merged={hub.merged} error={hub.error} now={snap?.now ?? new Date().toISOString()} /> : null
+  const hubToast = hubNotice ? <div className="hub-toast" role="status">这是「{hubNotice}」上的工作：小镇里只能看，审批、验收和详情请到那台电脑上处理。</div> : null
   const [tab, setTab] = useState<Tab>('queue')
   const [queueFocus, setQueueFocus] = useState<'action' | 'review'>('action')
   const [sel, setSel] = useState<Sel>(null)
@@ -30,7 +41,9 @@ export default function App() {
   const [repoId, setRepoId] = useState<number | 'all'>('all')
   const [provider, setProvider] = useState<string>('all')
   const [route, setRoute] = useState(() => parseTownRoute(window.location.search, window.location.hash))
-  const [view, setView] = useState<'overview' | 'town' | 'canvas' | 'list'>(() => (route.town ? 'town' : 'overview'))
+  const [view, setView] = useState<'overview' | 'town' | 'canvas' | 'list' | 'history'>(() => (route.town ? 'town' : 'overview'))
+  // 从历史日历点“回放这一天”：切到小镇并打开时间条。
+  const [replayDay, setReplayDay] = useState<string | undefined>(undefined)
   // 桌面模式里点告示栏、验收台时，在抽屉里打开关注队列。
   const [kioskQueue, setKioskQueue] = useState(false)
   const [expandAll, setExpandAll] = useState(false)
@@ -91,9 +104,11 @@ export default function App() {
     return (
       <div className="app is-kiosk" onKeyDown={(e) => { if (e.key === 'Escape' && drawer) closeDrawer() }}>
         <main className="kiosk-main">
-          <TownView world={route.world} snap={snap} conn={conn} repoId={repoId} provider={provider} sel={sel} onSelectItem={selectItem} onSelectSession={selectSession}
-            onSelectRepo={(id) => setRepoId(id)} onQueue={openQueue} kiosk rotateMs={route.rotateMs} paused={drawer}
+          {hubToast}
+          <TownView key={hub.merged ? "all" : "here"} world={route.world} snap={hub.merged ?? snap} conn={conn} repoId={repoId} provider={provider} sel={sel} onSelectItem={townItem} onSelectSession={townSession}
+            onSelectRepo={(id) => setRepoId(id)} onQueue={openQueue} kiosk rotateMs={route.rotateMs} paused={drawer} noReplay={hub.scope === 'all'}
             bar={<span className="kiosk-tools">
+              {hubSwitch}
               {repoId !== 'all' && <button className="btn small" onClick={() => setRepoId('all')} title="点建筑会只看这个项目">← 全部项目</button>}
               <span className={`conn conn-${conn}`}>{conn === 'live' ? '实时' : conn === 'offline' ? '已断开，重连中' : '连接中'}</span>
               {isRemote() && <span className="remote-tag" title={remoteReadOnlyMessage}>远程只读</span>}
@@ -139,6 +154,7 @@ export default function App() {
             <button className={view === 'town' ? 'on' : ''} onClick={() => setView('town')}>小镇</button>
             <button className={view === 'canvas' ? 'on' : ''} onClick={() => setView('canvas')}>画布</button>
             <button className={view === 'list' ? 'on' : ''} onClick={() => setView('list')}>列表</button>
+            <button className={view === 'history' ? 'on' : ''} onClick={() => setView('history')}>历史</button>
           </div>
           {view === 'town' && <a className="btn small" href={kioskHref(window.location.pathname)} title="全屏小镇，适合挂在副屏或手机上；自动轮播项目">桌面模式</a>}
           {view === 'canvas' && <button className="btn small" onClick={() => setExpandAll((v) => !v)}>{expandAll ? '默认折叠' : '全部展开'}</button>}
@@ -163,13 +179,15 @@ export default function App() {
           <div className="project-shortcuts">{groups.map((g) => <button key={g.key} disabled={g.repoId == null} className={repoId === g.repoId ? 'on' : ''} onClick={() => { if (g.repoId != null) { setRepoId(g.repoId); setSel(null); setAttributionOpen(false); setTab('queue') } }} title={g.name}><strong>{g.name}</strong><small>工作项 {g.items.length} · 待关联 {g.sessions.length}{projectQueueCounts(snap, g.repoId).action ? ` · 需审批 ${projectQueueCounts(snap, g.repoId).action}` : ''}</small></button>)}</div>
         </div>
         <div className="stage">
-          {view === 'town' ? <TownView world={route.world} snap={snap} conn={conn} repoId={repoId} provider={provider} sel={sel} onSelectItem={selectItem} onSelectSession={selectSession}
+          {view === 'town' && hubToast}
+          {view === 'town' ? <TownView key={hub.merged ? "all" : "here"} world={route.world} snap={hub.merged ?? snap} conn={conn} repoId={repoId} provider={provider} sel={sel} onSelectItem={townItem} onSelectSession={townSession} replayDay={replayDay}
+            noReplay={hub.scope === 'all'} bar={hubSwitch}
             onSelectRepo={(id) => setRepoId(id)} onQueue={(lane) => { setSel(null); setAttributionOpen(false); setTab('queue'); setQueueFocus(lane) }} />
             : view === 'overview' ? <Overview snap={snap} groups={groups} onSelectItem={selectItem} onSelectSession={selectSession} onOpenAttribution={openAttributions} pendingCount={counts.action} reviewCount={counts.review} expandQuiet={!!query.trim() || repoId !== 'all'} onQueue={(lane = 'action') => { setSel(null); setAttributionOpen(false); setTab('queue'); setQueueFocus(lane) }} /> : view === 'canvas' ? (
             <ReactFlowProvider>
               <Canvas snap={snap} groups={groups} selected={sel?.kind === 'item' ? sel.id : null} onSelectItem={selectItem} onOpenAttribution={openAttributions} expandAll={expandAll || !!query.trim()} />
             </ReactFlowProvider>
-          ) : (
+          ) : view === 'history' ? <HistoryView snap={snap} onSelectSession={selectSession} onSelectItem={selectItem} onReplayDay={(d) => { setReplayDay(d); setView('town') }} /> : (
             <ItemTable groups={groups} onSelect={selectItem} />
           )}
         </div>
