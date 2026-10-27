@@ -1,5 +1,5 @@
 // 小镇视图：用 SS 的实时快照画工作小镇。只读；点选对象复用 SS 原有的工作项/会话详情与审批入口。
-import { useEffect, useMemo, useRef, useState, type ReactNode, type TouchEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type TouchEvent } from 'react'
 import type { Conn } from '../api'
 import type { Repo, Run, Snapshot } from '../types'
 import { groupByRepo, scopedAttention, sessionBuckets } from '../model'
@@ -7,6 +7,9 @@ import { queueLanes } from '../workbench'
 import { orderedProjects } from '../projectActivity'
 import { resolveDeepLink } from '../live'
 import TownScene, { type LayoutName, type Selection } from './TownScene'
+import { WorldStage } from './WorldScene'
+import { planWorld } from './clusters'
+import type { BuildingView } from './townModel'
 import { buildTown, type Highlight, type TownModel } from './townModel'
 import { acceptSnapshot } from './feed'
 import { clampPage, needsYou, pageBuildings, pageOfCharacter } from './paging'
@@ -116,7 +119,7 @@ function useMedia(query: string): boolean {
 
 const PER_PAGE: Record<LayoutName, number> = { wide: 3, portrait: 1 }
 
-export function TownView({ snap, conn, repoId, provider, sel, onSelectItem, onSelectSession, onSelectRepo, onQueue, kiosk = false, rotateMs = DEFAULT_ROTATE_S * 1000, paused = false, layout, bar }: {
+export function TownView({ snap, conn, repoId, provider, sel, onSelectItem, onSelectSession, onSelectRepo, onQueue, kiosk = false, rotateMs = DEFAULT_ROTATE_S * 1000, paused = false, layout, bar, world = false }: {
   snap: Snapshot
   conn: Conn
   repoId: number | 'all'
@@ -135,6 +138,8 @@ export function TownView({ snap, conn, repoId, provider, sel, onSelectItem, onSe
   layout?: LayoutName
   /** 状态条右侧的附加内容（桌面模式的连接状态、退出入口）。 */
   bar?: ReactNode
+  /** 预览：大地图世界，替代宽屏的分页（竖屏仍分页）。 */
+  world?: boolean
 }) {
   // 旧快照（慢请求迟到）不覆盖新画面；同一版重复到达不重画。
   // cursor 只在数据库被替换时才会变小，那时服务端时间是新的，按重置接受。
@@ -155,11 +160,15 @@ export function TownView({ snap, conn, repoId, provider, sel, onSelectItem, onSe
 
   const narrow = useMedia(PORTRAIT_QUERY)
   const shape: LayoutName = layout ?? (narrow ? 'portrait' : 'wide')
+  const asWorld = world && shape === 'wide'
+  const urgent = useCallback((b: BuildingView) => needsYou(b, model.pendingApprovals), [model])
+  // 村庄与野外按完整快照里近 7 天的活动和关联来分；只在快照变化时重算，位置才稳定。
+  const plan = useMemo(() => planWorld(model.buildings.filter((b) => b.repo).map((b) => b.repo!), shown, Date.parse(shown.now) || Date.now()), [model, shown])
   const pages = useMemo(() => pageBuildings(model.buildings, PER_PAGE[shape], (b) => needsYou(b, model.pendingApprovals)), [model, shape])
   const [pageRaw, setPage] = useState(0)
   const page = clampPage(pageRaw, pages.length)
   const turn = (step: number) => setPage(((page + step) % pages.length + pages.length) % pages.length)
-  const rotating = kiosk && !paused && pages.length > 1
+  const rotating = kiosk && !paused && pages.length > 1 && !asWorld
   useEffect(() => {
     if (!rotating) return
     const t = window.setTimeout(() => setPage((p) => (clampPage(p, pages.length) + 1) % pages.length), rotateMs)
@@ -187,6 +196,7 @@ export function TownView({ snap, conn, repoId, provider, sel, onSelectItem, onSe
     if (s.kind === 'character') onSelectSession(Number(s.key.replace('session-', '')))
     else if (s.kind === 'building') { const id = Number(s.key.replace('repo-', '')); if (Number.isFinite(id)) onSelectRepo(id) }
     else if (s.kind === 'review-desk') onQueue('review')
+    else if (s.kind === 'item') onSelectItem(s.key)
     else if (s.kind === 'approval') {
       const t = resolveDeepLink(shown, { kind: 'approval', id: s.key })
       if (t?.kind === 'item') onSelectItem(t.id)
@@ -211,7 +221,7 @@ export function TownView({ snap, conn, repoId, provider, sel, onSelectItem, onSe
             </button>
           ))}
         </nav>
-        {pages.length > 1 && (
+        {!asWorld && pages.length > 1 && (
           <div className="town-pager" role="group" aria-label={`项目分页，第 ${page + 1} 页，共 ${pages.length} 页`}
             title={`共 ${model.buildings.length} 个项目${pinned ? `；${pinned} 个等你处理的项目固定在每页` : ''}${rotating ? `；每 ${Math.round(rotateMs / 1000)} 秒自动翻页` : ''}`}>
             <button type="button" className="town-page-btn" aria-label="上一页" onClick={() => turn(-1)}>‹</button>
@@ -230,7 +240,10 @@ export function TownView({ snap, conn, repoId, provider, sel, onSelectItem, onSe
       </div>
       <div className="town-diorama" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
         {offline && <div className="town-offline" role="status"><strong>状态待更新</strong><span>连接中断，画面停在 {hm(shown.now)}，不代表 Agent 仍在工作。</span></div>}
-        <TownScene model={model} buildings={pages[page]} layout={shape} selected={selected} highlight={highlight} onSelect={onSelect} changed={changed} offline={offline} />
+        {asWorld
+          ? <WorldStage model={model} needsYou={urgent} selected={selected} highlight={highlight} onSelect={onSelect} changed={changed} offline={offline}
+              kiosk={kiosk} rotateMs={rotateMs} paused={paused} focusKey={selKey} plan={plan} />
+          : <TownScene model={model} buildings={pages[page]} layout={shape} selected={selected} highlight={highlight} onSelect={onSelect} changed={changed} offline={offline} />}
         <ul className="town-legend" aria-label="图例">
           <li><i className="lg-building" />建筑 = 项目</li>
           <li><i className="lg-char" />角色 = 一个会话</li>

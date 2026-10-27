@@ -10,6 +10,7 @@ export type Selection =
   | { kind: 'parcel'; key: string }
   | { kind: 'approval'; key: string }
   | { kind: 'review-desk'; key: 'review-desk' }
+  | { kind: 'item'; key: string }
 
 interface SceneProps {
   model: TownModel
@@ -29,7 +30,7 @@ interface SceneProps {
 /** 招牌最多显示的字符数，全名在 aria-label 里。 */
 export const SIGN_MAX = 18
 
-interface Plot {
+export interface Plot {
   gx: number; gy: number; w: number; d: number
   /** 'x'：门朝左下，院子在 +y；'y'：门朝右下，院子在 +x。 */
   facing: 'x' | 'y'
@@ -38,7 +39,7 @@ interface Plot {
 
 export type LayoutName = 'wide' | 'portrait'
 
-interface Layout {
+export interface Layout {
   plots: Plot[]
   ground: { gx: number; gy: number; w: number; d: number }
   shadow: { cx: number; cy: number; rx: number; ry: number }
@@ -79,7 +80,7 @@ const PLOTS: Plot[] = [
   { gx: 13.0, gy: 0.6, w: 4.3, d: 2.8, facing: 'x', ...PALETTE[2] },
 ]
 
-const BUILDING_H = 58
+export const BUILDING_H = 58
 
 const LAYOUTS: Record<LayoutName, Layout> = {
   wide: {
@@ -117,14 +118,14 @@ const LAYOUTS: Record<LayoutName, Layout> = {
   },
 }
 
-const slot = (j: number) => 0.6 + j * 1.6
+export const slot = (j: number) => 0.6 + j * 1.6
 
 /** 院子局部坐标：u 沿建筑长边，v 从门向外。 */
-function yard(p: Plot, u: number, v: number): [number, number] {
+export function yard(p: Plot, u: number, v: number): [number, number] {
   return p.facing === 'x' ? [p.gx + u, p.gy + p.d + v] : [p.gx + p.w + v, p.gy + u]
 }
 
-function activate(fn: () => void) {
+export function activate(fn: () => void) {
   return {
     onClick: fn,
     onKeyDown: (e: KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fn() } },
@@ -133,7 +134,7 @@ function activate(fn: () => void) {
   }
 }
 
-function charMatches(c: CharacterView, h: Highlight): boolean {
+export function charMatches(c: CharacterView, h: Highlight): boolean {
   if (h === 'working') return c.status === 'working'
   if (h === 'waiting') return c.pendingApprovals.length > 0
   if (h === 'stale') return c.status === 'stale'
@@ -143,11 +144,11 @@ function charMatches(c: CharacterView, h: Highlight): boolean {
 
 // SS 里 Agent 交付表现为工作项进入 review（run.outcome 的 delivered 只在你标记完成时写入），
 // 所以待验收工作项上已结束、未失败的运行放到验收台。
-function onReviewDesk(p: ParcelView): boolean {
+export function onReviewDesk(p: ParcelView): boolean {
   return p.item?.status === 'review' && p.phase !== 'moving' && p.phase !== 'failed'
 }
 
-function parcelMatches(p: ParcelView, h: Highlight, staleSession: boolean): boolean {
+export function parcelMatches(p: ParcelView, h: Highlight, staleSession: boolean): boolean {
   if (h === 'failed') return p.phase === 'failed'
   if (h === 'review') return onReviewDesk(p)
   if (h === 'working') return p.phase === 'moving' && !staleSession
@@ -287,16 +288,16 @@ export default function TownScene({ model, selected, highlight, onSelect, change
   )
 }
 
-function xy([x, y]: Pt) {
+export function xy([x, y]: Pt) {
   return { x, y }
 }
 
-function Path({ from, to }: { from: [number, number]; to: [number, number] }) {
+export function Path({ from, to }: { from: [number, number]; to: [number, number] }) {
   const a = iso(...from), b = iso(...to)
   return <line x1={a[0]} y1={a[1]} x2={b[0]} y2={b[1]} stroke="#e4d6b8" strokeWidth="16" strokeLinecap="round" opacity="0.9" />
 }
 
-function Tag({ at, text, bg, fg, small, border }: { at: Pt; text: string; bg: string; fg: string; small?: boolean; border?: string }) {
+export function Tag({ at, text, bg, fg, small, border }: { at: Pt; text: string; bg: string; fg: string; small?: boolean; border?: string }) {
   const fs = small ? 10 : 12
   const w = measure(text, fs) + (small ? 10 : 14)
   const h = small ? 16 : 20
@@ -309,7 +310,7 @@ function Tag({ at, text, bg, fg, small, border }: { at: Pt; text: string; bg: st
 }
 
 /** 粗略估算中英混排宽度。 */
-function measure(text: string, fs: number): number {
+export function measure(text: string, fs: number): number {
   let w = 0
   for (const ch of text) w += ch.charCodeAt(0) > 0x2e80 ? fs : fs * 0.58
   return w
@@ -331,14 +332,31 @@ export function parcelTitle(p: ParcelView, max: number) {
   return p.item?.title ? `${id} ${clip(p.item.title, max)}` : id
 }
 
-function Building({ plot: p, b, selected, dimClass, onSelect, signScale = 1 }: { plot: Plot; b: BuildingView; selected: boolean; dimClass: string; onSelect: () => void; signScale?: number }) {
+/** 建筑外形：小镇默认是“房子”；大地图按项目体量换成小木屋、工坊或大楼。 */
+export interface BuildingShape {
+  kind: 'cabin' | 'house' | 'workshop' | 'tower'
+  name: string
+  h: number
+  rise: number
+  walls: { top: string; front: string; side: string; edge: string }
+  /** 每面墙上的窗户行数。 */
+  floors: number
+}
+
+export const HOUSE_SHAPE: BuildingShape = {
+  kind: 'house', name: '房子', h: BUILDING_H, rise: 34, floors: 1,
+  walls: { top: '#efe3cc', front: '#f6ecda', side: '#e4d4b8', edge: '#9b7b55' },
+}
+
+export function Building({ plot: p, b, selected, dimClass, onSelect, signScale = 1, shape = HOUSE_SHAPE }: { plot: Plot; b: BuildingView; selected: boolean; dimClass: string; onSelect: () => void; signScale?: number; shape?: BuildingShape }) {
+  const H = shape.h
   const active = b.items.filter((w) => w.status !== 'done' && w.status !== 'abandoned').length
   const done = b.items.filter((w) => w.status === 'done').length
   const hidden = Math.max(0, b.characters.length - MAX_SEATS)
   const sign = clip(b.name, SIGN_MAX)
   const tasks = buildingTasks(b.items)
   const signW = measure(sign, 14) + 26
-  const label = iso(p.gx + p.w / 2, p.gy + p.d / 2, BUILDING_H + 66)
+  const label = iso(p.gx + p.w / 2, p.gy + p.d / 2, H + 66)
   const corner = iso(p.gx + p.w, p.gy + p.d)
   // 窗户与门画在朝向镜头的长面上。
   const win = (u: number, v: number, ww: number, wh: number, color: string) => {
@@ -350,22 +368,37 @@ function Building({ plot: p, b, selected, dimClass, onSelect, signScale = 1 }: {
     <g className={`town-obj town-building${selected ? ' is-selected' : ''}${dimClass}`}
       aria-label={`项目建筑 ${b.name}：${b.characters.length} 个会话，${active} 个未完成任务${hidden ? `，另有 ${hidden} 个会话不在画面中` : ''}`} {...activate(onSelect)}>
       <IsoTile gx={p.gx - 0.4} gy={p.gy - 0.4} w={p.w + 0.8} d={p.d + 0.8} fill="#c9b48e" opacity={0.5} />
-      <IsoBox gx={p.gx} gy={p.gy} w={p.w} d={p.d} h={BUILDING_H} top="#efe3cc" left={p.facing === 'x' ? '#f6ecda' : '#e4d4b8'} right={p.facing === 'x' ? '#e4d4b8' : '#f6ecda'} stroke="#9b7b55" />
+      <IsoBox gx={p.gx} gy={p.gy} w={p.w} d={p.d} h={H} top={shape.walls.top} left={p.facing === 'x' ? shape.walls.front : shape.walls.side} right={p.facing === 'x' ? shape.walls.side : shape.walls.front} stroke={shape.walls.edge} />
+      {shape.kind === 'workshop' && (
+        // 工坊侧面的披屋
+        <IsoBox gx={p.gx + p.w} gy={p.gy + 0.3} w={1.5} d={p.d - 0.6} h={H * 0.55} top="#a07a52" left={shape.walls.front} right={shape.walls.side} stroke={shape.walls.edge} />
+      )}
       {/* 门、窗 */}
       {win(long / 2 - 0.4, 0, 0.8, 30, p.accent)}
-      {win(0.45, 22, 0.9, 18, '#ffe2a0')}
-      {win(long - 1.35, 22, 0.9, 18, '#ffe2a0')}
-      <HipRoof gx={p.gx} gy={p.gy} w={p.w} d={p.d} z={BUILDING_H} rise={34} front={p.roof} side={p.roofSide} stroke="#5a3a2a" />
+      {Array.from({ length: shape.floors }, (_, f) => (
+        <g key={f}>
+          {win(0.45, 22 + f * 30, 0.9, 18, '#ffe2a0')}
+          {win(long - 1.35, 22 + f * 30, 0.9, 18, '#ffe2a0')}
+          {shape.kind !== 'cabin' && long > 4.6 && win(long / 2 + 0.7, 22 + f * 30, 0.8, 18, '#ffe2a0')}
+        </g>
+      ))}
+      <HipRoof gx={p.gx} gy={p.gy} w={p.w} d={p.d} z={H} rise={shape.rise} front={p.roof} side={p.roofSide} stroke="#5a3a2a" />
       {/* 烟囱 */}
-      <IsoBox gx={p.gx + (p.facing === 'x' ? p.w * 0.72 : 0.6)} gy={p.gy + (p.facing === 'x' ? 0.5 : p.d * 0.72)} w={0.45} d={0.45} h={28} z={BUILDING_H + 14} top="#8d5b45" left="#b07258" right="#94604a" />
+      <IsoBox gx={p.gx + (p.facing === 'x' ? p.w * 0.72 : 0.6)} gy={p.gy + (p.facing === 'x' ? 0.5 : p.d * 0.72)} w={0.45} d={0.45} h={28} z={H + 14} top="#8d5b45" left="#b07258" right="#94604a" />
+      {shape.kind === 'tower' && (
+        <g transform={`translate(${iso(p.gx + p.w / 2, p.gy + p.d / 2, H + shape.rise).join(',')})`} aria-hidden>
+          <line x1="0" y1="0" x2="0" y2="-34" stroke="#5a3a2a" strokeWidth="2" />
+          <path d="M0,-34 l20,6 l-20,7 z" fill={p.accent} />
+        </g>
+      )}
       {done > 0 && (
-        <g transform={`translate(${iso(p.gx + p.w * 0.28, p.gy + p.d / 2, BUILDING_H + 34).join(',')})`} aria-hidden>
+        <g transform={`translate(${iso(p.gx + p.w * 0.28, p.gy + p.d / 2, H + 34).join(',')})`} aria-hidden>
           <line x1="0" y1="0" x2="0" y2="-26" stroke="#6b4a2a" strokeWidth="1.8" />
           <path d="M0,-26 l16,4.5 l-16,5.5 z" fill="#4f9d5d" />
         </g>
       )}
       {b.characters.some((c) => c.status === 'working') && (
-        <g transform={`translate(${iso(p.gx + (p.facing === 'x' ? p.w * 0.72 : 0.8), p.gy + (p.facing === 'x' ? 0.7 : p.d * 0.72), BUILDING_H + 50).join(',')})`}>
+        <g transform={`translate(${iso(p.gx + (p.facing === 'x' ? p.w * 0.72 : 0.8), p.gy + (p.facing === 'x' ? 0.7 : p.d * 0.72), H + 50).join(',')})`}>
           <g className="town-smoke">
             <circle r="5" fill="#fff" opacity="0.7" />
             <circle cx="6" cy="-9" r="6" fill="#fff" opacity="0.5" />
@@ -373,12 +406,12 @@ function Building({ plot: p, b, selected, dimClass, onSelect, signScale = 1 }: {
         </g>
       )}
       {/* 招牌：长名截断，全名在 aria-label */}
-      <g transform={`translate(${label[0]},${label[1]}) scale(${signScale})`}>
+      <g className="town-sign" transform={`translate(${label[0]},${label[1]}) scale(${signScale})`}>
         <line x1="0" y1="10" x2="0" y2="26" stroke="#7a5a3a" strokeWidth="1.5" />
         <rect x={-signW / 2} y={-14} width={signW} height={26} rx="6" fill="#fffaf0" stroke={selected ? '#2d6cdf' : p.accent} strokeWidth={selected ? 3 : 2} />
         <text y="4" textAnchor="middle" fontSize="14" fontWeight="700" fill="#3a2a1c">{sign}</text>
         <text y="-22" textAnchor="middle" fontSize="10.5" fill="#6b5a44" className="town-sub">
-          {b.characters.length} 个会话 · {active} 个未完成{done ? ` · 已完成 ${done}` : ''}
+          {shape === HOUSE_SHAPE ? '' : `${shape.name} · `}{b.characters.length} 个会话 · {active} 个未完成{done ? ` · 已完成 ${done}` : ''}
         </text>
         {tasks.lines.map((t, i) => (
           <text key={t.id} y={-38 - (tasks.lines.length - 1 - i) * 14} textAnchor="middle" fontSize="10.5" fill="#3a2a1c" className="town-task">
@@ -392,7 +425,7 @@ function Building({ plot: p, b, selected, dimClass, onSelect, signScale = 1 }: {
   )
 }
 
-function Tree({ at, k }: { at: Pt; k: number }) {
+export function Tree({ at, k }: { at: Pt; k: number }) {
   const [x, y] = at
   return (
     <g aria-hidden transform={`translate(${x},${y}) scale(${k})`}>
@@ -405,7 +438,7 @@ function Tree({ at, k }: { at: Pt; k: number }) {
   )
 }
 
-function Desk({ gx, gy, facing }: { gx: number; gy: number; facing: 'x' | 'y' }) {
+export function Desk({ gx, gy, facing }: { gx: number; gy: number; facing: 'x' | 'y' }) {
   const [w, d] = facing === 'x' ? [0.9, 0.55] : [0.55, 0.9]
   return <IsoBox gx={gx} gy={gy} w={w} d={d} h={12} top="#c99a63" left="#a87a48" right="#8f6638" />
 }
@@ -428,14 +461,14 @@ const STATUS_COLOR: Record<CharacterView['status'], { bg: string; fg: string }> 
   unknown: { bg: '#d8d2c8', fg: '#4a4033' },
 }
 
-function charLook(c: CharacterView) {
+export function charLook(c: CharacterView) {
   const s = c.session
   const isCat = s.provider !== 'claude' && s.provider !== 'codex' && (s.client ?? '').includes('猫')
   const style = PROVIDER_STYLE[isCat ? 'cat' : s.provider] ?? PROVIDER_STYLE.other
   return { isCat, style, st: STATUS_COLOR[c.status] }
 }
 
-function Character({ at, c, selected, dimClass, onSelect }: { at: Pt; c: CharacterView; selected: boolean; dimClass: string; onSelect: () => void }) {
+export function Character({ at, c, selected, dimClass, onSelect }: { at: Pt; c: CharacterView; selected: boolean; dimClass: string; onSelect: () => void }) {
   const s = c.session
   const { isCat, style } = charLook(c)
   const skin = isCat ? '#f2b36b' : '#f6d7b8'
@@ -444,6 +477,8 @@ function Character({ at, c, selected, dimClass, onSelect }: { at: Pt; c: Charact
     <g style={{ transform: `translate(${at[0]}px,${at[1]}px) scale(1.22)` }}
       className={`town-obj town-move town-char is-${c.status}${selected ? ' is-selected' : ''}${dimClass}`}
       aria-label={`${c.name}，${characterStatusLabel[c.status]}${c.item ? `，任务 ${c.item.title}` : ''}`} {...activate(onSelect)}>
+      {/* 闲着的会话在院子里来回溜达；干活的手边冒火花 */}
+      <g className={c.status === 'idle' ? 'town-stroll' : undefined} style={c.status === 'idle' ? { animationDelay: `${-(s.id % 7) * 1.3}s` } : undefined}>
       <rect x="-17" y="-58" width="34" height="64" fill="transparent" />
       <ellipse className="town-pulse" rx="16" ry="7" fill="none" stroke="#ff9f1a" strokeWidth="2.5" />
       <ellipse rx="13" ry="5" fill="rgba(40,25,10,.22)" />
@@ -490,17 +525,23 @@ function Character({ at, c, selected, dimClass, onSelect }: { at: Pt; c: Charact
         </g>
       )}
       {c.status === 'idle' && <text className="town-zzz" x="13" y="-56" fontSize="11" fill="#6b5a44">z z</text>}
+      {c.status === 'working' && (
+        <g className="town-spark" aria-hidden>
+          <path d="M13,-26 l5,-4 M14,-21 l7,0 M13,-16 l5,4" stroke="#ffb02e" strokeWidth="1.8" strokeLinecap="round" />
+        </g>
+      )}
       {stale && (
         <g>
           <path d="M6,-62 a7,7 0 0 1 12,-6 a8,8 0 0 1 15,3 a6,6 0 0 1 -2,11 h-23 a6,6 0 0 1 -2,-8 z" fill="#e9e9e9" stroke="#8a8a8a" />
           <text x="20" y="-56" textAnchor="middle" fontSize="9" fill="#555">?</text>
         </g>
       )}
+      </g>
     </g>
   )
 }
 
-function Crate({ at, fill, tape, size = 1 }: { at: Pt; fill: string; tape: string; size?: number }) {
+export function Crate({ at, fill, tape, size = 1 }: { at: Pt; fill: string; tape: string; size?: number }) {
   const hw = 10 * size, hh = 5 * size, h = 11 * size
   const [x, y] = at
   const T: Pt = [x, y - hh * 2 - h], L: Pt = [x - hw, y - hh - h], R: Pt = [x + hw, y - hh - h], F: Pt = [x, y - h]
@@ -523,7 +564,7 @@ function mix(a: string, b: string, t: number) {
   return `#${ch(16)}${ch(8)}${ch(0)}`
 }
 
-function Parcel({ at, p, stale, moving, selected, dimClass, onSelect, label }: { at: Pt; p: ParcelView; stale?: boolean; moving?: boolean; selected: boolean; dimClass: string; onSelect: () => void; label?: ReactNode }) {
+export function Parcel({ at, p, stale, moving, selected, dimClass, onSelect, label }: { at: Pt; p: ParcelView; stale?: boolean; moving?: boolean; selected: boolean; dimClass: string; onSelect: () => void; label?: ReactNode }) {
   const review = onReviewDesk(p)
   const fill = stale ? '#c8c8c8' : p.phase === 'failed' ? '#d9776b' : review ? '#d6b27a' : '#d4a565'
   const tape = review ? '#5b6cd8' : p.phase === 'failed' ? '#8f2a22' : '#f1dfb8'
@@ -545,7 +586,7 @@ function Parcel({ at, p, stale, moving, selected, dimClass, onSelect, label }: {
   )
 }
 
-function FailRack({ at, count }: { at: { gx: number; gy: number }; count: number }) {
+export function FailRack({ at, count }: { at: { gx: number; gy: number }; count: number }) {
   const { gx, gy } = at
   const base = iso(gx + 0.7, gy + 0.55)
   return (
@@ -556,7 +597,7 @@ function FailRack({ at, count }: { at: { gx: number; gy: number }; count: number
   )
 }
 
-function StatusPill({ at, name, status, bg, fg, edge }: { at: Pt; name: string; status: string; bg: string; fg: string; edge: string }) {
+export function StatusPill({ at, name, status, bg, fg, edge }: { at: Pt; name: string; status: string; bg: string; fg: string; edge: string }) {
   const fs = 9.5
   const a = measure(status, fs) + 10, b = measure(name, fs) + 10
   const x0 = -(a + b) / 2
@@ -570,7 +611,7 @@ function StatusPill({ at, name, status, bg, fg, edge }: { at: Pt; name: string; 
   )
 }
 
-function ReviewDesk({ at, count, selected, dimDesk, onSelect }: { at: { gx: number; gy: number }; count: number; selected: boolean; dimDesk: string; onSelect: (s: Selection) => void }) {
+export function ReviewDesk({ at, count, selected, dimDesk, onSelect }: { at: { gx: number; gy: number }; count: number; selected: boolean; dimDesk: string; onSelect: (s: Selection) => void }) {
   const { gx, gy } = at
   const label = iso(gx - 0.2, gy + 0.55, 50)
   return (
@@ -598,11 +639,11 @@ function ReviewDesk({ at, count, selected, dimDesk, onSelect }: { at: { gx: numb
 const KIND_SHORT: Record<string, string> = { permission: '权限', merge: '合并', decision: '决定', attention: '提醒' }
 
 /** 告示栏高度（不含立柱），随待决定卡片数变化。 */
-function boardHeight(cards: number): number {
+export function boardHeight(cards: number): number {
   return 46 + Math.max(1, cards) * 34
 }
 
-function DecisionBoard({ place, model, isSel, dimClass, onSelect }: { place: Layout['board']; model: TownModel; isSel: (k: string) => boolean; dimClass: string; onSelect: (s: Selection) => void }) {
+export function DecisionBoard({ place, model, isSel, dimClass, onSelect }: { place: Layout['board']; model: TownModel; isSel: (k: string) => boolean; dimClass: string; onSelect: (s: Selection) => void }) {
   const cards = model.pendingApprovals
   const h = boardHeight(cards.length)
   // 以底边中点为原点画，外层按版式平移、缩放。

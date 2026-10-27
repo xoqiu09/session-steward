@@ -91,7 +91,7 @@ export default function App() {
     return (
       <div className="app is-kiosk" onKeyDown={(e) => { if (e.key === 'Escape' && drawer) closeDrawer() }}>
         <main className="kiosk-main">
-          <TownView snap={snap} conn={conn} repoId={repoId} provider={provider} sel={sel} onSelectItem={selectItem} onSelectSession={selectSession}
+          <TownView world={route.world} snap={snap} conn={conn} repoId={repoId} provider={provider} sel={sel} onSelectItem={selectItem} onSelectSession={selectSession}
             onSelectRepo={(id) => setRepoId(id)} onQueue={openQueue} kiosk rotateMs={route.rotateMs} paused={drawer}
             bar={<span className="kiosk-tools">
               {repoId !== 'all' && <button className="btn small" onClick={() => setRepoId('all')} title="点建筑会只看这个项目">← 全部项目</button>}
@@ -163,7 +163,7 @@ export default function App() {
           <div className="project-shortcuts">{groups.map((g) => <button key={g.key} disabled={g.repoId == null} className={repoId === g.repoId ? 'on' : ''} onClick={() => { if (g.repoId != null) { setRepoId(g.repoId); setSel(null); setAttributionOpen(false); setTab('queue') } }} title={g.name}><strong>{g.name}</strong><small>工作项 {g.items.length} · 待关联 {g.sessions.length}{projectQueueCounts(snap, g.repoId).action ? ` · 需审批 ${projectQueueCounts(snap, g.repoId).action}` : ''}</small></button>)}</div>
         </div>
         <div className="stage">
-          {view === 'town' ? <TownView snap={snap} conn={conn} repoId={repoId} provider={provider} sel={sel} onSelectItem={selectItem} onSelectSession={selectSession}
+          {view === 'town' ? <TownView world={route.world} snap={snap} conn={conn} repoId={repoId} provider={provider} sel={sel} onSelectItem={selectItem} onSelectSession={selectSession}
             onSelectRepo={(id) => setRepoId(id)} onQueue={(lane) => { setSel(null); setAttributionOpen(false); setTab('queue'); setQueueFocus(lane) }} />
             : view === 'overview' ? <Overview snap={snap} groups={groups} onSelectItem={selectItem} onSelectSession={selectSession} onOpenAttribution={openAttributions} pendingCount={counts.action} reviewCount={counts.review} expandQuiet={!!query.trim() || repoId !== 'all'} onQueue={(lane = 'action') => { setSel(null); setAttributionOpen(false); setTab('queue'); setQueueFocus(lane) }} /> : view === 'canvas' ? (
             <ReactFlowProvider>
