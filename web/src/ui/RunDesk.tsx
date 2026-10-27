@@ -5,7 +5,7 @@ import { ago, itemSignal, itemStatusLabel, providerLabel, sessionStateLabel } fr
 import { attemptsOf } from '../brief'
 import { StatusChip } from './StatusChip'
 import { CommandBlock } from './CommandBlock'
-import { candidateOf, clock, commandsOf, currentRuns, shortSha, staleWriters, timelineOf, type RunState } from './runDeskModel'
+import { candidateOf, clock, commandsOf, currentRuns, runsBySession, shortSha, staleWriters, timelineOf, type RunState } from './runDeskModel'
 
 const outcomeLabel: Record<string, string> = { delivered: '交付', failed: '失败', abandoned: '放弃', handed_off: '转交', historical: '历史关联', attribution_reverted: '已撤销归属', '': '结果待定' }
 
@@ -76,16 +76,18 @@ export function RunDesk({ snap, item, remote, onClose, onSelectSession, attentio
               <li key={a.attempt} className={`rd-tree-attempt ${i === 0 ? 'is-current' : ''}`}>
                 <span>尝试 {a.attempt}{i === 0 ? '（当前）' : ''}</span>
                 <ol>
-                  {a.runs.map((r) => {
-                    const s = sessions.get(r.session_id)
-                    const current = currentBySession.get(r.session_id)
+                  {runsBySession(a.runs).map((g) => {
+                    const s = sessions.get(g.sessionId)
+                    const current = currentBySession.get(g.sessionId)
+                    const spans = g.runs.map((r) => `${clock(r.started_at)}${r.ended_at ? ` → ${clock(r.ended_at)} ${outcomeLabel[r.outcome] ?? r.outcome}` : ' 起，进行中'}`).join('\n')
                     return (
-                      <li key={r.id}>
-                        <button className="rd-tree-run" onClick={() => onSelectSession(r.session_id)}>
-                          <AgentBadge provider={r.provider} />
-                          <span>#{r.session_id}</span>
+                      <li key={g.sessionId}>
+                        <button className="rd-tree-run" onClick={() => onSelectSession(g.sessionId)} title={`会话 #${g.sessionId} 在这项工作上的 ${g.runs.length} 段运行：\n${spans}`}>
+                          <AgentBadge provider={g.provider} />
+                          <span>#{g.sessionId}</span>
                           <StatusChip state={current?.state ?? sessionRunState(s)} label={current?.statusLabel ?? (s ? sessionStateLabel[s.state] : '未知')} />
-                          {r.ended_at && <small>{outcomeLabel[r.outcome] ?? r.outcome}</small>}
+                          {g.runs.length > 1 && <small>{g.runs.length} 段运行</small>}
+                          {!g.open && <small>{outcomeLabel[g.outcome] ?? g.outcome}</small>}
                         </button>
                       </li>
                     )

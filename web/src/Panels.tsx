@@ -15,6 +15,7 @@ import { FeatureProgress } from './FeatureProgress'
 import { HistoryItems } from './HistoryItems'
 import { repoLabel } from './workbench'
 import { RunDesk } from './ui/RunDesk'
+import { DeliveryReview } from './ui/DeliveryReview'
 import { BriefReadOnly } from './ui/BriefReadOnly'
 import {
   ago, freshnessLabel, itemSignal, itemStatusLabel, mergeStateLabel, nextItemId, providerLabel, repoPrefix, sessionBuckets, sessionName, sessionRepo, sessionSignal, sessionStateLabel, sessionsFor, type SessionScope,
@@ -46,16 +47,13 @@ export function ItemDetail({ snap, id, onClose, onSelectSession }: { snap: Snaps
         return <>
           {perms.length > 0 && <div className="item-permissions"><h3>等待你处理的权限</h3>{perms.map((a) => <PermissionCard key={a.id} a={a} snap={snap} />)}</div>}
           {item.automatic_history && <section className="delivery-review" aria-label="自动任务归档"><h3>本轮已自动归档</h3><p>Agent 已回报完成，按例行整理规则收进历史，无需你逐轮验收。可以在这里查看本轮来源；发现问题时可重新开始。</p></section>}
-          {item.status === 'review' && item.completion_policy !== 'auto_history' && <section className="delivery-review" aria-label="交付验收">
-            <h3>这项交付待你验收</h3>
-            <p>请查看交付说明和验收条件，再选择通过或退回。验收不会批准工具、合并代码或发布。</p>
-            {item.acceptance && <details><summary>查看验收条件</summary><p className="pre">{item.acceptance}</p></details>}
+          {item.status === 'review' && item.completion_policy !== 'auto_history' && <DeliveryReview snap={snap} item={item} onSelectSession={onSelectSession} actions={<>
             {remote ? <p className="hint">远程只读，请在本机面板验收。</p> : <div className="row wrap">
               <button className="btn primary" disabled={act.busy} onClick={() => set('done')}>验收通过</button>
               <button className="btn" disabled={act.busy} onClick={() => set('in_progress')}>退回修改</button>
             </div>}
             <ErrorLine msg={act.error} />
-          </section>}
+          </>} />}
         </>
       })()}>
       <AISummaryBox snap={snap} itemId={id} repoId={item.repo_id} />
