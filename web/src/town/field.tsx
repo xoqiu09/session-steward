@@ -1,7 +1,7 @@
 // 门口的菜地：3×3 的田垄，每棵菜是一个工作项，长势对应状态。点菜打开工作项（验收卡片）。全部自己画的 SVG。
 import { IsoBox, iso, type Pt } from './iso'
 import { Tag, activate, type Selection } from './TownScene'
-import { CROP_NAME, STAGE_LABEL, cropsOf, cropKindOf, type Crop, type CropKind } from './harvest'
+import { CROP_NAME, STAGE_LABEL, cropsOf, cropKindOf, type CropKind, type CropStage } from './harvest'
 import type { BuildingView } from './townModel'
 import type { Approval } from '../types'
 
@@ -35,7 +35,7 @@ export function Field({ gx, gy, b, pending, now, selectedKey, dimClass = '', onS
             <title>{`${c.item.id} ${c.item.title}\n${STAGE_LABEL[c.stage]}${c.overripe ? '（熟了很久还没收）' : ''}`}</title>
             <rect x="-18" y="-56" width="36" height="60" fill="transparent" />
             {selectedKey === c.item.id && <ellipse rx="19" ry="9" fill="none" stroke="#2d6cdf" strokeWidth="2.5" />}
-            <g transform="scale(1.5)"><CropShape crop={c} kind={kind} /></g>
+            <g transform="scale(1.5)"><CropShape stage={c.stage} overripe={c.overripe} kind={kind} /></g>
           </g>
         )
       })}
@@ -57,23 +57,24 @@ function Sprout({ color = LEAF, droop = false }: { color?: string; droop?: boole
   )
 }
 
-function CropShape({ crop, kind }: { crop: Crop; kind: CropKind }) {
+/** 一棵菜的样子；说明面板里也用它画图例。 */
+export function CropShape({ stage, overripe = false, kind }: { stage: CropStage; overripe?: boolean; kind: CropKind }) {
   const mound = <ellipse cy="1" rx="8" ry="3.2" fill="#6b4b2e" />
-  if (crop.stage === 'seed') return <g>{mound}<circle cy="-2" r="2.4" fill="#d9b77a" /></g>
-  if (crop.stage === 'sprout') return <g className="town-sway">{mound}<Sprout /></g>
-  if (crop.stage === 'thirsty') return (
+  if (stage === 'seed') return <g>{mound}<circle cy="-2" r="2.4" fill="#d9b77a" /></g>
+  if (stage === 'sprout') return <g className="town-sway">{mound}<Sprout /></g>
+  if (stage === 'thirsty') return (
     <g>{mound}<Sprout color={DRY} droop />
       <path className="town-blink" d="M10,-30 q5,7 0,10 q-5,-3 0,-10z" fill="#4b9bd8" stroke="#2f6fa8" strokeWidth="1" />
     </g>
   )
-  if (crop.stage === 'bug') return (
+  if (stage === 'bug') return (
     <g>{mound}<Sprout color={DRY} droop />
       <ellipse cx="6" cy="-12" rx="4.2" ry="3.2" fill="#d2483d" /><circle cx="9.5" cy="-14" r="1.6" fill="#3a1a14" />
       <circle cx="5" cy="-13" r="0.9" fill="#3a1a14" /><circle cx="7" cy="-11" r="0.9" fill="#3a1a14" />
     </g>
   )
   // 熟了：按项目的菜画；熟太久的发蔫变暗。
-  const wilt = crop.overripe
+  const wilt = overripe
   return (
     <g className={wilt ? undefined : 'town-ripe'} opacity={wilt ? 0.8 : 1}>
       {mound}
