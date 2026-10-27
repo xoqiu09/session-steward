@@ -55,15 +55,15 @@ describe('包裹标签', () => {
 describe('桌面模式抽屉里的会话详情', () => {
   const snap: Snapshot = { cursor: 1, now, repos: [], sessions: [fakeSession({ id: 80, provider: 'claude', state: 'idle' })], work_items: [], deps: [], runs: [], approvals: [] }
 
-  it('原始事件默认折叠', () => {
+  it('最近活动默认折叠', () => {
     const html = renderToStaticMarkup(<SessionDetail snap={snap} id={80} onClose={() => {}} onSelectItem={() => {}} foldEvents />)
     expect(html).toContain('<details class="events-fold">')
-    expect(html).not.toContain('<h3>最近事件</h3>')
+    expect(html).not.toContain('<h3>最近活动')
   })
 
   it('完整面板里照旧展开', () => {
     const html = renderToStaticMarkup(<SessionDetail snap={snap} id={80} onClose={() => {}} onSelectItem={() => {}} />)
-    expect(html).toContain('<h3>最近事件</h3>')
+    expect(html).toContain('<h3>最近活动')
     expect(html).not.toContain('events-fold')
   })
 })
