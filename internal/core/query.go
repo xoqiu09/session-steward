@@ -15,6 +15,8 @@ type Repo struct {
 	CommonDir string `json:"common_dir"`
 	IsGit     bool   `json:"is_git"`
 	TargetRef string `json:"target_ref"`
+	// Device 只在“全部设备”合并视图里有：项目在哪台电脑上。
+	Device string `json:"device,omitempty"`
 }
 
 type Session struct {
@@ -135,6 +137,8 @@ type Snapshot struct {
 	SummaryRepos []int64          `json:"summary_repos"`
 	// ReplayAt 非空表示这是回放快照（小镇时间条），只读。
 	ReplayAt string `json:"replay_at,omitempty"`
+	// Devices 只在“全部设备”合并视图里有。
+	Devices []HubDevice `json:"devices,omitempty"`
 }
 
 // Snapshot 返回界面需要的完整状态。审批只包含未关闭的和最近 24 小时关闭的。

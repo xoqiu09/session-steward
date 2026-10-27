@@ -613,3 +613,11 @@ select.outcome { font-size: 12px; margin: 2px 0 4px; }
 .usage-subagents li small{grid-column:1/-1}
 .sub-state.done{color:#3f8f4f}.sub-state.running{color:#c98a12}.sub-type{font-weight:600}.sub-desc{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .history-day-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
+/* 多设备 */
+.hub-switch{display:inline-flex;align-items:center;gap:4px;flex-wrap:wrap;margin-left:8px}
+.hub-switch button{padding:3px 10px;border-radius:8px;border:1px solid #c9b896;background:#fff;font-size:12px;cursor:pointer}
+.hub-switch button.on{background:#2f3a8f;border-color:#2f3a8f;color:#fff}
+.hub-dev{display:inline-flex;align-items:center;gap:4px;padding:1px 8px;border-radius:10px;background:#f2ede3;font-size:12px;color:#7a6a55}
+.hub-dev i{width:7px;height:7px;border-radius:50%;background:#b8ad9a}.hub-dev.is-on{color:#2e5d2c}.hub-dev.is-on i{background:#3f8f4f}
+.hub-err{font-size:12px;color:#a33a2f}
+.hub-toast{position:fixed;z-index:50;left:50%;bottom:24px;transform:translateX(-50%);max-width:min(560px,90vw);padding:10px 14px;border-radius:10px;background:#2f3a8f;color:#fff;font-size:13px;box-shadow:0 6px 20px rgba(0,0,0,.18)}

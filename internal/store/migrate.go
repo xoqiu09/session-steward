@@ -38,6 +38,13 @@ var migrations = []migration{
  PRIMARY KEY (session_id, day, model)
 );
 CREATE INDEX IF NOT EXISTS usage_daily_day ON usage_daily(day)`)},
+	// 多设备中心机：每台设备最近一次推来的摘要（JSON）。离线的保留最后一次。
+	{4, execSQL(`CREATE TABLE IF NOT EXISTS hub_devices (
+ device_id TEXT PRIMARY KEY,
+ name TEXT NOT NULL,
+ received_at TEXT NOT NULL,
+ body TEXT NOT NULL
+)`)},
 }
 
 func execSQL(q string) func(*sql.Tx) error {

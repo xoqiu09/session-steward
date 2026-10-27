@@ -1,6 +1,8 @@
 export type Provider = 'claude' | 'codex' | 'other' | string
 
 export interface Repo {
+  /** 只在“全部设备”合并视图里有：项目在哪台电脑上。 */
+  device?: string
   id: number
   name: string
   common_dir: string
@@ -146,6 +148,8 @@ export interface Approval {
 }
 
 export interface Snapshot {
+  /** 只在“全部设备”合并视图里有。 */
+  devices?: HubDevice[]
   /** 回放快照（小镇时间条）才有：那一刻的时间。只读。 */
   replay_at?: string
 	features?: ProjectFeature[] | null
@@ -270,3 +274,7 @@ export interface SessionUsageDetail {
   subagents: SubagentUsage[]
   with_subagents: Tokens
 }
+
+// ---- 多设备 ----
+export interface HubDevice { id: string; name: string; self: boolean; received_at: string; online: boolean }
+export interface HubStatus { role: '' | 'hub' | 'agent'; device?: string; device_id?: string; url?: string; last_push_at?: string; last_error?: string }

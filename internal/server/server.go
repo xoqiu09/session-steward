@@ -30,6 +30,8 @@ type Server struct {
 	// 远程访问（默认关闭）：允许的反向代理 HTTPS 主机名，以及远程设备 token。
 	RemoteHosts []string
 	RemoteToken string
+	// 多设备合并（默认 nil，关闭）。
+	Hub *Hub
 }
 
 func (s *Server) remoteHost(host string) bool {
@@ -183,6 +185,11 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/sessions/{id}/events", s.panel(s.handleSessionEvents))
 	mux.HandleFunc("GET /api/sessions/{id}/usage", s.panel(s.handleSessionUsage))
 	mux.HandleFunc("GET /api/history", s.panel(s.handleHistory))
+	// 多设备：推送和取回只认共享密钥（中心机经 Tailscale 被其他设备访问）；面板用的两个接口仍要面板登录。
+	mux.HandleFunc("POST /api/hub/push", s.handleHubPush)
+	mux.HandleFunc("GET /api/hub/pull", s.handleHubPull)
+	mux.HandleFunc("GET /api/hub/snapshot", s.panel(s.handleHubSnapshot))
+	mux.HandleFunc("GET /api/hub/status", s.panel(s.handleHubStatus))
 	mux.HandleFunc("GET /api/history/day", s.panel(s.handleHistoryDay))
 	mux.HandleFunc("POST /api/sessions/{id}/bind", s.panel(s.handleBind))
 	mux.HandleFunc("POST /api/sessions/{id}/unbind", s.panel(s.handleUnbind))

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { isRemote, remoteReadOnlyMessage } from './access'
-import type { AISummary, AttributionDecision, BriefEdit, DayDetail, Handoff, HistoryResp, ManagedSession, MergeJob, Review, SessionUsageDetail, Snapshot } from './types'
+import type { AISummary, AttributionDecision, BriefEdit, DayDetail, Handoff, HistoryResp, HubStatus, ManagedSession, MergeJob, Review, SessionUsageDetail, Snapshot } from './types'
 
 export class ApiError extends Error {
   status: number
@@ -46,6 +46,8 @@ export const api = {
   decideAttributions: (decisions: AttributionDecision[]) => call('POST', '/api/attributions/decide', { decisions }),
   snapshot: () => call<Snapshot>('GET', '/api/snapshot'),
   snapshotAt: (at: string) => call<Snapshot>('GET', `/api/snapshot?at=${encodeURIComponent(at)}`),
+  hubStatus: () => call<HubStatus>('GET', '/api/hub/status'),
+  hubSnapshot: () => call<Snapshot>('GET', '/api/hub/snapshot'),
   sessionEvents: (id: number) => call<Record<string, unknown>[]>('GET', `/api/sessions/${id}/events`),
   sessionUsage: (id: number) => call<SessionUsageDetail>('GET', `/api/sessions/${id}/usage`),
   history: (days = 370) => call<HistoryResp>('GET', `/api/history?days=${days}`),
