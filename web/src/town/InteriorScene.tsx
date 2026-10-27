@@ -7,6 +7,8 @@ import {
   type Selection,
 } from './TownScene'
 import { Flowers, Pine } from './scenery'
+import { AGENTS, agentOf, type Agent } from './agents'
+import { Cart, type ShedSpot } from './workshop'
 import type { WorkItem } from '../types'
 
 const ROOM_W = 16
@@ -39,6 +41,49 @@ export function benchItems(b: BuildingView): { shown: WorkItem[]; more: number }
   return { shown: open.slice(0, cap), more: Math.max(0, open.length - cap) }
 }
 
+/** 一个分区（一个 Agent）：x 方向的范围、摆上台的工作项和没摆上的数量。 */
+export interface Zone { agent: Agent; gx0: number; gx1: number; items: WorkItem[]; more: number }
+
+/** 工作项属于哪个 Agent：有会话正在做它就看那个会话，否则看最后一次运行它的 Agent。 */
+export function itemAgent(b: BuildingView, w: WorkItem): Agent | null {
+  const c = b.characters.find((x) => x.item?.id === w.id)
+  if (c) return agentOf(c.session)
+  const runs = b.parcels.filter((p) => p.item?.id === w.id).sort((x, y) => y.run.started_at.localeCompare(x.run.started_at))
+  return runs.length ? agentOf({ provider: runs[0].run.provider as never }) : null
+}
+
+/** 项目里有两个以上 Agent 时，房间按 Agent 分成左右（或三块）区域；只有一个时返回 null，用原来的布局。 */
+export function agentZones(b: BuildingView): Zone[] | null {
+  const open = b.items.filter((w) => w.status !== 'done' && w.status !== 'abandoned')
+    .slice().sort((x, y) => ORDER[x.status] - ORDER[y.status] || y.updated_at.localeCompare(x.updated_at))
+  const owner = new Map(open.map((w) => [w.id, itemAgent(b, w)]))
+  const present = AGENTS.map((a) => a.key).filter((a) => b.characters.some((c) => agentOf(c.session) === a) || [...owner.values()].includes(a))
+  if (present.length < 2) return null
+  const n = Math.min(3, present.length)
+  const agents = present.slice(0, n)
+  const lists = new Map<Agent, WorkItem[]>(agents.map((a) => [a, []]))
+  for (const w of open) {
+    const a = owner.get(w.id)
+    // 不知道是谁的（或第四家）放到台子最少的区
+    const target = a && lists.has(a) ? a : agents.slice().sort((x, y) => lists.get(x)!.length - lists.get(y)!.length)[0]
+    lists.get(target)!.push(w)
+  }
+  const cap = n === 2 ? 4 : 2
+  return agents.map((agent, i) => {
+    const all = lists.get(agent)!
+    return { agent, gx0: (i * ROOM_W) / n, gx1: ((i + 1) * ROOM_W) / n, items: all.slice(0, cap), more: Math.max(0, all.length - cap) }
+  })
+}
+
+/** 分区里第 i 张工作台的位置：两区时每区两列两行，三区时每区一列两行；前面留出过道放人、推车和区名牌。 */
+export function zoneBenchSpot(z: Zone, n: number, i: number): { gx: number; gy: number } {
+  const cols = n === 2 ? 2 : 1
+  const col = i % cols, row = Math.floor(i / cols)
+  const width = z.gx1 - z.gx0
+  const left = z.gx0 + (width - (cols * BENCH_W + (cols - 1) * 1.0)) / 2
+  return { gx: left + col * (BENCH_W + 1.0), gy: 2.4 + row * 3.6 }
+}
+
 export function interiorViewBox(): string {
   const a = iso(0, 0, WALL_H + 40), r = iso(ROOM_W, 0), b = iso(ROOM_W, ROOM_D), l = iso(0, ROOM_D)
   const x0 = l[0] - 30, x1 = r[0] + 30, y0 = a[1] - 20, y1 = b[1] + 60
@@ -58,25 +103,37 @@ export function InteriorScene({ b, model, selected, highlight, onSelect, changed
   const dim = (match: boolean) => (highlight && !match ? ' is-dim' : '')
   const flash = (key: string) => (changed.has(key) ? ' is-changed' : '')
   const colors = buildingColors(b.repo?.id)
-  const { shown, more } = benchItems(b)
-  const benchOf = new Map(shown.map((w, i) => [w.id, i]))
+  // 按 Agent 分区（两个以上 Agent 时），否则沿用一整间的 3×3 工作台
+  const zones = agentZones(b)
+  const single = zones ? null : benchItems(b)
+  const placed: { w: WorkItem; s: { gx: number; gy: number } }[] = zones
+    ? zones.flatMap((z) => z.items.map((w, i) => ({ w, s: zoneBenchSpot(z, zones.length, i) })))
+    : single!.shown.map((w, i) => ({ w, s: benchSpot(i) }))
+  const shown = placed.map((x) => x.w)
+  const more = zones ? zones.reduce((n, z) => n + z.more, 0) : single!.more
+  const spotOf = new Map(placed.map((x) => [x.w.id, x.s]))
   const approvals = model.pendingApprovals.filter((a) => (b.repo && a.repo_id === b.repo.id) || b.characters.some((c) => c.session.id === a.session_id))
   const failed = b.parcels.filter((p) => p.phase === 'failed')
 
-  // 小人：有工作台的站在台前，没有的在门口休息区。
-  let lobby = 0
+  // 小人：有工作台的站在台前，没有的在门口休息区（分区时在自己那一区的前面）。
+  const lobby = new Map<string, number>()
   const people = b.characters.map((c) => {
-    const i = c.item ? benchOf.get(c.item.id) : undefined
-    if (i != null) {
-      const s = benchSpot(i)
+    const s = c.item ? spotOf.get(c.item.id) : undefined
+    if (s) {
       const sameBench = b.characters.filter((x) => x.item?.id === c.item!.id)
       const k = sameBench.indexOf(c)
       return { c, at: iso(s.gx + 0.8 + k * 1.2, s.gy + BENCH_D + 0.9) }
     }
-    const at = iso(ROOM_W - 2.2 - (lobby % 2) * 1.4, ROOM_D - 1.2 - Math.floor(lobby / 2) * 1.3)
-    lobby++
-    return { c, at }
+    const z = zones?.find((x) => x.agent === agentOf(c.session))
+    const key = z?.agent ?? 'all'
+    const n = lobby.get(key) ?? 0
+    lobby.set(key, n + 1)
+    const right = z ? z.gx1 - 1.4 : ROOM_W - 2.2
+    return { c, at: iso(right - (n % 2) * 1.4, ROOM_D - 1.0 - Math.floor(n / 2) * 1.3) }
   })
+  // 分区之间的小推车：这个项目最近一天里最新的一次交接或接力，沿门口的过道从交出方推到接手方
+  const relay = zones ? model.relays.find((r) => r.repoId === b.repo?.id && zones.some((z) => z.agent === r.from) && zones.some((z) => z.agent === r.to)) : undefined
+  const aisle = (a: Agent): ShedSpot => { const z = zones!.find((x) => x.agent === a)!; return { agent: a, gx: (z.gx0 + z.gx1) / 2 - 0.5, w: 1, gy: ROOM_D - 2.1 } }
 
   const wallLeft = (gx0: number, gx1: number, z0: number, z1: number) => pts([iso(gx0, 0, z0), iso(gx1, 0, z0), iso(gx1, 0, z1), iso(gx0, 0, z1)])
   const wallRight = (gy0: number, gy1: number, z0: number, z1: number) => pts([iso(0, gy0, z0), iso(0, gy1, z0), iso(0, gy1, z1), iso(0, gy0, z1)])
@@ -132,8 +189,27 @@ export function InteriorScene({ b, model, selected, highlight, onSelect, changed
         </g>
       )}
 
+      {/* 分区：每个 Agent 一块带颜色的地面，中间一道矮隔板（留出过道），前面一块区名牌 */}
+      {zones?.map((z, i) => {
+        const a = AGENTS.find((x) => x.key === z.agent)!
+        const plate = iso((z.gx0 + z.gx1) / 2, ROOM_D - 0.35)
+        return (
+          <g key={z.agent} aria-label={`${a.label} 区`}>
+            <IsoTile gx={z.gx0 + 0.25} gy={1.5} w={z.gx1 - z.gx0 - 0.5} d={ROOM_D - 2.0} fill={a.color} opacity={0.16} />
+            {i > 0 && <IsoBox gx={z.gx0 - 0.08} gy={1.4} w={0.16} d={7.2} h={26} top="#c9a87a" left="#b98a52" right="#9c7140" />}
+            <g transform={`translate(${plate[0]},${plate[1]})`}>
+              <rect x={-46} y={-14} width={92} height={24} rx={7} fill="#fffaf0" stroke={a.color} strokeWidth={2.5} />
+              <circle cx={-32} cy={-2} r={5} fill={a.color} />
+              <text x={6} y={3} textAnchor="middle" fontSize={13} fontWeight={800} fill="#3a2a1c">{a.label} 区</text>
+            </g>
+            {z.more > 0 && <Tag at={iso(z.gx1 - 1.0, 1.4, 24)} text={`另 ${z.more} 项`} bg="#fffaf0" fg="#6b5a44" small />}
+          </g>
+        )
+      })}
+      {zones && relay && <Track2 a={aisle(relay.from)} b={aisle(relay.to)} />}
+
       {/* 工作台：按前后顺序画 */}
-      {shown.map((w, i) => ({ w, s: benchSpot(i) })).sort((a, b) => a.s.gx + a.s.gy - (b.s.gx + b.s.gy)).map(({ w, s }) => {
+      {placed.slice().sort((a, b) => a.s.gx + a.s.gy - (b.s.gx + b.s.gy)).map(({ w, s }) => {
         const review = b.parcels.filter((p) => p.item?.id === w.id && onReviewDesk(p))
         return (
           <g key={w.id} className={`town-obj town-bench${isSel('item', w.id) ? ' is-selected' : ''}${dim(highlight === 'review' ? w.status === 'review' : highlight === 'failed' ? false : !highlight)}`}
@@ -143,20 +219,19 @@ export function InteriorScene({ b, model, selected, highlight, onSelect, changed
           </g>
         )
       })}
-      {more > 0 && <Tag at={iso(2.6, ROOM_D - 0.6)} text={`还有 ${more} 项未摆上工作台，在列表里`} bg="#fffaf0" fg="#6b5a44" />}
+      {more > 0 && !zones && <Tag at={iso(2.6, ROOM_D - 0.6)} text={`还有 ${more} 项未摆上工作台，在列表里`} bg="#fffaf0" fg="#6b5a44" />}
       {shown.length === 0 && <Tag at={iso(ROOM_W / 2, ROOM_D / 2)} text="这里暂时没有未完成的工作" bg="#fffaf0" fg="#6b5a44" />}
 
       {/* 运行中的包裹放在对应工作台上 */}
-      {b.parcels.filter((p) => p.phase === 'moving' && p.item && benchOf.has(p.item.id)).sort((x, y) => x.run.id - y.run.id).map((p) => {
-        const s = benchSpot(benchOf.get(p.item!.id)!)
+      {b.parcels.filter((p) => p.phase === 'moving' && p.item && spotOf.has(p.item.id)).sort((x, y) => x.run.id - y.run.id).map((p) => {
+        const s = spotOf.get(p.item!.id)!
         const stale = p.session ? b.characters.find((c) => c.session.id === p.session!.id)?.status === 'stale' : false
         return <Parcel key={p.key} at={iso(s.gx + 0.7, s.gy + 0.5, 18)} p={p} stale={stale} moving={!stale} selected={isSel('parcel', p.key)}
           dimClass={dim(highlight ? parcelMatches(p, highlight, !!stale) : true) + flash(p.key)} onSelect={() => onSelect({ kind: 'parcel', key: p.key })} label={<title>{parcelTitle(p, 40)}</title>} />
       })}
 
       {/* 工作台名牌：放在上层，避免被后面的台子挡住 */}
-      {shown.map((w, i) => {
-        const s = benchSpot(i)
+      {placed.map(({ w, s }) => {
         const label = iso(s.gx + BENCH_W / 2, s.gy + BENCH_D / 2, 44)
         return (
           <g key={`lb-${w.id}`} className={`town-obj${dim(highlight === 'review' ? w.status === 'review' : highlight === 'failed' ? false : !highlight)}`} transform={`translate(${label[0]},${label[1]})`}
@@ -183,7 +258,19 @@ export function InteriorScene({ b, model, selected, highlight, onSelect, changed
           </g>
         )
       })}
+      {zones && relay && <Cart relay={relay} from={aisle(relay.from)} to={aisle(relay.to)} count={model.relays.filter((r) => r.repoId === b.repo?.id && r.from === relay.from && r.to === relay.to).length} onSelect={onSelect} />}
       {b.characters.length === 0 && <Tag at={[iso(ROOM_W - 2.5, ROOM_D - 1.5)[0], iso(ROOM_W - 2.5, ROOM_D - 1.5)[1] - 10] as Pt} text="现在没有会话在这里" bg="#fffaf0" fg="#6b5a44" small />}
     </svg>
+  )
+}
+
+/** 室内过道上的小推车轨道（门口那一排）。 */
+function Track2({ a, b }: { a: ShedSpot; b: ShedSpot }) {
+  const p = iso(a.gx + a.w / 2, a.gy - 0.3), q = iso(b.gx + b.w / 2, b.gy - 0.3)
+  return (
+    <g aria-hidden>
+      <line x1={p[0]} y1={p[1]} x2={q[0]} y2={q[1]} stroke="#cfb184" strokeWidth={10} strokeLinecap="round" opacity={0.8} />
+      <line x1={p[0]} y1={p[1]} x2={q[0]} y2={q[1]} stroke="#a88a5c" strokeWidth={1} strokeDasharray="6 6" />
+    </g>
   )
 }
