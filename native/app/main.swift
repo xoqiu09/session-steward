@@ -219,7 +219,7 @@ enum Hooks {
 extension AppDelegate {
     /// 首次打开：说明要改哪些文件，同意才装；然后问要不要开机启动，并提示 tmux。
     func onboardIfNeeded() {
-        let key = "onboarded"
+        let key = pref("onboarded")
         guard !UserDefaults.standard.bool(forKey: key) else { return }
         UserDefaults.standard.set(true, forKey: key)
         if Hooks.installed() { return } // 已经用命令行装过，不打扰
@@ -319,11 +319,16 @@ final class StatusMenu: NSObject {
         hooksItem.action = #selector(hooksAction)
         menu.addItem(hooksItem)
         menu.addItem(.separator())
-        menu.addItem(withTitle: "退出并停止采集", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "")
+        quitItem = menu.addItem(withTitle: "退出并停止采集", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "")
         item.menu = menu
         refreshLoginItem()
         timer = Timer.scheduledTimer(withTimeInterval: 10, repeats: true) { [weak self] _ in self?.poll() }
         poll()
+    }
+
+    private var quitItem: NSMenuItem?
+    func setShared(_ shared: Bool) {
+        quitItem?.title = shared ? "退出（后台服务由命令行版本管理，不会停止）" : "退出并停止采集"
     }
 
     @objc func hooksAction() {
@@ -390,13 +395,28 @@ final class StatusMenu: NSObject {
 
 // MARK: - App
 
+/// 偏好按数据目录分开记：用临时数据目录测试时，不影响正式使用时的首次引导和共存选择。
+func pref(_ name: String) -> String {
+    let home = Paths.load().home.standardizedFileURL.path
+    let def = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".steward").standardizedFileURL.path
+    return home == def ? name : "\(name)@\(home)"
+}
+
 final class AppDelegate: NSObject, NSApplicationDelegate {
     let paths = Paths.load()
     lazy var backend = Backend(paths: paths)
     lazy var town = TownWindow(paths: paths)
     var status: StatusMenu?
+    var mode: Mode = .own
 
     func applicationDidFinishLaunching(_ note: Notification) {
+        // 已经开着一个 App：把它叫到前面，自己退出，避免两个 App 抢着管后台服务
+        let mine = NSRunningApplication.runningApplications(withBundleIdentifier: Bundle.main.bundleIdentifier ?? "")
+        if let other = mine.first(where: { $0 != NSRunningApplication.current }) {
+            other.activate()
+            NSApp.terminate(nil)
+            return
+        }
         buildMainMenu()
         status = StatusMenu(paths: paths) { [weak self] path in self?.town.open(path: path) }
         status?.app = self
@@ -404,10 +424,67 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         startBackend()
     }
 
+    /// 和命令行版本共存：同一个数据目录只能有一个 steward serve。
+    /// 已有命令行的开机服务（或别处已在运行）时先问：接管，还是只当窗口共用。选择记在偏好里。
+    enum Mode { case own, shared }
+    var cliPlist: URL { FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/LaunchAgents/io.github.xoqiu09.session-steward.plist") }
+
+    /// 命令行版的开机服务是否用的是同一个数据目录（只有那样才会冲突）。
+    func cliUsesSameData() -> Bool {
+        guard let plist = NSDictionary(contentsOf: cliPlist) else { return false }
+        let env = plist["EnvironmentVariables"] as? [String: String] ?? [:]
+        let theirs = env["STEWARD_HOME"].map { URL(fileURLWithPath: $0) }
+            ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".steward")
+        return theirs.standardizedFileURL.path == paths.home.standardizedFileURL.path
+    }
+
+    func decideMode() -> Mode {
+        let hasCLI = cliUsesSameData()
+        let up = backend.isUp()
+        if !hasCLI && !up { return .own }
+        if !hasCLI && up {
+            // 别处手动跑着 steward serve（或另一个数据目录的服务占着端口）：只能共用，不另起
+            return .shared
+        }
+        let key = pref("coexist")
+        if let saved = UserDefaults.standard.string(forKey: key) { return saved == "takeover" ? takeOver() : .shared }
+        NSApp.activate(ignoringOtherApps: true)
+        let a = NSAlert()
+        a.messageText = "这台电脑上已经装了命令行版的 Session Steward"
+        a.informativeText = """
+        它作为开机服务在后台运行\(up ? "（现在正在运行）" : "")，和 App 用的是同一份数据。两个不能同时运行。
+
+        • 接管：停掉并移除命令行版的开机服务，以后由 App 负责后台采集和开机启动。数据和 hooks 不动。
+        • 共用：命令行服务继续运行，App 只当窗口和菜单栏用；退出 App 不会停止采集。
+        """
+        a.addButton(withTitle: "接管")
+        a.addButton(withTitle: "共用")
+        let takeover = a.runModal() == .alertFirstButtonReturn
+        UserDefaults.standard.set(takeover ? "takeover" : "share", forKey: key)
+        return takeover ? takeOver() : .shared
+    }
+
+    /// 移除命令行版的开机服务，等端口空出来再由 App 启动自己的。失败就退回共用。
+    func takeOver() -> Mode {
+        let (code, out) = backend.run(["service", "uninstall"])
+        if code != 0 {
+            let a = NSAlert()
+            a.messageText = "没能停掉命令行版的服务，先共用它"
+            a.informativeText = out
+            a.runModal()
+            return .shared
+        }
+        let deadline = Date().addingTimeInterval(10)
+        while backend.isUp(timeout: 0.5), Date() < deadline { Thread.sleep(forTimeInterval: 0.3) }
+        return backend.isUp(timeout: 0.5) ? .shared : .own
+    }
+
     func startBackend() {
         town.showMessage("正在启动 Session Steward…")
+        mode = decideMode()
+        status?.setShared(mode == .shared)
         DispatchQueue.global().async { [self] in
-            if !backend.isUp() {
+            if mode == .own, !backend.isUp() {
                 do { try backend.start() } catch {
                     DispatchQueue.main.async { self.town.showMessage("启动后台服务失败：\(error.localizedDescription)") }
                     return
@@ -416,7 +493,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let ready = backend.waitReady()
             DispatchQueue.main.async {
                 self.status?.poll()
-                if ready { self.town.open(); self.onboardIfNeeded() } else { self.town.showMessage("后台服务没有在 \(self.paths.listen) 启动，日志在 \(self.paths.home.path)/logs/app-serve.log。") }
+                if ready { self.town.open(); self.onboardIfNeeded() }
+                else if self.mode == .shared { self.town.showMessage("命令行版的服务现在没有响应（\(self.paths.listen)）。可以在终端运行 steward service restart，或在菜单里“重新启动服务”时选择接管。") }
+                else { self.town.showMessage("后台服务没有在 \(self.paths.listen) 启动，日志在 \(self.paths.home.path)/logs/app-serve.log。") }
             }
         }
     }
@@ -427,7 +506,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc func reopenTown() { town.open() }
-    @objc func restartBackend() { backend.stop(); startBackend() }
+    @objc func restartBackend() {
+        // 共用模式下重启：清掉记住的选择，重新问一次（可以改成接管）
+        if mode == .shared { UserDefaults.standard.removeObject(forKey: pref("coexist")) }
+        backend.stop(); startBackend()
+    }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         if !flag { town.show() }
