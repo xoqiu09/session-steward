@@ -8,11 +8,11 @@ export interface StatusCounts { working: number; waiting: number; review: number
 export type StatusTone = keyof StatusCounts
 
 /** 名牌上的顺序和配色：等你决定最先。 */
-export const STATUS_CHIPS: { key: StatusTone; label: string; dot: string }[] = [
-  { key: 'waiting', label: '等你决定', dot: '#e0a400' },
-  { key: 'working', label: '工作中', dot: '#e3712d' },
-  { key: 'review', label: '待验收', dot: '#5b6cd8' },
-  { key: 'blocked', label: '受阻', dot: '#d2483d' },
+export const STATUS_CHIPS: { key: StatusTone; label: string; short: string; dot: string }[] = [
+  { key: 'waiting', label: '等你决定', short: '决定', dot: '#e0a400' },
+  { key: 'working', label: '工作中', short: '工作', dot: '#e3712d' },
+  { key: 'review', label: '待验收', short: '验收', dot: '#5b6cd8' },
+  { key: 'blocked', label: '受阻', short: '受阻', dot: '#d2483d' },
 ]
 
 export function statusOf(b: BuildingView, pending: readonly Approval[]): StatusCounts {
@@ -33,6 +33,6 @@ export function sumStatus(list: readonly StatusCounts[]): StatusCounts {
 }
 
 /** 非零的状态按固定顺序列出；全是零时返回空，由调用方写“安静”之类的说明。 */
-export function statusChips(s: StatusCounts): { key: StatusTone; text: string; dot: string }[] {
-  return STATUS_CHIPS.filter((c) => s[c.key] > 0).map((c) => ({ key: c.key, text: `${c.label} ${s[c.key]}`, dot: c.dot }))
+export function statusChips(s: StatusCounts): { key: StatusTone; text: string; short: string; dot: string }[] {
+  return STATUS_CHIPS.filter((c) => s[c.key] > 0).map((c) => ({ key: c.key, text: `${c.label} ${s[c.key]}`, short: `${c.short} ${s[c.key]}`, dot: c.dot }))
 }

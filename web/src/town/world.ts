@@ -126,12 +126,12 @@ export function worldLayout(buildings: readonly BuildingView[], needsYou: (b: Bu
       cells.forEach((cell, j) => place(members[j], cell, 'village', v.key))
       villages.push({ key: v.key, name: v.name, square, cells: [square, ...cells] })
     })
-    // 野外：最外圈之外，隔一格摆一间小屋，绕着世界均匀散开。
+    // 野外：紧挨着最外圈，和别的房子至少隔一格，绕着世界均匀散开。
     const wild = plan.wild.map((id) => byRepo.get(id)).filter((b): b is BuildingView => !!b)
     if (wild.length) {
-      radius = Math.max(1, ...districts.map((d) => d.ring), ...villages.map((v) => cheb(v.square) + 1)) + 1
+      radius = Math.max(1, ...districts.map((d) => d.ring), ...villages.map((v) => cheb(v.square) + 1))
       let left = wild
-      for (let r = radius; left.length && r < radius + 20; r += 2) {
+      for (let r = radius; left.length && r < radius + 20; r += 1) {
         const ring: Cell[] = []
         for (let cx = -r; cx <= r; cx++) for (let cy = -r; cy <= r; cy++) {
           if (Math.max(Math.abs(cx), Math.abs(cy)) !== r || (cx + cy) % 2 !== 0) continue
@@ -149,8 +149,8 @@ export function worldLayout(buildings: readonly BuildingView[], needsYou: (b: Bu
 
   const all = [{ cx: 0, cy: 0 }, ...districts.map((d) => d.cell), ...villages.map((v) => v.square)]
   // 外面再留一圈空地（树林），世界不是刚好卡在最后一栋房子边上。
-  const gx0 = (Math.min(...all.map((c) => c.cx)) - 0.6) * CELL_W, gy0 = (Math.min(...all.map((c) => c.cy)) - 0.6) * CELL_D
-  const gx1 = (Math.max(...all.map((c) => c.cx)) + 1.5) * CELL_W, gy1 = (Math.max(...all.map((c) => c.cy)) + 1.5) * CELL_D
+  const gx0 = (Math.min(...all.map((c) => c.cx)) - 0.35) * CELL_W, gy0 = (Math.min(...all.map((c) => c.cy)) - 0.35) * CELL_D
+  const gx1 = (Math.max(...all.map((c) => c.cx)) + 1.25) * CELL_W, gy1 = (Math.max(...all.map((c) => c.cy)) + 1.25) * CELL_D
   return { districts, plaza: { ox: 0, oy: 0 }, villages, tiles: { gx0, gy0, gx1, gy1 }, bounds: boxOfTiles(gx0, gy0, gx1, gy1) }
 }
 

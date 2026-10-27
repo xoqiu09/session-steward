@@ -411,7 +411,7 @@ export function Building({ plot: p, b, selected, dimClass, onSelect, signScale =
         <rect x={-signW / 2} y={-14} width={signW} height={26} rx="6" fill="#fffaf0" stroke={selected ? '#2d6cdf' : p.accent} strokeWidth={selected ? 3 : 2} />
         <text y="4" textAnchor="middle" fontSize="14" fontWeight="700" fill="#3a2a1c">{sign}</text>
         <text y="-22" textAnchor="middle" fontSize="10.5" fill="#6b5a44" className="town-sub">
-          {shape === HOUSE_SHAPE ? '' : `${shape.name} · `}{b.characters.length} 个会话 · {active} 个未完成{done ? ` · 已完成 ${done}` : ''}
+          {shape.kind === 'house' ? '' : `${shape.name} · `}{b.characters.length} 个会话 · {active} 个未完成{done ? ` · 已完成 ${done}` : ''}
         </text>
         {tasks.lines.map((t, i) => (
           <text key={t.id} y={-38 - (tasks.lines.length - 1 - i) * 14} textAnchor="middle" fontSize="10.5" fill="#3a2a1c" className="town-task">
