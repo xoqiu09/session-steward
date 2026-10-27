@@ -16,6 +16,8 @@ func TestClaudeDetailTurnsDaysAndSubagents(t *testing.T) {
 {"type":"assistant","timestamp":"2026-10-26T15:00:08Z","message":{"id":"m2","model":"claude-a","usage":{"input_tokens":2,"output_tokens":3}}}
 {"type":"user","timestamp":"2026-10-27T01:00:00Z","message":{"content":[{"type":"text","text":"第二问"}]}}
 {"type":"assistant","timestamp":"2026-10-27T01:00:05Z","message":{"id":"m3","model":"claude-b","usage":{"input_tokens":1,"output_tokens":1,"cache_read_input_tokens":50}}}
+{"type":"assistant","timestamp":"2026-10-27T01:00:06Z","message":{"id":"m4","model":"<synthetic>","usage":{"input_tokens":0,"output_tokens":0}}}
+{"type":"assistant","timestamp":"2026-10-27T01:00:07Z","message":{"id":"m5","model":"claude-c","usage":{"input_tokens":0,"output_tokens":0}}}
 `)
 	write(t, filepath.Join(root, "proj", "sid-1", "subagents", "agent-x1.jsonl"), `{"type":"user","isSidechain":true,"timestamp":"2026-10-27T01:00:10Z","message":{"content":"子任务"}}
 {"type":"assistant","isSidechain":true,"timestamp":"2026-10-27T01:00:20Z","message":{"id":"s1","model":"claude-b","usage":{"input_tokens":4,"output_tokens":6}}}
@@ -30,6 +32,9 @@ func TestClaudeDetailTurnsDaysAndSubagents(t *testing.T) {
 		t.Fatalf("轮次 %+v", self.Turns)
 	}
 	// 本地 UTC+8：第一轮在 10/26 23:00，第二轮在 10/27 09:00
+	if _, ok := self.Models["<synthetic>"]; ok || len(self.Models) != 2 || len(self.ByDay["2026-10-27"]) != 1 {
+		t.Fatalf("占位模型和 0 token 的模型不应出现在列表里：%+v", self.Models)
+	}
 	if self.ByDay["2026-10-26"]["claude-a"].Output != 7 || self.ByDay["2026-10-27"]["claude-b"].Output != 1 {
 		t.Fatalf("按天 %+v", self.ByDay)
 	}

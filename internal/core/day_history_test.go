@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"database/sql"
 	"testing"
 	"time"
 
@@ -45,6 +46,15 @@ func TestHistoryDaysAndDayDetail(t *testing.T) {
 	if _, err := c.RefreshUsage(ctx, src, time.Hour); err != nil {
 		t.Fatal(err)
 	}
+	// 升级前归档进去的占位“模型”行（0 token）不应出现在按模型的列表里
+	var sid0 int64
+	c.St.R().QueryRow(`SELECT id FROM sessions WHERE provider_session_id='h1'`).Scan(&sid0)
+	if err := c.St.Tx(ctx, func(tx *sql.Tx) error {
+		_, err := tx.Exec(`INSERT INTO usage_daily(session_id,day,model) VALUES(?,?,?)`, sid0, time.Now().Format("2006-01-02"), "<synthetic>")
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
 	h, err := c.History(ctx, 7, true)
 	if err != nil || len(h.Days) != 1 {
 		t.Fatalf("%v %+v", err, h)
@@ -52,6 +62,9 @@ func TestHistoryDaysAndDayDetail(t *testing.T) {
 	d := h.Days[0]
 	if d.Sessions != 1 || d.Prompts != 1 || d.Tools != 1 || d.Subagents != 1 || d.Delivered != 2 || d.Returned != 1 || d.Accepted != 1 {
 		t.Fatalf("当天汇总 %+v", d)
+	}
+	if _, ok := d.ByModel["<synthetic>"]; ok {
+		t.Fatalf("占位模型不应出现：%+v", d.ByModel)
 	}
 	if d.Tokens.Output != 5 || d.ByProvider["claude"] != 15 || d.ByModel["m-1"] != 15 {
 		t.Fatalf("token %+v", d)
