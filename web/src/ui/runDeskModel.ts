@@ -175,25 +175,52 @@ export function runsBySession(runs: readonly Run[]): SessionRuns[] {
   return [...out.values()]
 }
 
+export interface ReviewWhere {
+  repo: string
+  /** 目录：交付会话的 worktree 或工作目录；不知道时为空。 */
+  path: string
+  branch: string
+  /** 这个位置是从哪条记录来的。 */
+  source: 'session' | 'candidate' | 'item'
+}
+
 export interface ReviewGuide {
   /** Agent 交付时说的话（自述），没有则为空。 */
   said: { text: string; sessionId: number | null; at: string } | null
-  progress: string
-  branch: string
   acceptance: string
-  sessionIds: number[]
+  /** 在哪看：优先用交付会话自己记下的仓库、目录和分支。 */
+  where: ReviewWhere | null
+  /** 交付会话：用来回到原对话。 */
+  session: Session | null
+  /** 交付会话所在项目与工作项项目不同。 */
+  mismatch: { delivered: string; item: string } | null
 }
 
-/** 验收卡片要讲清楚：Agent 说交付了什么、东西在哪、按什么标准判断。都只是快照里已有的字段。 */
+/** 验收卡片要讲清楚：Agent 说交付了什么、在哪看、怎么回到原对话。都只是快照里已有的字段。 */
 export function reviewGuide(snap: Snapshot, item: WorkItem): ReviewGuide {
   const f = item.brief?.fields ?? {}
   const said = f.summary?.text ? f.summary : f.progress?.text ? f.progress : null
-  const cand = candidateOf(snap, item)
+  const sessions = snap.sessions ?? []
+  // 交付会话：写交付说明的那个会话；没有说明时取这项工作最近一段运行的会话。
+  const lastRun = (snap.runs ?? []).filter((r) => r.work_item_id === item.id).sort((a, b) => (b.ended_at || b.started_at).localeCompare(a.ended_at || a.started_at))[0]
+  const sid = said?.session_id ?? lastRun?.session_id ?? null
+  const session = sessions.find((s) => s.id === sid) ?? null
+  const repoName = (id: number | null) => (snap.repos ?? []).find((r) => r.id === id)?.name ?? ''
+  const sessionPath = session ? session.worktree || session.cwd : ''
+  let where: ReviewWhere | null = null
+  if (session && (session.branch || session.repo_id != null)) {
+    where = { repo: repoName(session.repo_id), path: sessionPath, branch: session.branch, source: 'session' }
+  } else {
+    const cand = candidateOf(snap, item)
+    if (cand?.ref) where = { repo: repoName(item.repo_id), path: '', branch: cand.ref, source: cand.source === '工作项分支' ? 'item' : 'candidate' }
+  }
+  const mismatch = session?.repo_id != null && item.repo_id != null && session.repo_id !== item.repo_id
+    ? { delivered: repoName(session.repo_id) || `项目 ${session.repo_id}`, item: repoName(item.repo_id) || `项目 ${item.repo_id}` } : null
   return {
     said: said ? { text: said.text, sessionId: said.session_id, at: said.at } : null,
-    progress: said !== f.progress && f.progress?.text ? f.progress.text : '',
-    branch: cand?.ref || item.branch,
     acceptance: item.acceptance.trim(),
-    sessionIds: [...new Set((snap.runs ?? []).filter((r) => r.work_item_id === item.id).map((r) => r.session_id))],
+    where,
+    session,
+    mismatch,
   }
 }
