@@ -107,7 +107,7 @@ describe('运行台渲染', () => {
     expect(html).toContain('这项交付待你验收')
     expect(html.indexOf('>验收通过</button>')).toBeLessThan(html.indexOf('当前运行 vs 候选提交'))
     expect(html.match(/>验收通过<\/button>/g)).toHaveLength(1)
-    expect(html).toContain('验收不会批准工具、合并代码或发布')
+    expect(html).toContain('验收只改这项工作的状态，不会批准工具、合并代码或发布')
   })
   it('keeps delivery acceptance read-only remotely', () => {
     const snap = { ...synthSnapshot, work_items: synthSnapshot.work_items!.map(w => w.id === item.id ? { ...w, status: 'review' as const } : w) }
