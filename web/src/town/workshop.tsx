@@ -18,12 +18,13 @@ export function shedSpots(agents: readonly Agent[], ox: number, oy: number): She
   return agents.slice(0, 3).map((agent, i) => ({ agent, gx: ox + xs[i][0], gy, w: xs[i][1] }))
 }
 
-/** 作坊门口的站位：每间最多站两个小人。 */
+/** 作坊的站位：站在作坊左前方，不挡门和招牌。 */
 export function shedSeat(s: ShedSpot, k: number): [number, number] {
-  return [s.gx + 0.35 + k * 1.15, s.gy + SHED_D + 1.25]
+  return [s.gx + 0.15 - k * 0.4, s.gy + SHED_D + 0.75 + k * 0.7]
 }
 
-export const SHED_MAX = 2
+/** 近景里每间作坊门口只站一个小人（最需要你的那个），其余在作坊上写“+N 位”。 */
+export const SHED_MAX = 1
 
 const colorOf = (a: Agent) => AGENTS.find((x) => x.key === a)!.color
 const labelOf = (a: Agent) => AGENTS.find((x) => x.key === a)!.label
@@ -35,7 +36,7 @@ export function Workshop({ s, more }: { s: ShedSpot; more: number }) {
   const roofL = iso(gx - 0.1, gy + d + 0.1, SHED_H), roofR = iso(gx + w + 0.1, gy + d + 0.1, SHED_H)
   const ridgeL = iso(gx - 0.1, gy + d / 2, SHED_H + 16), ridgeR = iso(gx + w + 0.1, gy + d / 2, SHED_H + 16)
   const backL = iso(gx - 0.1, gy - 0.1, SHED_H), backR = iso(gx + w + 0.1, gy - 0.1, SHED_H)
-  const sign = iso(gx + w / 2, gy + d / 2, SHED_H + 34)
+  const sign = iso(gx + w * 0.7, gy + d / 2, SHED_H + 30)
   const door = (u: number, h: number): Pt => iso(gx + u, gy + d, h)
   return (
     <g aria-label={`${labelOf(s.agent)} 作坊`}>
@@ -50,14 +51,19 @@ export function Workshop({ s, more }: { s: ShedSpot; more: number }) {
         <rect x={-32} y={-11} width={64} height={18} rx={5} fill="#fffaf0" stroke={color} strokeWidth={1.6} />
         <text y={3} textAnchor="middle" fontSize={12} fontWeight={800} fill="#3a2a1c">{labelOf(s.agent)}</text>
       </g>
-      {more > 0 && <text x={iso(gx + w, gy + d)[0] + 4} y={iso(gx + w, gy + d)[1] - 4} fontSize={10} fill="#6b5a44">+{more}</text>}
+      {more > 0 && (
+        <g transform={`translate(${sign[0] + 40},${sign[1] - 10})`}>
+          <rect x={-2} y={-10} width={38} height={15} rx={7} fill="#f2ede3" stroke="#c9b896" />
+          <text x={17} y={1} textAnchor="middle" fontSize={10} fontWeight={700} fill="#6b5a44">+{more} 位</text>
+        </g>
+      )}
     </g>
   )
 }
 
-/** 两间作坊门前的小路（交接的通道）。 */
+/** 两间作坊背后、主屋门前的小路（交接的通道）：在作坊和小人后面，推车跑起来不被挡住。 */
 export function trackEnds(a: ShedSpot, b: ShedSpot): [Pt, Pt] {
-  const y = a.gy + SHED_D + 0.35
+  const y = a.gy - 0.3
   return [iso(a.gx + a.w / 2, y), iso(b.gx + b.w / 2, y)]
 }
 
@@ -93,9 +99,9 @@ export function Cart({ relay, from, to, count, onSelect }: { relay: Relay; from:
         <circle cx={-7} cy={-3} r={4} fill="#5a3a22" stroke="#3a2412" />
         <circle cx={7} cy={-3} r={4} fill="#5a3a22" stroke="#3a2412" />
         <line x1={-13} y1={-12} x2={-21} y2={-18} stroke="#6b4a2a" strokeWidth={2} strokeLinecap="round" />
-        <g transform="translate(0,-40)">
-          <rect x={-34} y={-9} width={68} height={14} rx={7} fill="#fffaf0" stroke={colorOf(relay.to)} strokeWidth={1.2} />
-          <text y={2} textAnchor="middle" fontSize={8.5} fontWeight={700} fill="#3a2a1c">{relay.itemId}{count > 1 ? ` · ${count} 次` : ''}</text>
+        <g transform="translate(18,-14)">
+          <rect x={0} y={-8} width={62} height={13} rx={6.5} fill="#fffaf0" stroke={colorOf(relay.to)} strokeWidth={1.2} />
+          <text x={31} y={2} textAnchor="middle" fontSize={8} fontWeight={700} fill="#3a2a1c">{relay.itemId}{count > 1 ? ` · ${count} 次` : ''}</text>
         </g>
       </g></g>
     </g>

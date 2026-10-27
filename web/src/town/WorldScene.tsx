@@ -116,7 +116,9 @@ export function WorldScene({ model, world, view, far, selected, highlight, onSel
     const present = AGENTS.map((a) => a.key).filter((a) => d.b.characters.some((c) => agentOf(c.session) === a))
     const spots = shedSpots(present, d.ox, d.oy)
     shedsOf.set(d.key, spots.map((spot) => {
-      const mineAgent = d.b.characters.filter((c) => agentOf(c.session) === spot.agent)
+      // 门口站最需要你的那个：等你决定 > 出错 > 干活 > 其他
+      const rank: Record<string, number> = { waiting: 0, error: 1, working: 2, stale: 3 }
+      const mineAgent = d.b.characters.filter((c) => agentOf(c.session) === spot.agent).sort((a, b) => (rank[a.status] ?? 4) - (rank[b.status] ?? 4))
       mineAgent.slice(0, SHED_MAX).forEach((c, k) => {
         const [gx, gy] = shedSeat(spot, k)
         mine.push({ key: c.key, c, plot, gx, gy })
@@ -234,8 +236,8 @@ export function WorldScene({ model, world, view, far, selected, highlight, onSel
             )}
             {statusAt.get(d.key)!.blocked > 0 && (
               <g className={`town-obj${dim(false)}`} {...activate(() => onSelect({ kind: 'building', key: d.b.key }))} aria-label={`${d.b.name}：受阻 ${statusAt.get(d.key)!.blocked} 项`}>
-                <Roadblock gx={plot.gx + plot.w / 2 - 0.2} gy={plot.gy + plot.d + 0.3} />
-                <Tag at={iso(plot.gx + plot.w / 2 + 0.4, plot.gy + plot.d + 0.3, 46)} text={`受阻 ${statusAt.get(d.key)!.blocked}`} bg="#d2483d" fg="#fff" small />
+                <Roadblock gx={d.ox + 3.0} gy={d.oy + 6.6} />
+                <Tag at={iso(d.ox + 3.4, d.oy + 6.6, 46)} text={`受阻 ${statusAt.get(d.key)!.blocked}`} bg="#d2483d" fg="#fff" small />
               </g>
             )}
             {/* 每个 Agent 的作坊，以及作坊之间交接、接力的小推车 */}
