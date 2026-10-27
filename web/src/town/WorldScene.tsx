@@ -13,6 +13,7 @@ import {
 } from './world'
 import type { WorldPlan } from './clusters'
 import { InteriorScene } from './InteriorScene'
+import { TownGuide } from './TownGuide'
 import { Campfire, Fence, Flowers, Pine, Pond, Rock, Windmill, YARD_TINT, terrainOf, type Terrain } from './scenery'
 import { statusChips, statusOf, sumStatus, type StatusCounts } from './status'
 import { Field } from './field'
@@ -21,6 +22,8 @@ import { AGENTS, agentChips, agentCounts, agentLegend, agentOf, mainAgent, sumAg
 
 /** 每个街区的退件筐最多摆几个箱子，其余只计数。 */
 const BIN_MAX = 2
+/** 记住这个浏览器已经看过使用说明。 */
+const GUIDE_SEEN = 'ss.town.guideSeen'
 /** 告示栏最多钉几张卡片。 */
 const BOARD_MAX = 4
 /** 视野宽于此时只画村庄名牌（村里的项目合并成一块），中央和野外项目仍各一块。 */
@@ -471,6 +474,16 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far'> & {
   const legend = useMemo(() => agentLegend(model.buildings), [model])
   // 收菜：开始时记下这一批熟了的菜，一棵一棵飞过去打开验收卡片；收下或退回后自动去下一棵。
   const [harvest, setHarvest] = useState<{ ids: string[]; index: number } | null>(null)
+  // 使用说明：第一次来时按钮旁冒一个小提示，打开过一次就不再提示（只记在这个浏览器里）。
+  const [guide, setGuide] = useState(false)
+  const [guideSeen, setGuideSeen] = useState(() => { try { return localStorage.getItem(GUIDE_SEEN) === '1' } catch { return true } })
+  const openGuide = () => { setGuide(true); setGuideSeen(true); try { localStorage.setItem(GUIDE_SEEN, '1') } catch { /* 隐私模式：下次再提示 */ } }
+  useEffect(() => {
+    if (!guide) return
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.stopImmediatePropagation(); setGuide(false) } }
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
+  }, [guide])
   const insideB = inside ? model.buildings.find((b) => b.key === inside) ?? null : null
   useEffect(() => {
     if (!inside) return
@@ -574,7 +587,8 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far'> & {
     const el = box.current
     if (!el) return
     const onWheel = (e: WheelEvent) => {
-      if (inside) return
+      // 说明面板里滚轮是翻页，不缩放地图。
+      if (inside || (e.target as Element | null)?.closest?.('.town-guide')) return
       e.preventDefault()
       stop(); lastTouch.current = Date.now()
       const r = el.getBoundingClientRect()
@@ -618,6 +632,7 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far'> & {
             <button type="button" onClick={() => setInside(null)} title="回到世界（Esc）">← 回到世界</button>
           </div>
           <p className="town-world-hint">{insideB.name} · 室内：工作台是工作项，点任何东西看详情</p>
+          {guide && <TownGuide onClose={() => setGuide(false)} />}
         </>
       ) : (
         <>
@@ -629,6 +644,10 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far'> & {
         <button type="button" onClick={() => { lastTouch.current = Date.now(); flyTo(fitCamera(cellBox(world.plaza.ox, world.plaza.oy), aspect, 1.1)) }} title="回到中央广场">广场</button>
         <button type="button" className={`town-basket${ripe.length ? ' has-ripe' : ''}`} onClick={startHarvest} disabled={!ripe.length && !harvest}
           title={ripe.length ? `熟了 ${ripe.length} 棵：一棵一棵打开验收卡片，收下或退回` : '现在没有熟了的菜（没有待验收的工作项）'}>收菜 {ripe.length}</button>
+        <span className="town-guide-anchor">
+          <button type="button" aria-pressed={guide} className={guide ? 'is-on' : undefined} onClick={() => (guide ? setGuide(false) : openGuide())} title="小镇怎么看：地图上的东西、怎么操作、每天怎么用">怎么看</button>
+          {!guideSeen && !guide && <span className="town-guide-bubble" role="note">第一次来？点这里看怎么用</span>}
+        </span>
         <button type="button" aria-pressed={byAgent} className={byAgent ? 'is-on' : undefined} onClick={() => { setByAgent(!byAgent); setAgentFocus(null) }} title="按会话来自哪个 Agent 着色">按 Agent 看</button>
       </div>
       {byAgent && (
@@ -644,6 +663,7 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far'> & {
       )}
       <MiniMap world={world} view={view} needsYou={needsYou} pending={model.pendingApprovals} onJump={(p) => { lastTouch.current = Date.now(); flyTo(clampCamera({ cx: p[0], cy: p[1], w: Math.min(camera.w, 1500) }, world.bounds), 600) }} />
       <p className="town-world-hint">拖动地图移动 · 滚轮缩放 · 拉远看全部项目</p>
+      {guide && <TownGuide onClose={() => setGuide(false)} />}
       {harvest && <HarvestBar ids={harvest.ids} index={harvest.index} results={results} model={model}
         onPrev={() => { const n = nextPending(harvest.index, -1); if (n >= 0) goHarvest(harvest.ids, n) }}
         onNext={() => { const n = nextPending(harvest.index, 1); if (n >= 0) goHarvest(harvest.ids, n) }}
