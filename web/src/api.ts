@@ -45,6 +45,7 @@ export const api = {
   reconcileAttributions: () => call<{ changed: number }>('POST', '/api/attributions/reconcile'),
   decideAttributions: (decisions: AttributionDecision[]) => call('POST', '/api/attributions/decide', { decisions }),
   snapshot: () => call<Snapshot>('GET', '/api/snapshot'),
+  snapshotAt: (at: string) => call<Snapshot>('GET', `/api/snapshot?at=${encodeURIComponent(at)}`),
   sessionEvents: (id: number) => call<Record<string, unknown>[]>('GET', `/api/sessions/${id}/events`),
   sessionUsage: (id: number) => call<SessionUsageDetail>('GET', `/api/sessions/${id}/usage`),
   history: (days = 370) => call<HistoryResp>('GET', `/api/history?days=${days}`),

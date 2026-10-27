@@ -146,6 +146,8 @@ export interface Approval {
 }
 
 export interface Snapshot {
+  /** 回放快照（小镇时间条）才有：那一刻的时间。只读。 */
+  replay_at?: string
 	features?: ProjectFeature[] | null
   cursor: number
   now: string

@@ -465,7 +465,7 @@ function attentionOf(d: District, needsYou: (b: BuildingView) => boolean) {
   return needsYou(d.b) || d.b.characters.some((c) => c.status === 'working') || d.b.parcels.some(onReviewDesk) || d.b.items.some((w) => w.status === 'blocked')
 }
 
-export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far'> & { kiosk?: boolean; rotateMs?: number; paused?: boolean; focusKey?: string; plan?: WorldPlan }) {
+export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far'> & { kiosk?: boolean; rotateMs?: number; paused?: boolean; focusKey?: string; plan?: WorldPlan; replaying?: boolean }) {
   const { model, needsYou, kiosk = false, rotateMs = 20_000, paused = false, focusKey, plan } = props
   // 走进某栋建筑：显示它的室内；拖动、缩放、巡游都暂停。
   const [inside, setInside] = useState<string | null>(null)
@@ -642,8 +642,8 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far'> & {
         <button type="button" onClick={() => zoomBy(1.4)} aria-label="缩小" title="缩小">－</button>
         <button type="button" onClick={() => { lastTouch.current = Date.now(); flyTo(fitAll()) }} title="看全部街区">全景</button>
         <button type="button" onClick={() => { lastTouch.current = Date.now(); flyTo(fitCamera(cellBox(world.plaza.ox, world.plaza.oy), aspect, 1.1)) }} title="回到中央广场">广场</button>
-        <button type="button" className={`town-basket${ripe.length ? ' has-ripe' : ''}`} onClick={startHarvest} disabled={!ripe.length && !harvest}
-          title={ripe.length ? `熟了 ${ripe.length} 棵：一棵一棵打开验收卡片，收下或退回` : '现在没有熟了的菜（没有待验收的工作项）'}>收菜 {ripe.length}</button>
+        {!props.replaying && <button type="button" className={`town-basket${ripe.length ? ' has-ripe' : ''}`} onClick={startHarvest} disabled={!ripe.length && !harvest}
+          title={ripe.length ? `熟了 ${ripe.length} 棵：一棵一棵打开验收卡片，收下或退回` : '现在没有熟了的菜（没有待验收的工作项）'}>收菜 {ripe.length}</button>}
         <span className="town-guide-anchor">
           <button type="button" aria-pressed={guide} className={guide ? 'is-on' : undefined} onClick={() => (guide ? setGuide(false) : openGuide())} title="小镇怎么看：地图上的东西、怎么操作、每天怎么用">怎么看</button>
           {!guideSeen && !guide && <span className="town-guide-bubble" role="note">第一次来？点这里看怎么用</span>}
@@ -664,7 +664,7 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far'> & {
       <MiniMap world={world} view={view} needsYou={needsYou} pending={model.pendingApprovals} onJump={(p) => { lastTouch.current = Date.now(); flyTo(clampCamera({ cx: p[0], cy: p[1], w: Math.min(camera.w, 1500) }, world.bounds), 600) }} />
       <p className="town-world-hint">拖动地图移动 · 滚轮缩放 · 拉远看全部项目</p>
       {guide && <TownGuide onClose={() => setGuide(false)} />}
-      {harvest && <HarvestBar ids={harvest.ids} index={harvest.index} results={results} model={model}
+      {harvest && !props.replaying && <HarvestBar ids={harvest.ids} index={harvest.index} results={results} model={model}
         onPrev={() => { const n = nextPending(harvest.index, -1); if (n >= 0) goHarvest(harvest.ids, n) }}
         onNext={() => { const n = nextPending(harvest.index, 1); if (n >= 0) goHarvest(harvest.ids, n) }}
         onReopen={() => goHarvest(harvest.ids, harvest.index)} onEnd={() => setHarvest(null)} />}

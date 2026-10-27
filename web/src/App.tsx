@@ -32,6 +32,8 @@ export default function App() {
   const [provider, setProvider] = useState<string>('all')
   const [route, setRoute] = useState(() => parseTownRoute(window.location.search, window.location.hash))
   const [view, setView] = useState<'overview' | 'town' | 'canvas' | 'list' | 'history'>(() => (route.town ? 'town' : 'overview'))
+  // 从历史日历点“回放这一天”：切到小镇并打开时间条。
+  const [replayDay, setReplayDay] = useState<string | undefined>(undefined)
   // 桌面模式里点告示栏、验收台时，在抽屉里打开关注队列。
   const [kioskQueue, setKioskQueue] = useState(false)
   const [expandAll, setExpandAll] = useState(false)
@@ -165,13 +167,13 @@ export default function App() {
           <div className="project-shortcuts">{groups.map((g) => <button key={g.key} disabled={g.repoId == null} className={repoId === g.repoId ? 'on' : ''} onClick={() => { if (g.repoId != null) { setRepoId(g.repoId); setSel(null); setAttributionOpen(false); setTab('queue') } }} title={g.name}><strong>{g.name}</strong><small>工作项 {g.items.length} · 待关联 {g.sessions.length}{projectQueueCounts(snap, g.repoId).action ? ` · 需审批 ${projectQueueCounts(snap, g.repoId).action}` : ''}</small></button>)}</div>
         </div>
         <div className="stage">
-          {view === 'town' ? <TownView world={route.world} snap={snap} conn={conn} repoId={repoId} provider={provider} sel={sel} onSelectItem={selectItem} onSelectSession={selectSession}
+          {view === 'town' ? <TownView world={route.world} snap={snap} conn={conn} repoId={repoId} provider={provider} sel={sel} onSelectItem={selectItem} onSelectSession={selectSession} replayDay={replayDay}
             onSelectRepo={(id) => setRepoId(id)} onQueue={(lane) => { setSel(null); setAttributionOpen(false); setTab('queue'); setQueueFocus(lane) }} />
             : view === 'overview' ? <Overview snap={snap} groups={groups} onSelectItem={selectItem} onSelectSession={selectSession} onOpenAttribution={openAttributions} pendingCount={counts.action} reviewCount={counts.review} expandQuiet={!!query.trim() || repoId !== 'all'} onQueue={(lane = 'action') => { setSel(null); setAttributionOpen(false); setTab('queue'); setQueueFocus(lane) }} /> : view === 'canvas' ? (
             <ReactFlowProvider>
               <Canvas snap={snap} groups={groups} selected={sel?.kind === 'item' ? sel.id : null} onSelectItem={selectItem} onOpenAttribution={openAttributions} expandAll={expandAll || !!query.trim()} />
             </ReactFlowProvider>
-          ) : view === 'history' ? <HistoryView snap={snap} onSelectSession={selectSession} onSelectItem={selectItem} /> : (
+          ) : view === 'history' ? <HistoryView snap={snap} onSelectSession={selectSession} onSelectItem={selectItem} onReplayDay={(d) => { setReplayDay(d); setView('town') }} /> : (
             <ItemTable groups={groups} onSelect={selectItem} />
           )}
         </div>

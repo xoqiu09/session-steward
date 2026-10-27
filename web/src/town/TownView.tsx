@@ -8,6 +8,8 @@ import { orderedProjects } from '../projectActivity'
 import { resolveDeepLink } from '../live'
 import TownScene, { type LayoutName, type Selection } from './TownScene'
 import { WorldStage } from './WorldScene'
+import { ReplayBar, minuteLabel, replayISO, startPos, type ReplayPos } from './ReplayBar'
+import { api } from '../api'
 import { planWorld } from './clusters'
 import type { BuildingView } from './townModel'
 import { buildTown, type Highlight, type TownModel } from './townModel'
@@ -119,7 +121,7 @@ function useMedia(query: string): boolean {
 
 const PER_PAGE: Record<LayoutName, number> = { wide: 3, portrait: 1 }
 
-export function TownView({ snap, conn, repoId, provider, sel, onSelectItem, onSelectSession, onSelectRepo, onQueue, kiosk = false, rotateMs = DEFAULT_ROTATE_S * 1000, paused = false, layout, bar, world = false }: {
+export function TownView({ snap, conn, repoId, provider, sel, onSelectItem, onSelectSession, onSelectRepo, onQueue, kiosk = false, rotateMs = DEFAULT_ROTATE_S * 1000, paused = false, layout, bar, world = false, replayDay }: {
   snap: Snapshot
   conn: Conn
   repoId: number | 'all'
@@ -140,6 +142,8 @@ export function TownView({ snap, conn, repoId, provider, sel, onSelectItem, onSe
   bar?: ReactNode
   /** 预览：大地图世界，替代宽屏的分页（竖屏仍分页）。 */
   world?: boolean
+  /** 从历史日历点“回放这一天”进来时的日期。 */
+  replayDay?: string
 }) {
   // 旧快照（慢请求迟到）不覆盖新画面；同一版重复到达不重画。
   // cursor 只在数据库被替换时才会变小，那时服务端时间是新的，按重置接受。
@@ -152,9 +156,25 @@ export function TownView({ snap, conn, repoId, provider, sel, onSelectItem, onSe
     const t = window.setInterval(() => setClientNow(new Date().toISOString()), 30_000)
     return () => window.clearInterval(t)
   }, [])
+  // 回放：时间条选一个过去的时刻，向服务端要那一刻的快照来画。拿到之前先沿用上一张。
+  const [replay, setReplay] = useState<ReplayPos | null>(() => (replayDay ? startPos(replayDay) : null))
+  const [playing, setPlaying] = useState(false)
+  const [replaySnap, setReplaySnap] = useState<Snapshot | null>(null)
+  const [replayLoading, setReplayLoading] = useState(false)
+  useEffect(() => { if (replayDay) { setReplay(startPos(replayDay)); setPlaying(false) } }, [replayDay])
+  useEffect(() => {
+    if (!replay) { setReplaySnap(null); return }
+    let live = true
+    setReplayLoading(true)
+    const t = window.setTimeout(() => {
+      api.snapshotAt(replayISO(replay)).then((s) => live && setReplaySnap(s)).catch(() => {}).finally(() => live && setReplayLoading(false))
+    }, 150)
+    return () => { live = false; window.clearTimeout(t) }
+  }, [replay?.day, replay?.minute])
+  const view = replay && replaySnap ? replaySnap : shown
   const [highlight, setHighlight] = useState<Highlight | null>(null)
-  const slice = useMemo(() => townSlice(shown, repoId, provider), [shown, repoId, provider])
-  const model = useMemo(() => buildTown(slice, clientNow), [slice, clientNow])
+  const slice = useMemo(() => townSlice(view, repoId, provider), [view, repoId, provider])
+  const model = useMemo(() => buildTown(slice, replay && replaySnap ? replaySnap.now : clientNow), [slice, clientNow, replay, replaySnap])
   const changed = useChanged(model)
   const offline = conn === 'offline'
 
@@ -236,9 +256,12 @@ export function TownView({ snap, conn, repoId, provider, sel, onSelectItem, onSe
         <span className="town-meta" title="小镇只画当前的会话、工作项和运行；完整记录在列表与项目简报里">
           快照 #{shown.cursor} · {hm(shown.now)}
         </span>
+        {!replay && <button type="button" className="town-replay-open" onClick={() => { setReplay(startPos()); setPlaying(false) }} title="拖到过去某个时刻，看当时小镇的样子">回放</button>}
         {bar}
       </div>
       <div className="town-diorama" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
+        {replay && <ReplayBar pos={replay} playing={playing} loading={replayLoading} onChange={setReplay} onPlay={setPlaying} onExit={() => { setReplay(null); setPlaying(false) }} />}
+        {replay && <div className="town-replay-banner" role="status">回放中：画面是 {replay.day.slice(5).replace('-', '/')} {minuteLabel(replay.minute)} 的样子，只能看；点开的详情是现在的状态</div>}
         {offline && <div className="town-offline" role="status"><strong>状态待更新</strong><span>连接中断，画面停在 {hm(shown.now)}，不代表 Agent 仍在工作。</span></div>}
         {!offline && model.buildings.length === 0 && <div className="town-empty" role="status">
           <strong>这台电脑还没有工作记录</strong>
@@ -246,7 +269,7 @@ export function TownView({ snap, conn, repoId, provider, sel, onSelectItem, onSe
         </div>}
         {asWorld
           ? <WorldStage model={model} needsYou={urgent} selected={selected} highlight={highlight} onSelect={onSelect} changed={changed} offline={offline}
-              kiosk={kiosk} rotateMs={rotateMs} paused={paused} focusKey={selKey} plan={plan} />
+              kiosk={kiosk} rotateMs={rotateMs} paused={paused} focusKey={selKey} plan={plan} replaying={!!replay} />
           : <TownScene model={model} buildings={pages[page]} layout={shape} selected={selected} highlight={highlight} onSelect={onSelect} changed={changed} offline={offline} />}
         <ul className="town-legend" aria-label="图例">
           <li><i className="lg-building" />建筑 = 项目</li>

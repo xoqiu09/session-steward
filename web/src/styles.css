@@ -612,3 +612,4 @@ select.outcome { font-size: 12px; margin: 2px 0 4px; }
 .usage-subagents li{display:grid;grid-template-columns:auto auto minmax(0,1fr);gap:2px 8px;align-items:baseline;padding:4px 0;border-bottom:1px dashed #eee5d4;font-size:12.5px}
 .usage-subagents li small{grid-column:1/-1}
 .sub-state.done{color:#3f8f4f}.sub-state.running{color:#c98a12}.sub-type{font-weight:600}.sub-desc{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.history-day-head{display:flex;align-items:center;justify-content:space-between;gap:10px}

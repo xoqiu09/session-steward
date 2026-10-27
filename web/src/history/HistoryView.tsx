@@ -22,7 +22,7 @@ function tip(d: DayStat | undefined, day: string, tokens: boolean) {
   return `${dayLabel(day)} · ${parts.join(' · ')}`
 }
 
-export function HistoryView({ snap, onSelectSession, onSelectItem }: { snap: Snapshot; onSelectSession: (id: number) => void; onSelectItem: (id: string) => void }) {
+export function HistoryView({ snap, onSelectSession, onSelectItem, onReplayDay }: { snap: Snapshot; onSelectSession: (id: number) => void; onSelectItem: (id: string) => void; onReplayDay?: (day: string) => void }) {
   const [data, setData] = useState<HistoryResp | null>(null)
   const [error, setError] = useState('')
   const [metric, setMetric] = useState<Metric>('work')
@@ -125,12 +125,12 @@ export function HistoryView({ snap, onSelectSession, onSelectItem }: { snap: Sna
         </section>
       )}
 
-      <DayPanel day={day} stat={byDay.get(day)} snap={snap} tokens={data.tokens_enabled} onSelectSession={onSelectSession} onSelectItem={onSelectItem} />
+      <DayPanel day={day} stat={byDay.get(day)} snap={snap} tokens={data.tokens_enabled} onSelectSession={onSelectSession} onSelectItem={onSelectItem} onReplay={onReplayDay} />
     </div>
   )
 }
 
-function DayPanel({ day, stat, snap, tokens, onSelectSession, onSelectItem }: { day: string; stat?: DayStat; snap: Snapshot; tokens: boolean; onSelectSession: (id: number) => void; onSelectItem: (id: string) => void }) {
+function DayPanel({ day, stat, snap, tokens, onSelectSession, onSelectItem, onReplay }: { day: string; stat?: DayStat; snap: Snapshot; tokens: boolean; onSelectSession: (id: number) => void; onSelectItem: (id: string) => void; onReplay?: (day: string) => void }) {
   const [detail, setDetail] = useState<DayDetail | null>(null)
   const [error, setError] = useState('')
   useEffect(() => {
@@ -146,7 +146,10 @@ function DayPanel({ day, stat, snap, tokens, onSelectSession, onSelectItem }: { 
   const isToday = day === dayKey(new Date())
   return (
     <section className="history-day" aria-label={`${dayLabel(day)} 的小结`}>
-      <h2>{dayLabel(day)}{isToday ? '（今天）' : ''}</h2>
+      <div className="history-day-head">
+        <h2>{dayLabel(day)}{isToday ? '（今天）' : ''}</h2>
+        {onReplay && stat && <button type="button" className="btn small" onClick={() => onReplay(day)} title="在小镇里拖时间条看这一天的变化">在小镇回放这一天</button>}
+      </div>
       {stat ? (
         <p className="history-day-sum">
           {stat.sessions} 个会话 · 对话 {stat.prompts} 轮 · 工具 {stat.tools} 次{stat.subagents ? ` · 子 Agent ${stat.subagents} 个` : ''} · 交付 {stat.delivered} · 验收 {stat.accepted}

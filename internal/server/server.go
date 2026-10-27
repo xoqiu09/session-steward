@@ -528,6 +528,21 @@ func (s *Server) handleDelivered(w http.ResponseWriter, r *http.Request) {
 // ---- 面板 ----
 
 func (s *Server) handleSnapshot(w http.ResponseWriter, r *http.Request) {
+	// ?at=RFC3339：回放过去某一时刻（只读，小镇时间条用）。
+	if v := r.URL.Query().Get("at"); v != "" {
+		at, err := core.ReplayParse(v)
+		if err != nil {
+			writeErr(w, err)
+			return
+		}
+		snap, err := s.Core.SnapshotAt(r.Context(), at)
+		if err != nil {
+			writeErr(w, err)
+			return
+		}
+		writeJSON(w, 200, snap)
+		return
+	}
 	snap, err := s.Core.Snapshot(r.Context())
 	if err != nil {
 		writeErr(w, err)
