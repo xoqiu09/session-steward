@@ -243,3 +243,17 @@
 .town-view .town-guide-chip { display: inline-flex; align-items: center; gap: 4px; margin: 0 6px 2px 0; padding: 0 7px; border-radius: 10px; background: #fff; border: 1px solid #e2d5bd; font-size: 12px; }
 .town-view .town-guide-steps { margin: 0; padding-left: 20px; }
 .town-view .town-guide-steps li { margin: 4px 0; }
+
+/* 作坊之间的小推车：从交出方推到接手方，停一下再重来 */
+.town-view .town-cart { animation: town-cart 6s ease-in-out infinite; }
+@keyframes town-cart {
+  0%, 8% { transform: translate(0, 0); opacity: 0; }
+  14% { opacity: 1; }
+  62%, 86% { transform: translate(var(--dx), var(--dy)); opacity: 1; }
+  96%, 100% { transform: translate(var(--dx), var(--dy)); opacity: 0; }
+}
+.town-view .town-svg.is-world.is-far .town-cart-wrap { display: none; }
+.town-view .town-svg.is-offline .town-cart { animation: none; }
+@media (prefers-reduced-motion: reduce) {
+  .town-view .town-cart { animation: none; transform: translate(var(--dx), var(--dy)); }
+}

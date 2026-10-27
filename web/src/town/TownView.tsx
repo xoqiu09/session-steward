@@ -11,6 +11,7 @@ import { WorldStage } from './WorldScene'
 import { ReplayBar, minuteLabel, replayISO, startPos, type ReplayPos } from './ReplayBar'
 import { api } from '../api'
 import { planWorld } from './clusters'
+import { relaysOf } from './relays'
 import type { BuildingView } from './townModel'
 import { buildTown, type Highlight, type TownModel } from './townModel'
 import { acceptSnapshot } from './feed'
@@ -73,6 +74,7 @@ export function townSlice(snap: Snapshot, repoId: number | 'all', provider: stri
     runs: [...open, ...failed, ...delivered.values()],
     approvals: action,
     deps: (snap.deps ?? []).filter(d => itemIds.has(d.upstream) && itemIds.has(d.downstream)),
+    relays: relaysOf(snap, now).filter((r) => repoIds.has(r.repoId)),
   }
 }
 

@@ -1,10 +1,10 @@
 // 小镇世界：每个项目一个街区，中间是广场。远景只画街区名牌和计数，近景画小人、包裹和任务。只读。
 import { useEffect, useMemo, useRef, useState, type PointerEvent as RPointerEvent } from 'react'
 import { IsoBox, IsoTile, iso, type Pt } from './iso'
-import { MAX_SEATS, characterStatusLabel, type BuildingView, type Highlight, type ParcelView, type TownModel } from './townModel'
+import { characterStatusLabel, type BuildingView, type Highlight, type ParcelView, type TownModel } from './townModel'
 import {
-  Building, HOUSE_SHAPE, Character, DecisionBoard, Desk, FailRack, Parcel, Path, ReviewDesk, StatusPill, Tag, Tree,
-  activate, buildingColors, charLook, charMatches, onReviewDesk, parcelMatches, parcelTitle, slot, yard,
+  Building, HOUSE_SHAPE, Character, DecisionBoard, FailRack, Parcel, Path, ReviewDesk, StatusPill, Tag, Tree,
+  activate, buildingColors, charLook, charMatches, onReviewDesk, parcelMatches, parcelTitle,
   type BuildingShape, type Plot, type Selection,
 } from './TownScene'
 import {
@@ -18,6 +18,7 @@ import { Bush, Campfire, Fence, Flowers, Lakes, Mound, Pine, Pond, Reeds, Rock, 
 import { cellsInView, gridOfView, sceneryOf, terrainAtCell, tintBlob, type CellScenery } from './terrain'
 import { statusChips, statusOf, sumStatus, type StatusCounts } from './status'
 import { Field } from './field'
+import { Cart, SHED_MAX, Track, Workshop, shedSeat, shedSpots, type ShedSpot } from './workshop'
 import { harvestResult, ripeQueue } from './harvest'
 import { AGENTS, agentChips, agentCounts, agentLegend, agentOf, mainAgent, sumAgents, type Agent } from './agents'
 
@@ -104,22 +105,30 @@ export function WorldScene({ model, world, view, far, selected, highlight, onSel
   type Slot = { p: ParcelView; at: Pt; stale: boolean; moving: boolean }
   const seatsOf = new Map<string, Seat[]>()
   const slotsOf = new Map<string, Slot[]>()
+  const shedsOf = new Map<string, { spot: ShedSpot; more: number }[]>()
   const seats: Seat[] = []
   const charPos = new Map<string, Pt>()
   const itemOwner = new Map<string, string>()
   for (const d of world.districts) {
     const plot = districtPlot(d)
     const mine: Seat[] = [], parcels: Slot[] = []
-    d.b.characters.slice(0, MAX_SEATS).forEach((c, j) => {
-      const [gx, gy] = yard(plot, slot(j), 2.2)
-      mine.push({ key: c.key, c, plot, gx, gy })
-      charPos.set(c.key, iso(gx, gy))
-      if (c.item) itemOwner.set(c.item.id, c.key)
-      const stale = c.status === 'stale'
-      for (const r of c.runs.filter((x) => x.phase === 'moving')) parcels.push({ p: r, at: iso(gx - 0.05, gy - 0.43, 12), stale, moving: !stale })
-    })
+    // 每个 Agent 一间作坊，它的会话小人站在自己作坊门口（每间最多两个，其余计数）。
+    const present = AGENTS.map((a) => a.key).filter((a) => d.b.characters.some((c) => agentOf(c.session) === a))
+    const spots = shedSpots(present, d.ox, d.oy)
+    shedsOf.set(d.key, spots.map((spot) => {
+      const mineAgent = d.b.characters.filter((c) => agentOf(c.session) === spot.agent)
+      mineAgent.slice(0, SHED_MAX).forEach((c, k) => {
+        const [gx, gy] = shedSeat(spot, k)
+        mine.push({ key: c.key, c, plot, gx, gy })
+        charPos.set(c.key, iso(gx, gy))
+        if (c.item) itemOwner.set(c.item.id, c.key)
+        const stale = c.status === 'stale'
+        for (const r of c.runs.filter((x) => x.phase === 'moving')) parcels.push({ p: r, at: iso(gx - 0.05, gy - 0.43, 12), stale, moving: !stale })
+      })
+      return { spot, more: Math.max(0, mineAgent.length - SHED_MAX) }
+    }))
     d.b.parcels.filter((p) => p.phase === 'failed').slice(0, BIN_MAX).forEach((p, i) => {
-      parcels.push({ p, at: iso(d.ox + 4.45 + i * 0.5, d.oy + 7.65, 9), stale: false, moving: false })
+      parcels.push({ p, at: iso(d.ox + 2.55 + i * 0.4, d.oy + 7.8, 9), stale: false, moving: false })
     })
     seatsOf.set(d.key, mine)
     slotsOf.set(d.key, parcels.sort((a, b) => a.p.run.id - b.p.run.id))
@@ -208,7 +217,7 @@ export function WorldScene({ model, world, view, far, selected, highlight, onSel
               ? <Pine at={iso(d.ox + 8.6, d.oy + 0.4)} k={0.9 + (h % 3) * 0.1} />
               : <Tree at={iso(d.ox + 8.6, d.oy + 0.4)} k={0.8 + (h % 3) * 0.1} />}
             {terrainAt.get(`${d.cell.cx},${d.cell.cy}`) === 'hill' && <Rock gx={d.ox + 8.2} gy={d.oy + 4.4} k={1.2} />}
-            <Flowers gx={d.ox + 0.4} gy={d.oy + 5.4} seed={h} />
+            <Flowers gx={d.ox + 0.2} gy={d.oy + 4.6} seed={h} />
             <Flowers gx={d.ox + 5.0} gy={d.oy + 8.0} seed={h >> 4} />
             {d.kind === 'wild' && <Campfire gx={d.ox + 7.2} gy={d.oy + 2.4} />}
             {d.kind === 'wild' && <Fence gx={d.ox + 0.3} gy={d.oy + INNER_D - 0.5} len={1.9} />}
@@ -219,17 +228,26 @@ export function WorldScene({ model, world, view, far, selected, highlight, onSel
               selectedKey={selected?.kind === 'item' ? selected.key : null} dimClass={dim(highlight === 'review')} onSelect={onSelect} />
             {failed > 0 && (
               <g className={dim(highlight === 'failed')}>
-                <IsoBox gx={d.ox + 4.0} gy={d.oy + 7.2} w={1.3} d={0.9} h={9} top="#7a3a32" left="#a5483e" right="#8a3c33" />
-                <Tag at={iso(d.ox + 4.65, d.oy + 7.65, 40)} text={`失败 ${failed}`} bg="#d2483d" fg="#fff" small />
+                <IsoBox gx={d.ox + 2.35} gy={d.oy + 7.45} w={1.0} d={0.7} h={9} top="#7a3a32" left="#a5483e" right="#8a3c33" />
+                <Tag at={iso(d.ox + 2.85, d.oy + 7.8, 40)} text={`失败 ${failed}`} bg="#d2483d" fg="#fff" small />
               </g>
             )}
             {statusAt.get(d.key)!.blocked > 0 && (
               <g className={`town-obj${dim(false)}`} {...activate(() => onSelect({ kind: 'building', key: d.b.key }))} aria-label={`${d.b.name}：受阻 ${statusAt.get(d.key)!.blocked} 项`}>
-                <Roadblock gx={plot.gx + plot.w / 2 + 0.9} gy={plot.gy + plot.d + 1.0} />
-                <Tag at={iso(plot.gx + plot.w / 2 + 1.5, plot.gy + plot.d + 1.0, 46)} text={`受阻 ${statusAt.get(d.key)!.blocked}`} bg="#d2483d" fg="#fff" small />
+                <Roadblock gx={plot.gx + plot.w / 2 - 0.2} gy={plot.gy + plot.d + 0.3} />
+                <Tag at={iso(plot.gx + plot.w / 2 + 0.4, plot.gy + plot.d + 0.3, 46)} text={`受阻 ${statusAt.get(d.key)!.blocked}`} bg="#d2483d" fg="#fff" small />
               </g>
             )}
-            {seatsOf.get(d.key)!.map((seat) => <Desk key={`${seat.key}-desk`} gx={seat.gx - 0.35} gy={seat.gy - 1.05} facing={seat.plot.facing} />)}
+            {/* 每个 Agent 的作坊，以及作坊之间交接、接力的小推车 */}
+            {(() => {
+              const sheds = shedsOf.get(d.key)!
+              return (
+                <g className={dim(false)}>
+                  {sheds.length >= 2 && sheds.slice(1).map((x, i) => <Track key={x.spot.agent} a={sheds[i].spot} b={x.spot} />)}
+                  {sheds.map((x) => <Workshop key={x.spot.agent} s={x.spot} more={x.more} />)}
+                </g>
+              )
+            })()}
             {slotsOf.get(d.key)!.map(({ p, at, stale, moving }) => (
               <Parcel key={p.key} at={at} p={p} stale={stale} moving={moving} selected={isSel('parcel', p.key)}
                 dimClass={dim(highlight ? parcelMatches(p, highlight, stale) : true) + flash(p.key)} onSelect={() => onSelect({ kind: 'parcel', key: p.key })}
@@ -239,7 +257,17 @@ export function WorldScene({ model, world, view, far, selected, highlight, onSel
               <Character key={k} at={iso(gx, gy)} c={c} selected={isSel('character', c.key)}
                 dimClass={(fadeChar(c) || dim(highlight ? charMatches(c, highlight) : true)) + flash(c.key)} onSelect={() => onSelect({ kind: 'character', key: c.key })} />
             ))}
-            <Tree at={iso(d.ox + 0.4, d.oy + 7.4)} k={0.7 + ((h >> 3) % 3) * 0.1} />
+            {/* 小推车画在小人上面，不被挡住 */}
+            {(() => {
+              const sheds = shedsOf.get(d.key)!
+              const relays = model.relays.filter((r) => r.repoId === d.b.repo?.id)
+              const at = (a: Agent) => sheds.find((x) => x.spot.agent === a)?.spot
+              const shown = relays.find((r) => at(r.from) && at(r.to))
+              if (!shown) return null
+              const pair = relays.filter((r) => r.from === shown.from && r.to === shown.to).length
+              return <g className={dim(false)}><Cart relay={shown} from={at(shown.from)!} to={at(shown.to)!} count={pair} onSelect={onSelect} /></g>
+            })()}
+            <Tree at={iso(d.ox + 0.15, d.oy + 8.1)} k={0.6 + ((h >> 3) % 3) * 0.1} />
             {agents && <AgentFlags gx={plot.gx - 0.3} gy={plot.gy + plot.d + 0.2} counts={agentAt.get(d.key)!} />}
           </g>
         )
