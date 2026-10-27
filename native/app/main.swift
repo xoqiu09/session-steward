@@ -2,6 +2,7 @@
 // 只连本机 127.0.0.1；面板 token 从数据目录读取，用来自动登录，从不显示。
 // 只用 macOS 自带的 AppKit / WebKit，用 swiftc 直接编译（见 scripts/build-app.sh）。
 import AppKit
+import ServiceManagement
 import WebKit
 
 // MARK: - 路径与配置
@@ -186,15 +187,108 @@ final class TownWindow: NSObject, WKNavigationDelegate, NSWindowDelegate {
     }
 }
 
+// MARK: - 菜单栏
+
+/// 菜单栏小图标：显示“等你决定”的数量（待处理的审批），每 10 秒向本机面板问一次。
+/// 新审批的系统通知仍由 steward 自己发（通过 App 里带的通知助手），这里不重复发。
+final class StatusMenu: NSObject {
+    let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+    let paths: Paths
+    let onOpen: (String) -> Void
+    private var timer: Timer?
+    private let countItem = NSMenuItem(title: "等你决定：—", action: nil, keyEquivalent: "")
+    private let loginItem = NSMenuItem(title: "开机时启动", action: nil, keyEquivalent: "")
+    private(set) var pending = -1
+
+    init(paths: Paths, onOpen: @escaping (String) -> Void) {
+        self.paths = paths
+        self.onOpen = onOpen
+        super.init()
+        item.button?.image = NSImage(systemSymbolName: "house", accessibilityDescription: "Session Steward")
+        item.button?.imagePosition = .imageLeading
+        let menu = NSMenu()
+        countItem.action = #selector(openQueue)
+        countItem.target = self
+        menu.addItem(countItem)
+        menu.addItem(.separator())
+        menu.addItem(withTitle: "打开小镇", action: #selector(openTown), keyEquivalent: "").target = self
+        menu.addItem(withTitle: "打开完整面板", action: #selector(openPanel), keyEquivalent: "").target = self
+        menu.addItem(.separator())
+        loginItem.action = #selector(toggleLogin)
+        loginItem.target = self
+        menu.addItem(loginItem)
+        menu.addItem(.separator())
+        menu.addItem(withTitle: "退出并停止采集", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "")
+        item.menu = menu
+        refreshLoginItem()
+        timer = Timer.scheduledTimer(withTimeInterval: 10, repeats: true) { [weak self] _ in self?.poll() }
+        poll()
+    }
+
+    @objc func openTown() { onOpen("/?view=town&world=1") }
+    @objc func openPanel() { onOpen("/") }
+    @objc func openQueue() { onOpen("/") }
+
+    /// 开机时启动：由 App 自己登记为登录项（代替单独装的 launchd 服务）。
+    @objc func toggleLogin() {
+        let svc = SMAppService.mainApp
+        do {
+            if svc.status == .enabled { try svc.unregister() } else { try svc.register() }
+        } catch {
+            let a = NSAlert()
+            a.messageText = "没能修改开机启动"
+            a.informativeText = "\(error.localizedDescription)\n可以在“系统设置 → 通用 → 登录项”里手动添加 Session Steward。"
+            a.runModal()
+        }
+        refreshLoginItem()
+    }
+
+    func refreshLoginItem() {
+        let st = SMAppService.mainApp.status
+        loginItem.state = st == .enabled ? .on : .off
+        loginItem.title = st == .requiresApproval ? "开机时启动（等你在系统设置里同意）" : "开机时启动"
+    }
+
+    /// 读快照里待处理的审批数。拿不到（服务没起来、没登录信息）时显示“—”。
+    func poll() {
+        guard let token = paths.token() else { return show(nil) }
+        var req = URLRequest(url: paths.base.appendingPathComponent("api/snapshot"))
+        req.timeoutInterval = 5
+        req.setValue("steward_panel=\(token)", forHTTPHeaderField: "Cookie")
+        URLSession.shared.dataTask(with: req) { [weak self] data, resp, _ in
+            var n: Int? = nil
+            if (resp as? HTTPURLResponse)?.statusCode == 200, let data,
+               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                let approvals = obj["approvals"] as? [[String: Any]] ?? []
+                n = approvals.filter { ($0["status"] as? String) == "pending" }.count
+            }
+            DispatchQueue.main.async { self?.show(n) }
+        }.resume()
+    }
+
+    func show(_ n: Int?) {
+        pending = n ?? -1
+        let title = n.map { $0 > 0 ? " \($0)" : "" } ?? " —"
+        item.button?.attributedTitle = NSAttributedString(string: title, attributes: [
+            .foregroundColor: (n ?? 0) > 0 ? NSColor.systemOrange : NSColor.labelColor,
+            .font: NSFont.monospacedDigitSystemFont(ofSize: 13, weight: .semibold),
+        ])
+        countItem.title = n.map { $0 > 0 ? "等你决定：\($0) 项（点开处理）" : "没有等你决定的事" } ?? "等你决定：—（服务没在运行）"
+        refreshLoginItem()
+    }
+}
+
 // MARK: - App
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     let paths = Paths.load()
     lazy var backend = Backend(paths: paths)
     lazy var town = TownWindow(paths: paths)
+    var status: StatusMenu?
 
     func applicationDidFinishLaunching(_ note: Notification) {
         buildMainMenu()
+        status = StatusMenu(paths: paths) { [weak self] path in self?.town.open(path: path) }
         NotificationCenter.default.addObserver(forName: .backendStopped, object: nil, queue: .main) { [weak self] _ in self?.backendStopped() }
         startBackend()
     }
@@ -210,6 +304,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             let ready = backend.waitReady()
             DispatchQueue.main.async {
+                self.status?.poll()
                 if ready { self.town.open() } else { self.town.showMessage("后台服务没有在 \(self.paths.listen) 启动，日志在 \(self.paths.home.path)/logs/app-serve.log。") }
             }
         }
