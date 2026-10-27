@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState, type PointerEvent as RPointerEven
 import { IsoBox, IsoTile, iso, type Pt } from './iso'
 import { MAX_SEATS, characterStatusLabel, type BuildingView, type Highlight, type ParcelView, type TownModel } from './townModel'
 import {
-  BUILDING_H, Building, HOUSE_SHAPE, Character, DecisionBoard, Desk, FailRack, Parcel, Path, ReviewDesk, StatusPill, Tag, Tree,
+  Building, HOUSE_SHAPE, Character, DecisionBoard, Desk, FailRack, Parcel, Path, ReviewDesk, StatusPill, Tag, Tree,
   activate, buildingColors, charLook, charMatches, onReviewDesk, parcelMatches, parcelTitle, slot, yard,
   type BuildingShape, type Plot, type Selection,
 } from './TownScene'
@@ -42,17 +42,17 @@ interface SceneProps {
   agents?: { focus: Agent | null } | null
 }
 
-/** 四档建筑：占地、墙色、高度、窗户层数。 */
+/** 四档建筑：占地、墙色、高度、窗户层数。占满院子后排，远看也认得出大小差别。 */
 const TIERS: Record<Tier, { shape: BuildingShape; w: number; d: number }> = {
-  0: { w: 3.0, d: 2.2, shape: { kind: 'cabin', name: '小木屋', h: 38, rise: 30, floors: 1, walls: { top: '#b48a5c', front: '#c99c6a', side: '#ad8152', edge: '#7a5636' } } },
-  1: { w: 4.3, d: 2.8, shape: HOUSE_SHAPE },
-  2: { w: 5.0, d: 3.0, shape: { kind: 'workshop', name: '工坊', h: 60, rise: 24, floors: 1, walls: { top: '#e9dcc4', front: '#efe1c8', side: '#dccaa8', edge: '#8f7350' } } },
-  3: { w: 4.2, d: 3.0, shape: { kind: 'tower', name: '大楼', h: 118, rise: 22, floors: 3, walls: { top: '#e7e2d6', front: '#f1ece0', side: '#dcd4c3', edge: '#8d8270' } } },
+  0: { w: 3.8, d: 3.0, shape: { kind: 'cabin', name: '小木屋', h: 48, rise: 38, floors: 1, walls: { top: '#b48a5c', front: '#c99c6a', side: '#ad8152', edge: '#7a5636' } } },
+  1: { w: 5.0, d: 3.6, shape: { ...HOUSE_SHAPE, h: 72, rise: 44, floors: 2 } },
+  2: { w: 5.6, d: 3.9, shape: { kind: 'workshop', name: '工坊', h: 86, rise: 34, floors: 2, walls: { top: '#e9dcc4', front: '#efe1c8', side: '#dccaa8', edge: '#8f7350' } } },
+  3: { w: 5.0, d: 4.0, shape: { kind: 'tower', name: '大楼', h: 196, rise: 30, floors: 5, walls: { top: '#e7e2d6', front: '#f1ece0', side: '#dcd4c3', edge: '#8d8270' } } },
 }
 
 function districtPlot(d: District): Plot {
   const t = TIERS[d.tier]
-  return { gx: d.ox + 1, gy: d.oy + 0.6, w: t.w, d: t.d, facing: 'x', ...buildingColors(d.b.repo?.id) }
+  return { gx: d.ox + 0.8, gy: d.oy + 0.5, w: t.w, d: t.d, facing: 'x', ...buildingColors(d.b.repo?.id) }
 }
 
 export function WorldScene({ model, world, view, far, selected, highlight, onSelect, changed = new Set(), offline = false, needsYou, agents = null }: SceneProps) {
@@ -95,10 +95,10 @@ export function WorldScene({ model, world, view, far, selected, highlight, onSel
       for (const r of c.runs.filter((x) => x.phase === 'moving')) parcels.push({ p: r, at: iso(gx - 0.05, gy - 0.43, 12), stale, moving: !stale })
     })
     d.b.parcels.filter(onReviewDesk).slice(0, SHELF_MAX).forEach((p, i) => {
-      parcels.push({ p, at: iso(d.ox + 6.6 + i * 0.6, d.oy + 4.75, 12), stale: false, moving: false })
+      parcels.push({ p, at: iso(d.ox + 6.8 + i * 0.6, d.oy + 5.85, 12), stale: false, moving: false })
     })
     d.b.parcels.filter((p) => p.phase === 'failed').slice(0, BIN_MAX).forEach((p, i) => {
-      parcels.push({ p, at: iso(d.ox + 6.95 + i * 0.5, d.oy + 6.6, 9), stale: false, moving: false })
+      parcels.push({ p, at: iso(d.ox + 7.15 + i * 0.5, d.oy + 7.45, 9), stale: false, moving: false })
     })
     seatsOf.set(d.key, mine)
     slotsOf.set(d.key, parcels.sort((a, b) => a.p.run.id - b.p.run.id))
@@ -120,7 +120,7 @@ export function WorldScene({ model, world, view, far, selected, highlight, onSel
   const boardAt = iso(6.0, 8.0)
   const P = world.plaza
   // 远景名牌跟着视野放大，拉得再远也认得出项目名。
-  const plateK = Math.min(3, Math.max(1, view.w / 3000))
+  const plateK = Math.min(2.4, Math.max(0.8, view.w / 2900))
   const mapMode = view.w > MAP_W
 
   return (
@@ -206,25 +206,25 @@ export function WorldScene({ model, world, view, far, selected, highlight, onSel
             {lead && <AgentYard d={d} color={AGENTS.find((a) => a.key === lead)!.color} />}
             <Path from={[plot.gx + plot.w / 2, plot.gy + plot.d]} to={[plot.gx + plot.w / 2, d.oy + INNER_D + 0.6]} />
             {terrainAt.get(`${d.cell.cx},${d.cell.cy}`) === 'forest' || terrainAt.get(`${d.cell.cx},${d.cell.cy}`) === 'hill'
-              ? <Pine at={iso(d.ox + 7.9, d.oy + 1.1)} k={0.9 + (h % 3) * 0.1} />
-              : <Tree at={iso(d.ox + 7.9, d.oy + 1.1)} k={0.8 + (h % 3) * 0.1} />}
-            {terrainAt.get(`${d.cell.cx},${d.cell.cy}`) === 'hill' && <Rock gx={d.ox + 8.0} gy={d.oy + 2.8} k={1.2} />}
-            <Flowers gx={d.ox + 0.7} gy={d.oy + 4.4} seed={h} />
+              ? <Pine at={iso(d.ox + 8.6, d.oy + 0.4)} k={0.9 + (h % 3) * 0.1} />
+              : <Tree at={iso(d.ox + 8.6, d.oy + 0.4)} k={0.8 + (h % 3) * 0.1} />}
+            {terrainAt.get(`${d.cell.cx},${d.cell.cy}`) === 'hill' && <Rock gx={d.ox + 8.2} gy={d.oy + 4.4} k={1.2} />}
+            <Flowers gx={d.ox + 0.4} gy={d.oy + 5.4} seed={h} />
             <Flowers gx={d.ox + 8.3} gy={d.oy + 7.0} seed={h >> 4} />
-            {d.kind === 'wild' && <Campfire gx={d.ox + 7.0} gy={d.oy + 2.6} />}
+            {d.kind === 'wild' && <Campfire gx={d.ox + 7.2} gy={d.oy + 2.4} />}
             {d.kind === 'wild' && <Fence gx={d.ox + 0.3} gy={d.oy + INNER_D - 0.5} len={1.9} />}
             {d.kind === 'wild' && <Fence gx={d.ox + 4.6} gy={d.oy + INNER_D - 0.5} len={4.0} />}
             <Building plot={plot} shape={TIERS[d.tier].shape} b={d.b} selected={isSel('building', d.b.key)} dimClass={dim(false)} onSelect={() => onSelect({ kind: 'building', key: d.b.key })} />
             {review > 0 && (
               <g className={`town-shelf${dim(highlight === 'review')}`}>
-                <IsoBox gx={d.ox + 6.2} gy={d.oy + 4.3} w={2.1} d={0.95} h={12} top="#e8d2a8" left="#b98a52" right="#9c7140" />
-                <Tag at={iso(d.ox + 7.25, d.oy + 4.8, 52)} text={`待验收 ${review}${review > SHELF_MAX ? ` · 摆了 ${SHELF_MAX}` : ''}`} bg="#eef0ff" fg="#2f3a8f" small border="#5b6cd8" />
+                <IsoBox gx={d.ox + 6.4} gy={d.oy + 5.4} w={2.1} d={0.95} h={12} top="#e8d2a8" left="#b98a52" right="#9c7140" />
+                <Tag at={iso(d.ox + 7.45, d.oy + 5.9, 52)} text={`待验收 ${review}${review > SHELF_MAX ? ` · 摆了 ${SHELF_MAX}` : ''}`} bg="#eef0ff" fg="#2f3a8f" small border="#5b6cd8" />
               </g>
             )}
             {failed > 0 && (
               <g className={dim(highlight === 'failed')}>
-                <IsoBox gx={d.ox + 6.5} gy={d.oy + 6.2} w={1.3} d={0.9} h={9} top="#7a3a32" left="#a5483e" right="#8a3c33" />
-                <Tag at={iso(d.ox + 7.15, d.oy + 6.65, 40)} text={`失败 ${failed}`} bg="#d2483d" fg="#fff" small />
+                <IsoBox gx={d.ox + 6.7} gy={d.oy + 7.0} w={1.3} d={0.9} h={9} top="#7a3a32" left="#a5483e" right="#8a3c33" />
+                <Tag at={iso(d.ox + 7.35, d.oy + 7.45, 40)} text={`失败 ${failed}`} bg="#d2483d" fg="#fff" small />
               </g>
             )}
             {statusAt.get(d.key)!.blocked > 0 && (
@@ -284,7 +284,7 @@ export function WorldScene({ model, world, view, far, selected, highlight, onSel
           const ag = sumAgents(members.map((d) => agentAt.get(d.key)!))
           return (
             <g key={`fv-${v.key}`} className={`town-map-only${focus && ag[focus] === 0 ? ' is-dim' : ''}`}>
-              <FarPlate k={plateK * 1.15} at={iso(v.square.cx * CELL_W + INNER_W / 2, v.square.cy * CELL_D + INNER_D / 2, villageLift(v.square, plateK))} title={`${v.name} · ${members.length} 个项目`}
+              <FarPlate k={plateK * 1.2} at={iso(v.square.cx * CELL_W + INNER_W / 2, v.square.cy * CELL_D + INNER_D / 2, villageLift(v.square, plateK))} title={v.name} sub={`${members.length} 个项目`}
                 tone={toneOf(st, 'plaza')} chips={agents ? withWaiting(agentChips(ag), st) : plateChips(st, 0)} note={agents ? '村里没有会话' : '村里很安静'} />
             </g>
           )
@@ -298,13 +298,13 @@ export function WorldScene({ model, world, view, far, selected, highlight, onSel
           return (
             <g key={`far-${d.key}`} className={`town-obj${d.village ? ' town-hide-on-map' : ''}${fadeDistrict(d.key)}`} {...activate(() => onSelect({ kind: 'building', key: d.b.key }))}
               aria-label={`${d.b.name}：${chips.length ? chips.map((c) => c.text).join('，') : note}`}>
-              <FarPlate k={plateK * (d.kind === 'wild' ? 0.8 : 1)} at={iso(d.ox + 3.15, d.oy + 2.0, 150 + Math.max(0, TIERS[d.tier].shape.h - BUILDING_H))} title={d.b.name}
+              <FarPlate k={plateK * (d.kind === 'wild' ? 0.85 : 1)} at={plateAt(d)} title={d.b.name}
                 tone={toneOf(st, 'calm')} chips={chips} note={note} accent={buildingColors(d.b.repo?.id).accent} />
             </g>
           )
         })}
         {/* 广场名牌最后画：全镇合计，不被村庄名牌盖住 */}
-        <FarPlate k={plateK} at={iso(P.ox + INNER_W / 2, P.oy + INNER_D / 2, 120 + 90 * plateK)} title="中央广场" tone="plaza"
+        <FarPlate k={plateK * 1.1} at={iso(P.ox + INNER_W / 2, P.oy + INNER_D / 2, 110)} title="中央广场" tone="plaza"
           chips={agents ? agentChips(sumAgents([...agentAt.values()])) : plateChips({ ...sumStatus([...statusAt.values()]), waiting: model.pendingApprovals.length }, failedTotal)}
           note={agents ? '没有会话' : '今天很安静'} />
       </g>
@@ -350,17 +350,17 @@ function TownCrate({ at, fill, tape }: { at: Pt; fill: string; tape: string }) {
   )
 }
 
-/** 村庄名牌往远离广场的方向让一让：后面的村抬高，前面的村压低，免得和广场名牌叠在一起。 */
+/** 后面的村庄名牌抬高一些，免得和广场名牌叠在一起。 */
 function villageLift(square: Cell, k: number) {
   const depth = square.cx + square.cy
-  return depth < 0 ? 60 + 70 * k : depth > 0 ? 60 - 40 * k : 60
+  return depth < 0 ? 60 + 70 * k : 60
 }
 
-type Chip = { text: string; dot: string }
+type Chip = { text: string; short?: string; dot: string }
 type Tone = 'urgent' | 'blocked' | 'busy' | 'calm' | 'plaza'
 
 function plateChips(st: StatusCounts, failed: number): Chip[] {
-  return [...statusChips(st), ...(failed ? [{ text: `失败 ${failed}`, dot: '#7a3a32' }] : [])]
+  return [...statusChips(st), ...(failed ? [{ text: `失败 ${failed}`, short: `失败 ${failed}`, dot: '#7a3a32' }] : [])]
 }
 
 /** 按 Agent 看时名牌列各 Agent 的会话数，等你决定仍然保留。 */
@@ -400,32 +400,48 @@ function toneOf(st: StatusCounts, rest: 'calm' | 'plaza'): Tone {
 const PLATE_FILL: Record<Tone, string> = { urgent: '#fff4c2', blocked: '#fde8e4', busy: '#fffaf0', calm: '#fffaf0', plaza: '#eef0ff' }
 const PLATE_EDGE: Record<Tone, string> = { urgent: '#e0a400', blocked: '#d2483d', busy: '#e3a23d', calm: '', plaza: '#5b6cd8' }
 
-/** 远景名牌：项目名一行，下面一排状态色点；什么都没有时写一句说明。 */
-function FarPlate({ at, title, chips, note, tone, accent = '#8a7a63', k = 1 }: { at: Pt; title: string; chips: Chip[]; note: string; tone: Tone; accent?: string; k?: number }) {
-  const name = title.length > 24 ? `${title.slice(0, 23)}…` : title
-  const widths = chips.map((c) => c.text.length * 21 + 34)
-  const rowW = widths.reduce((n, w) => n + w, 0) + Math.max(0, chips.length - 1) * 10
-  const w = Math.max(name.length * 24 + 60, chips.length ? rowW + 36 : note.length * 21 + 40)
-  let x = -rowW / 2
+/** 远景名牌：游戏里那种头顶名牌，一行写完：项目名 + 状态色点和数字，下面一个小尖角指着建筑。 */
+function FarPlate({ at, title, sub, chips, note, tone, accent = '#8a7a63', k = 1 }: { at: Pt; title: string; sub?: string; chips: Chip[]; note: string; tone: Tone; accent?: string; k?: number }) {
+  const name = title.length > 22 ? `${title.slice(0, 21)}…` : title
+  const words = chips.length ? chips.map((c) => c.short ?? c.text) : [note]
+  const widths = words.map((t) => measureText(t, 17) + (chips.length ? 26 : 8))
+  const nameW = measureText(name, 22) + (sub ? measureText(sub, 15) + 10 : 0)
+  const w = 28 + nameW + 12 + widths.reduce((n, x) => n + x + 6, 0)
+  let x = -w / 2 + 28 + nameW + 12
   return (
     <g transform={`translate(${at[0]},${at[1]}) scale(${k})`}>
-      <rect x={-w / 2 + 3} y={-40} width={w} height={84} rx="16" fill="rgba(60,40,20,.18)" />
-      <rect x={-w / 2} y={-44} width={w} height={84} rx="16" fill={PLATE_FILL[tone]} stroke={PLATE_EDGE[tone] || accent} strokeWidth={tone === 'calm' ? 3 : 6} />
-      <rect x={-w / 2 + 14} y={-34} width={8} height={30} rx="4" fill={accent} />
-      <text y="-6" textAnchor="middle" fontSize="32" fontWeight="800" fill="#3a2a1c">{name}</text>
-      {chips.length ? chips.map((c, i) => {
-        const cw = widths[i], at0 = x
-        x += cw + 10
-        return (
-          <g key={c.text} transform={`translate(${at0},${8})`}>
-            <rect width={cw} height={26} rx="13" fill="#fff" stroke={c.dot} strokeWidth="2" />
-            <circle cx="15" cy="13" r="7" fill={c.dot} />
-            <text x={cw / 2 + 10} y="21" textAnchor="middle" fontSize="20" fontWeight="700" fill="#3a2a1c">{c.text}</text>
+      <title>{`${title}${sub ? ` · ${sub}` : ''}：${chips.length ? chips.map((c) => c.text).join('，') : note}`}</title>
+      <path d="M-7,-2 L0,8 L7,-2 Z" fill={PLATE_EDGE[tone] || accent} />
+      <rect x={-w / 2 + 2} y={-36} width={w} height={36} rx="10" fill="rgba(40,25,10,.22)" />
+      <rect x={-w / 2} y={-38} width={w} height={36} rx="10" fill={PLATE_FILL[tone]} stroke={PLATE_EDGE[tone] || accent} strokeWidth={tone === 'calm' ? 2 : 3.5} />
+      <rect x={-w / 2 + 9} y={-30} width={6} height={20} rx="3" fill={accent} />
+      <text x={-w / 2 + 22} y="-13" fontSize="22" fontWeight="800" fill="#3a2a1c">{name}{sub && <tspan dx="8" fontSize="15" fontWeight="600" fill="#7a6a55">{sub}</tspan>}</text>
+      {words.map((t, i) => {
+        const cw = widths[i], x0 = x
+        x += cw + 6
+        return chips.length ? (
+          <g key={t} transform={`translate(${x0},-32)`}>
+            <rect width={cw} height={24} rx="12" fill="#fff" stroke={chips[i].dot} strokeWidth="1.5" />
+            <circle cx="12" cy="12" r="5.5" fill={chips[i].dot} />
+            <text x={cw / 2 + 8} y="18" textAnchor="middle" fontSize="17" fontWeight="700" fill="#3a2a1c">{t}</text>
           </g>
-        )
-      }) : <text y="28" textAnchor="middle" fontSize="21" fill="#8a7a63">{note}</text>}
+        ) : <text key={t} x={x0 + 4} y="-14" fontSize="17" fill="#8a7a63">{t}</text>
+      })}
     </g>
   )
+}
+
+/** 粗略量字宽：中文一个字一格，英文数字半格多一点。 */
+function measureText(t: string, size: number) {
+  let n = 0
+  for (const ch of t) n += /[\u0000-\u00ff]/.test(ch) ? 0.58 : 1
+  return n * size
+}
+
+/** 项目名牌钉在屋顶正上方。 */
+function plateAt(d: District): Pt {
+  const t = TIERS[d.tier], p = districtPlot(d)
+  return iso(p.gx + t.w / 2, p.gy + t.d / 2, t.shape.h + t.shape.rise + 26)
 }
 
 /** 路障：一项工作受阻时立在项目门口，红白条纹，远远就能看见。 */
