@@ -187,6 +187,102 @@ final class TownWindow: NSObject, WKNavigationDelegate, NSWindowDelegate {
     }
 }
 
+// MARK: - Hooks 与首次引导
+
+enum Hooks {
+    static var home: URL { URL(fileURLWithPath: NSHomeDirectory()) }
+    static let files = ["~/.claude/settings.json", "~/.codex/hooks.json"]
+
+    /// 是否已经装过 Steward 的 hooks（看两个配置文件里有没有 steward-hook）。
+    static func installed() -> Bool {
+        for rel in [".claude/settings.json", ".codex/hooks.json"] {
+            if let text = try? String(contentsOf: home.appendingPathComponent(rel), encoding: .utf8), text.contains("steward-hook") { return true }
+        }
+        return false
+    }
+
+    /// GUI App 拿不到终端的 PATH，按常见位置找 tmux。
+    static func hasTmux() -> Bool {
+        ["/opt/homebrew/bin/tmux", "/usr/local/bin/tmux", "/usr/bin/tmux"].contains { FileManager.default.isExecutableFile(atPath: $0) }
+    }
+
+    static let explain = """
+    要看到你自己的小镇，需要让 Claude Code / Codex 把会话情况告诉本机的 Session Steward。会做这些事：
+
+    • 在 \(files.joined(separator: " 和 ")) 里追加 Steward 自己的几条 hooks。改之前会先备份，只增删自己的条目，以后可以在菜单栏里一键卸载。
+    • 把 steward-hook 复制到数据目录的 bin 里，hooks 调用的是这一份。
+
+    数据只留在这台电脑上：只监听 127.0.0.1，不上传任何东西。
+    """
+}
+
+extension AppDelegate {
+    /// 首次打开：说明要改哪些文件，同意才装；然后问要不要开机启动，并提示 tmux。
+    func onboardIfNeeded() {
+        let key = "onboarded"
+        guard !UserDefaults.standard.bool(forKey: key) else { return }
+        UserDefaults.standard.set(true, forKey: key)
+        if Hooks.installed() { return } // 已经用命令行装过，不打扰
+        NSApp.activate(ignoringOtherApps: true)
+        let a = NSAlert()
+        a.messageText = "欢迎使用 Session Steward"
+        a.informativeText = Hooks.explain
+        a.addButton(withTitle: "安装 hooks 并开始")
+        a.addButton(withTitle: "先不装，只看看")
+        guard a.runModal() == .alertFirstButtonReturn else { return }
+        installHooks(confirm: false)
+    }
+
+    @objc func installHooksMenu() { installHooks(confirm: true) }
+
+    func installHooks(confirm: Bool) {
+        if confirm {
+            let a = NSAlert()
+            a.messageText = "给 Claude Code / Codex 安装 hooks？"
+            a.informativeText = Hooks.explain
+            a.addButton(withTitle: "安装")
+            a.addButton(withTitle: "取消")
+            guard a.runModal() == .alertFirstButtonReturn else { return }
+        }
+        let (code, out) = backend.run(["install"])
+        let done = NSAlert()
+        if code == 0 {
+            done.messageText = "hooks 装好了"
+            var notes = ["之后新开的 Claude Code / Codex 会话会出现在小镇里。"]
+            if out.contains("Codex") || out.contains("codex") { notes.append("Codex 需要在它自己的应用里确认（信任）新的 hooks 才会生效。") }
+            if !Hooks.hasTmux() { notes.append("没检测到 tmux：在面板里直接开托管会话的功能不可用，其他功能照常。") }
+            done.informativeText = notes.joined(separator: "\n\n")
+            let box = NSButton(checkboxWithTitle: "开机时自动启动 Session Steward", target: nil, action: nil)
+            box.state = SMAppService.mainApp.status == .enabled ? .on : .off
+            done.accessoryView = box
+            done.addButton(withTitle: "好")
+            done.runModal()
+            let want = box.state == .on, now = SMAppService.mainApp.status == .enabled
+            if want != now { status?.toggleLogin() }
+        } else {
+            done.messageText = "安装 hooks 没有成功"
+            done.informativeText = out.isEmpty ? "steward install 退出码 \(code)" : out
+            done.runModal()
+        }
+        status?.refreshHooks()
+    }
+
+    @objc func uninstallHooksMenu() {
+        let a = NSAlert()
+        a.messageText = "卸载 Steward 的 hooks？"
+        a.informativeText = "只删除 Steward 自己加在 \(Hooks.files.joined(separator: " 和 ")) 里的条目，其他设置不动。之后新的会话不会再出现在小镇里；已有的记录保留。"
+        a.addButton(withTitle: "卸载")
+        a.addButton(withTitle: "取消")
+        guard a.runModal() == .alertFirstButtonReturn else { return }
+        let (code, out) = backend.run(["uninstall"])
+        let done = NSAlert()
+        done.messageText = code == 0 ? "hooks 已卸载" : "卸载没有成功"
+        done.informativeText = code == 0 ? "想停止后台采集，可以在菜单栏选“退出并停止采集”。" : out
+        done.runModal()
+        status?.refreshHooks()
+    }
+}
+
 // MARK: - 菜单栏
 
 /// 菜单栏小图标：显示“等你决定”的数量（待处理的审批），每 10 秒向本机面板问一次。
@@ -198,6 +294,8 @@ final class StatusMenu: NSObject {
     private var timer: Timer?
     private let countItem = NSMenuItem(title: "等你决定：—", action: nil, keyEquivalent: "")
     private let loginItem = NSMenuItem(title: "开机时启动", action: nil, keyEquivalent: "")
+    private let hooksItem = NSMenuItem(title: "安装 hooks…", action: nil, keyEquivalent: "")
+    weak var app: AppDelegate?
     private(set) var pending = -1
 
     init(paths: Paths, onOpen: @escaping (String) -> Void) {
@@ -217,12 +315,23 @@ final class StatusMenu: NSObject {
         loginItem.action = #selector(toggleLogin)
         loginItem.target = self
         menu.addItem(loginItem)
+        hooksItem.target = self
+        hooksItem.action = #selector(hooksAction)
+        menu.addItem(hooksItem)
         menu.addItem(.separator())
         menu.addItem(withTitle: "退出并停止采集", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "")
         item.menu = menu
         refreshLoginItem()
         timer = Timer.scheduledTimer(withTimeInterval: 10, repeats: true) { [weak self] _ in self?.poll() }
         poll()
+    }
+
+    @objc func hooksAction() {
+        if Hooks.installed() { app?.uninstallHooksMenu() } else { app?.installHooksMenu() }
+    }
+
+    func refreshHooks() {
+        hooksItem.title = Hooks.installed() ? "卸载 hooks…" : "安装 hooks…"
     }
 
     @objc func openTown() { onOpen("/?view=town&world=1") }
@@ -273,6 +382,7 @@ final class StatusMenu: NSObject {
             .foregroundColor: (n ?? 0) > 0 ? NSColor.systemOrange : NSColor.labelColor,
             .font: NSFont.monospacedDigitSystemFont(ofSize: 13, weight: .semibold),
         ])
+        refreshHooks()
         countItem.title = n.map { $0 > 0 ? "等你决定：\($0) 项（点开处理）" : "没有等你决定的事" } ?? "等你决定：—（服务没在运行）"
         refreshLoginItem()
     }
@@ -289,6 +399,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ note: Notification) {
         buildMainMenu()
         status = StatusMenu(paths: paths) { [weak self] path in self?.town.open(path: path) }
+        status?.app = self
         NotificationCenter.default.addObserver(forName: .backendStopped, object: nil, queue: .main) { [weak self] _ in self?.backendStopped() }
         startBackend()
     }
@@ -305,7 +416,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let ready = backend.waitReady()
             DispatchQueue.main.async {
                 self.status?.poll()
-                if ready { self.town.open() } else { self.town.showMessage("后台服务没有在 \(self.paths.listen) 启动，日志在 \(self.paths.home.path)/logs/app-serve.log。") }
+                if ready { self.town.open(); self.onboardIfNeeded() } else { self.town.showMessage("后台服务没有在 \(self.paths.listen) 启动，日志在 \(self.paths.home.path)/logs/app-serve.log。") }
             }
         }
     }
