@@ -42,6 +42,17 @@ type Config struct {
 	SummaryRepos   []string `json:"summary_repos"`
 	// Explicitly approved repositories: successful memory-maintenance deliveries go to history.
 	AutomaticMemoryProjects []string `json:"automatic_memory_projects"`
+	// 多设备：一台当中心（hub），其余（agent）每 15 秒把摘要推给它，任何一台都能看“全部设备”。默认关闭。
+	Hub HubConfig `json:"hub"`
+}
+
+// HubConfig 多设备合并。只走 Tailscale（中心机需配置 remote_hosts 并用 tailscale serve 转发）。
+// 摘要只含项目名、工作项编号/标题/状态、会话的 Agent/状态/标题/时间和计数，不含对话、命令、路径。
+type HubConfig struct {
+	Role   string `json:"role"`   // "" 关闭；"hub" 中心机；"agent" 把摘要推给中心
+	URL    string `json:"url"`    // agent：中心机的 Tailscale HTTPS 地址，例如 https://mac-a.tail1234.ts.net
+	Secret string `json:"secret"` // agent：中心机运行 steward hub 打印的密钥
+	Device string `json:"device"` // 这台电脑在合并视图里的名字，缺省为主机名
 }
 
 // AgentSpec 描述面板可启动的 Agent。配置可写成命令数组（简写）或对象。

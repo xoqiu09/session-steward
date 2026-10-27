@@ -2,10 +2,21 @@
 import { ago } from '../model'
 import { endLabel, eventTurns, type RawEvent, type Step } from './eventTurns'
 import { clock } from './runDeskModel'
+import { fmtNum, tokenTotal } from '../history/historyModel'
+import type { TurnUsage } from '../types'
 
 const MARK: Record<Step['tone'], string> = { ok: '✓', fail: '✗', running: '…', ask: '?', info: '·' }
 
-export function SessionActivity({ events, now, folded = false }: { events: readonly RawEvent[]; now: string; folded?: boolean }) {
+/** 每轮的 token：本地记录里那条消息的时间和 hook 收到的时间差几秒，90 秒内算同一轮。 */
+function tokensFor(start: string, usage?: readonly TurnUsage[]): number | null {
+  if (!usage?.length) return null
+  const t = Date.parse(start)
+  let best: TurnUsage | null = null
+  for (const u of usage) if (Math.abs(Date.parse(u.start) - t) <= 90_000 && (!best || Math.abs(Date.parse(u.start) - t) < Math.abs(Date.parse(best.start) - t))) best = u
+  return best ? tokenTotal(best) : null
+}
+
+export function SessionActivity({ events, now, folded = false, turnUsage }: { events: readonly RawEvent[]; now: string; folded?: boolean; turnUsage?: readonly TurnUsage[] }) {
   const recent = events.slice(0, 60)
   const turns = eventTurns(recent)
   const raw = (
@@ -26,13 +37,14 @@ export function SessionActivity({ events, now, folded = false }: { events: reado
       {turns.map((t, i) => {
         const toolSum = t.tools.length ? `用了 ${t.tools.reduce((n, x) => n + x.count, 0)} 次工具（${t.tools.slice(0, 3).map((x) => `${x.name} ${x.count}`).join('、')}${t.tools.length > 3 ? ' 等' : ''}）` : '没有用工具'
         const state = t.end ? endLabel[t.end] : i === 0 ? '进行中' : '没有收到结束信号'
+        const tok = tokensFor(t.start, turnUsage)
         return (
           <li key={t.key} className={`activity-turn${t.end ? '' : ' is-open'}${t.end === 'stop_failure' || t.failed ? ' has-fail' : ''}`}>
             <details open={i === 0}>
               <summary>
                 <span className="activity-when" title={t.start}>{ago(t.start, now)}</span>
                 <span className="activity-opener">{t.opener}</span>
-                <span className="activity-meta">{toolSum}{t.failed ? ` · 失败 ${t.failed}` : ''} · {state}</span>
+                <span className="activity-meta">{toolSum}{t.failed ? ` · 失败 ${t.failed}` : ''}{tok ? ` · ${fmtNum(tok)} token` : ''} · {state}</span>
               </summary>
               {t.steps.length > 0 && <ol className="activity-steps">
                 {t.steps.map((s) => (

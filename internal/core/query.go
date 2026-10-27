@@ -15,6 +15,8 @@ type Repo struct {
 	CommonDir string `json:"common_dir"`
 	IsGit     bool   `json:"is_git"`
 	TargetRef string `json:"target_ref"`
+	// Device 只在“全部设备”合并视图里有：项目在哪台电脑上。
+	Device string `json:"device,omitempty"`
 }
 
 type Session struct {
@@ -133,6 +135,10 @@ type Snapshot struct {
 	ItemUsage    []ItemUsage      `json:"item_usage"`
 	Handoffs     []Handoff        `json:"handoffs"`
 	SummaryRepos []int64          `json:"summary_repos"`
+	// ReplayAt 非空表示这是回放快照（小镇时间条），只读。
+	ReplayAt string `json:"replay_at,omitempty"`
+	// Devices 只在“全部设备”合并视图里有。
+	Devices []HubDevice `json:"devices,omitempty"`
 }
 
 // Snapshot 返回界面需要的完整状态。审批只包含未关闭的和最近 24 小时关闭的。
@@ -290,34 +296,12 @@ func (c *Core) Snapshot(ctx context.Context) (*Snapshot, error) {
 	}
 
 	since := c.St.Now().Add(-24 * time.Hour).UTC().Format("2006-01-02T15:04:05.000000000Z")
-	rows, err = tx.Query(`SELECT id, kind, status, session_id, work_item_id, repo_id, fingerprint, tool_name, preview, decision, handleable, payload,
-		close_reason, deadline, created_at, decided_at, delivered_at, confirmed_at, closed_at
+	rows, err = tx.Query(`SELECT `+approvalColumns+`
 		FROM approvals WHERE closed_at='' OR closed_at >= ? OR (status='delivered' AND delivered_at >= ?) ORDER BY created_at DESC LIMIT 2000`, since, since)
 	if err != nil {
 		return nil, err
 	}
-	for rows.Next() {
-		var a Approval
-		var sid, rid sql.NullInt64
-		var wid sql.NullString
-		var payload string
-		rows.Scan(&a.ID, &a.Kind, &a.Status, &sid, &wid, &rid, &a.Fingerprint, &a.ToolName, &a.Preview, &a.Decision, &a.Handleable, &payload,
-			&a.CloseReason, &a.Deadline, &a.CreatedAt, &a.DecidedAt, &a.DeliveredAt, &a.ConfirmedAt, &a.ClosedAt)
-		if sid.Valid {
-			v := sid.Int64
-			a.SessionID = &v
-		}
-		if rid.Valid {
-			v := rid.Int64
-			a.RepoID = &v
-		}
-		if wid.Valid {
-			v := wid.String
-			a.WorkItemID = &v
-		}
-		a.Payload = json.RawMessage(payload)
-		snap.Approvals = append(snap.Approvals, a)
-	}
+	snap.Approvals = append(snap.Approvals, readApprovals(rows)...)
 	rows.Close()
 	rows, err = tx.Query(`SELECT id,session_id,fingerprint,status,plan,work_item_id,run_id,automatic,created_item,created_at,decided_at FROM attributions ORDER BY created_at DESC,id LIMIT 2000`)
 	if err != nil {
@@ -404,4 +388,35 @@ func (c *Core) SessionEvents(ctx context.Context, sid int64, limit int) ([]json.
 		out = append(out, json.RawMessage(b))
 	}
 	return out, rows.Err()
+}
+
+// approvalColumns 与 readApprovals 的扫描顺序一致。
+const approvalColumns = `id, kind, status, session_id, work_item_id, repo_id, fingerprint, tool_name, preview, decision, handleable, payload,
+		close_reason, deadline, created_at, decided_at, delivered_at, confirmed_at, closed_at`
+
+func readApprovals(rows *sql.Rows) []Approval {
+	var out []Approval
+	for rows.Next() {
+		var a Approval
+		var sid, rid sql.NullInt64
+		var wid sql.NullString
+		var payload string
+		rows.Scan(&a.ID, &a.Kind, &a.Status, &sid, &wid, &rid, &a.Fingerprint, &a.ToolName, &a.Preview, &a.Decision, &a.Handleable, &payload,
+			&a.CloseReason, &a.Deadline, &a.CreatedAt, &a.DecidedAt, &a.DeliveredAt, &a.ConfirmedAt, &a.ClosedAt)
+		if sid.Valid {
+			v := sid.Int64
+			a.SessionID = &v
+		}
+		if rid.Valid {
+			v := rid.Int64
+			a.RepoID = &v
+		}
+		if wid.Valid {
+			v := wid.String
+			a.WorkItemID = &v
+		}
+		a.Payload = json.RawMessage(payload)
+		out = append(out, a)
+	}
+	return out
 }

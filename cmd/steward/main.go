@@ -6,6 +6,7 @@
 //	steward uninstall [claude|codex|all]  移除 hooks 条目
 //	steward status                查看 hooks 安装与 Codex 信任状态
 //	steward service install|uninstall|restart|status  后台常驻（macOS launchd）
+//	steward hub                   多设备：查看设置，中心机打印给其他设备用的配置
 package main
 
 import (
@@ -66,6 +67,8 @@ func main() {
 		err = status()
 	case "service":
 		err = doService(arg(2, ""))
+	case "hub":
+		err = hubInfo()
 	default:
 		usage()
 		os.Exit(2)
@@ -77,7 +80,7 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "用法: steward serve | open | remote [--rotate] | install [claude|codex|all] [--project DIR] | uninstall [claude|codex|all] [--project DIR] | status | service install|uninstall|restart|status | m0")
+	fmt.Fprintln(os.Stderr, "用法: steward serve | open | remote [--rotate] | install [claude|codex|all] [--project DIR] | uninstall [claude|codex|all] [--project DIR] | status | service install|uninstall|restart|status | hub | m0")
 }
 
 func arg(i int, d string) string {
@@ -185,12 +188,17 @@ func serve() error {
 	}()
 	// 用量统计：只读 transcript 中的 token 计数（默认关闭）
 	if cfg.UsageFromTranscripts {
+		c.UsageDetail = tokenusage.DefaultFinder()
 		go func() {
 			f := tokenusage.DefaultFinder()
 			t := time.NewTicker(60 * time.Second)
 			defer t.Stop()
+			// 第一次把近一年的会话都归档一遍（只补还没有按天归档的），之后每分钟只看近 7 天。
+			since := 370 * 24 * time.Hour
 			for {
-				if _, err := c.RefreshUsage(ctx, f, 7*24*time.Hour); err != nil && ctx.Err() == nil {
+				_, err := c.RefreshUsage(ctx, f, since)
+				since = 7 * 24 * time.Hour
+				if err != nil && ctx.Err() == nil {
 					log.Printf("用量统计失败: %v", err)
 				}
 				select {
@@ -238,6 +246,32 @@ func serve() error {
 		}
 		s.RemoteHosts = cfg.RemoteHosts
 		log.Printf("远程访问已开启，仅接受主机名 %v（需由 Tailscale Serve 等 HTTPS 代理转发到 %s）", cfg.RemoteHosts, cfg.Listen)
+	}
+	if s.Hub, err = hubFromConfig(cfg); err != nil {
+		return err
+	}
+	if s.Hub != nil && s.Hub.Role == "agent" {
+		go func() {
+			t := time.NewTicker(15 * time.Second)
+			defer t.Stop()
+			failing := false
+			for {
+				if err := s.Hub.Push(ctx, c); err != nil && ctx.Err() == nil {
+					if !failing {
+						log.Printf("多设备：推送到中心机失败（之后恢复前不再重复提示）：%v", err)
+					}
+					failing = true
+				} else if failing {
+					log.Printf("多设备：已恢复推送到中心机")
+					failing = false
+				}
+				select {
+				case <-ctx.Done():
+					return
+				case <-t.C:
+				}
+			}
+		}()
 	}
 	srv := &http.Server{Addr: cfg.Listen, Handler: s.Handler(), ReadHeaderTimeout: 10 * time.Second}
 	go func() {
@@ -525,6 +559,80 @@ func m0() error {
 	rows.Close()
 	for _, k := range permissionOrder {
 		fmt.Printf("| %s | %s | %v | %s | %s | %d |\n", k.provider, k.client, k.handleable, k.status, k.reason, permissionCounts[k])
+	}
+	return nil
+}
+
+// hubFromConfig 读多设备设置。中心机的密钥自动生成在 STEWARD_HOME/hub.secret；设备编号在 device.id。
+func hubFromConfig(cfg config.Config) (*server.Hub, error) {
+	h := cfg.Hub
+	if h.Role == "" {
+		return nil, nil
+	}
+	id, err := config.Secret("device.id")
+	if err != nil {
+		return nil, err
+	}
+	name := h.Device
+	if name == "" {
+		name, _ = os.Hostname()
+		name = strings.TrimSuffix(name, ".local")
+	}
+	hub := &server.Hub{Role: h.Role, SelfID: id, SelfName: name}
+	switch h.Role {
+	case "hub":
+		if hub.Secret, err = config.Secret("hub.secret"); err != nil {
+			return nil, err
+		}
+		if len(cfg.RemoteHosts) == 0 {
+			log.Printf("多设备：本机是中心机，但没有配置 remote_hosts，其他电脑连不进来；见 steward hub")
+		}
+		log.Printf("多设备：本机是中心机（%s）", name)
+	case "agent":
+		if h.URL == "" || len(h.Secret) < 16 {
+			return nil, fmt.Errorf("多设备：hub.role 为 agent 时需要填写 hub.url 和中心机给的 hub.secret（运行中心机上的 steward hub 查看）")
+		}
+		if !strings.HasPrefix(h.URL, "https://") {
+			return nil, fmt.Errorf("多设备：hub.url 应为中心机的 Tailscale HTTPS 地址（https://…）")
+		}
+		hub.URL, hub.Secret = h.URL, h.Secret
+		log.Printf("多设备：每 15 秒把摘要推给中心机 %s（本机名 %s）", h.URL, name)
+	default:
+		return nil, fmt.Errorf("多设备：hub.role 只能是 hub 或 agent")
+	}
+	return hub, nil
+}
+
+// hubInfo 打印多设备设置；中心机额外打印给其他设备用的配置片段（含密钥，只在本机终端显示）。
+func hubInfo() error {
+	cfg, err := config.Load()
+	if err != nil {
+		return err
+	}
+	switch cfg.Hub.Role {
+	case "":
+		fmt.Println(`多设备没有开启。
+1. 选一台常开的电脑当中心机，在它的 config.json 里加：
+   "remote_hosts": ["<这台的 Tailscale 主机名>.<tailnet>.ts.net"],
+   "hub": {"role": "hub"}
+   然后运行 steward service restart，并用 tailscale serve 把 HTTPS 转发到本机 7788（见使用手册“在其他设备上查看”）。
+2. 在中心机上再运行 steward hub，按打印的内容配置其他电脑。`)
+	case "hub":
+		secret, err := config.Secret("hub.secret")
+		if err != nil {
+			return err
+		}
+		url := "https://<中心机的 Tailscale 主机名>"
+		if len(cfg.RemoteHosts) > 0 {
+			url = "https://" + cfg.RemoteHosts[0]
+		} else {
+			fmt.Println("注意：还没有配置 remote_hosts，其他电脑连不进来。")
+		}
+		fmt.Printf("本机是中心机。在其他电脑的 ~/.steward/config.json 里加上（密钥只给自己的设备）：\n\n  \"hub\": {\"role\": \"agent\", \"url\": %q, \"secret\": %q, \"device\": \"给那台电脑起个名字\"}\n\n然后在那台电脑上运行 steward service restart。\n", url, secret)
+	case "agent":
+		fmt.Printf("本机把摘要推给中心机 %s（设备名 %s）。最近一次推送结果在面板“全部设备”里看。\n", cfg.Hub.URL, cfg.Hub.Device)
+	default:
+		fmt.Println("hub.role 只能是 hub 或 agent")
 	}
 	return nil
 }
