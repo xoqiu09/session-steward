@@ -144,7 +144,8 @@ func (c *Core) History(ctx context.Context, days int, tokensEnabled bool) (Histo
 	rows.Close()
 	if tokensEnabled {
 		rows, err = r.QueryContext(ctx, `SELECT u.day, s.provider, u.model, SUM(u.input), SUM(u.output), SUM(u.cache_read), SUM(u.cache_write)
-			FROM usage_daily u JOIN sessions s ON s.id=u.session_id WHERE u.day >= ? GROUP BY u.day, s.provider, u.model`, fromDay)
+			FROM usage_daily u JOIN sessions s ON s.id=u.session_id
+			WHERE u.day >= ? AND u.model<>'<synthetic>' AND u.input+u.output+u.cache_read+u.cache_write > 0 GROUP BY u.day, s.provider, u.model`, fromDay)
 		if err != nil {
 			return History{}, err
 		}
@@ -274,7 +275,7 @@ func (c *Core) HistoryDay(ctx context.Context, day string, tokensEnabled bool) (
 	}
 	rows.Close()
 	if tokensEnabled {
-		rows, err = r.QueryContext(ctx, `SELECT session_id, SUM(input), SUM(output), SUM(cache_read), SUM(cache_write) FROM usage_daily WHERE day=? GROUP BY session_id`, day)
+		rows, err = r.QueryContext(ctx, `SELECT session_id, SUM(input), SUM(output), SUM(cache_read), SUM(cache_write) FROM usage_daily WHERE day=? AND model<>'<synthetic>' GROUP BY session_id`, day)
 		if err != nil {
 			return DayDetail{}, err
 		}

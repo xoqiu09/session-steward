@@ -45,7 +45,14 @@ func newDetail() Detail {
 	return Detail{ByDay: map[string]map[string]Totals{}, Models: map[string]Totals{}, Turns: []TurnUsage{}}
 }
 
+// placeholder 是 Claude 在出错或被限额打断时写的占位“模型”，不是真模型，token 恒为 0。
+const placeholder = "<synthetic>"
+
 func (d *Detail) put(at time.Time, model string, t Totals, loc *time.Location) {
+	// 0 token 的条目（包括占位“模型”）不进按天、按模型的列表；合计本来也不受影响。
+	if t.Zero() || model == placeholder {
+		return
+	}
 	if model == "" {
 		model = "未知模型"
 	}
