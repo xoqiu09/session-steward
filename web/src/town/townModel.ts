@@ -8,6 +8,7 @@
 // - idle/ended 不等于完成；review 是“待验收”，只有用户能把它变成 done。
 // - Run.outcome 只识别明确的字符串，其余原样显示，不猜测成功。
 import type { Approval, Dep, Repo, Run, Session, Snapshot, WorkItem } from '../types'
+import type { Relay } from './relays'
 
 export type ConnectionState = 'demo' | 'connecting' | 'live' | 'offline' | 'unauthorized'
 
@@ -55,6 +56,8 @@ export interface TownModel {
   closedApprovals: Approval[]
   reviewItems: WorkItem[]
   deps: Dep[]
+  /** 最近一天里，工作在不同 Agent 之间的交接和接力（小推车）。 */
+  relays: Relay[]
   counts: Record<Highlight, number>
 }
 
@@ -192,7 +195,7 @@ export function buildTown(snap: Snapshot, clientNow?: string): TownModel {
 
   const reviewItems = items.filter((w) => w.status === 'review')
   return {
-    now: snap.now, cursor: snap.cursor, buildings, historySessions, pendingApprovals, closedApprovals, reviewItems, deps: snap.deps ?? [],
+    now: snap.now, cursor: snap.cursor, buildings, historySessions, pendingApprovals, closedApprovals, reviewItems, deps: snap.deps ?? [], relays: snap.relays ?? [],
     counts: {
       working: characters.filter((c) => c.status === 'working').length,
       waiting: pendingApprovals.length,

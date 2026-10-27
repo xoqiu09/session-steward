@@ -148,6 +148,8 @@ export interface Approval {
 }
 
 export interface Snapshot {
+  /** 只在前端的小镇切片里有：最近一天里，工作在不同 Agent 之间的交接和接力（小推车）。 */
+  relays?: import('./town/relays').Relay[]
   /** 只在“全部设备”合并视图里有。 */
   devices?: HubDevice[]
   /** 回放快照（小镇时间条）才有：那一刻的时间。只读。 */
