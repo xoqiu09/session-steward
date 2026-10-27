@@ -345,8 +345,20 @@ func remote(rotate bool) error {
 	if rotate {
 		fmt.Println("已生成新的远程 token；重启服务后旧设备需重新登录。")
 	}
-	fmt.Printf("在手机上打开（仅限你的 tailnet 内设备；链接含凭据，不要分享）：\nhttps://%s/login?t=%s\n", cfg.RemoteHosts[0], t)
+	base := remoteBase(cfg)
+	warnRemoteBase(cfg, base)
+	fmt.Printf("在手机上打开（仅限你的 tailnet 内设备；链接含凭据，不要分享）：\n%s/login?t=%s\n", base.URL, t)
 	return nil
+}
+
+// warnRemoteBase 提示 remoteBase 没找到 tailscale serve 转发，或地址开了 Funnel。
+func warnRemoteBase(cfg config.Config, base remoteURL) {
+	switch {
+	case !base.Found:
+		fmt.Printf("注意：没在 tailscale serve 里找到转发到 %s 的地址，下面按 443 端口拼出地址。面板挂在其他端口时（例如 443 已给别的服务用），请在主机名后补上端口，否则链接和密钥会发到别的服务。\n\n", cfg.Listen)
+	case base.Funnel:
+		fmt.Printf("警告：%s 开了 Tailscale Funnel，公网也能访问。面板只应在 tailnet 内转发，请改用 tailscale serve。\n\n", base.URL)
+	}
 }
 
 // projectFlag 读取 --project DIR（只对 claude 生效）。
@@ -624,13 +636,15 @@ func hubInfo() error {
 		}
 		url := "https://<中心机的 Tailscale 主机名>"
 		if len(cfg.RemoteHosts) > 0 {
-			url = "https://" + cfg.RemoteHosts[0]
+			base := remoteBase(cfg)
+			warnRemoteBase(cfg, base)
+			url = base.URL
 		} else {
 			fmt.Println("注意：还没有配置 remote_hosts，其他电脑连不进来。")
 		}
 		fmt.Printf("本机是中心机。在其他电脑的 ~/.steward/config.json 里加上（密钥只给自己的设备）：\n\n  \"hub\": {\"role\": \"agent\", \"url\": %q, \"secret\": %q, \"device\": \"给那台电脑起个名字\"}\n\n然后在那台电脑上运行 steward service restart。\n", url, secret)
 	case "agent":
-		fmt.Printf("本机把摘要推给中心机 %s（设备名 %s）。最近一次推送结果在面板“全部设备”里看。\n", cfg.Hub.URL, cfg.Hub.Device)
+		fmt.Printf("本机把摘要推给中心机 %s（设备名 %s）。最近一次推送结果在面板小镇顶部切到“全部设备”后看。\n", cfg.Hub.URL, cfg.Hub.Device)
 	default:
 		fmt.Println("hub.role 只能是 hub 或 agent")
 	}

@@ -28,6 +28,13 @@ export function useHub() {
   const [merged, setMerged] = useState<Snapshot | null>(null)
   const [error, setError] = useState('')
   useEffect(() => { api.hubStatus().then(setStatus).catch(() => setStatus({ role: '' })) }, [])
+  const isAgent = status?.role === 'agent'
+  useEffect(() => {
+    // 其他设备：跟着推送节奏刷新最近一次推送结果，推不上去时小镇顶部能看到
+    if (!isAgent) return
+    const t = window.setInterval(() => { api.hubStatus().then(setStatus).catch(() => { /* 本机服务暂时不可用：保留上一次 */ }) }, 15_000)
+    return () => window.clearInterval(t)
+  }, [isAgent])
   const enabled = !!status?.role
   const active = enabled && scope === 'all'
   useEffect(() => {

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -64,10 +65,17 @@ func (h *Hub) Push(ctx context.Context, c *core.Core) error {
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := h.client().Do(req)
 	if err == nil {
-		io.Copy(io.Discard, resp.Body)
+		// 只认中心机的 {"ok":true}：地址指到别的服务（例如 443 上的其他程序）时，即使返回 200 也算失败
+		var ack struct {
+			OK bool `json:"ok"`
+		}
+		derr := json.NewDecoder(io.LimitReader(resp.Body, 1<<16)).Decode(&ack)
 		resp.Body.Close()
-		if resp.StatusCode != http.StatusOK {
+		switch {
+		case resp.StatusCode != http.StatusOK:
 			err = fmt.Errorf("中心机返回 %d", resp.StatusCode)
+		case derr != nil || !ack.OK:
+			err = errors.New("对方不像 Session Steward 中心机，检查 hub.url（含端口）")
 		}
 	}
 	h.record(err)

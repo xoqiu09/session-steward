@@ -31,7 +31,7 @@ export default function App() {
   useEffect(() => { if (!hubNotice) return; const t = window.setTimeout(() => setHubNotice(''), 4000); return () => window.clearTimeout(t) }, [hubNotice])
   const townItem = (id: string) => { const d = hub.merged && remoteDeviceOf(hub.merged, 'item', id); if (d) setHubNotice(d); else selectItem(id) }
   const townSession = (id: number) => { const d = hub.merged && remoteDeviceOf(hub.merged, 'session', id); if (d) setHubNotice(d); else selectSession(id) }
-  const hubSwitch = hub.enabled ? <HubSwitch scope={hub.scope} onScope={hub.setScope} merged={hub.merged} error={hub.error} now={snap?.now ?? new Date().toISOString()} /> : null
+  const hubSwitch = hub.enabled ? <HubSwitch scope={hub.scope} onScope={hub.setScope} merged={hub.merged} error={hub.error} now={snap?.now ?? new Date().toISOString()} status={hub.status} /> : null
   const hubToast = hubNotice ? <div className="hub-toast" role="status">这是「{hubNotice}」上的工作：小镇里只能看，审批、验收和详情请到那台电脑上处理。</div> : null
   const [tab, setTab] = useState<Tab>('queue')
   const [queueFocus, setQueueFocus] = useState<'action' | 'review'>('action')
