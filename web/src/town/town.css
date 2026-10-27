@@ -174,3 +174,32 @@
 .town-view .town-agent-legend i { width: 12px; height: 12px; border-radius: 50%; grid-row: span 2; }
 .town-view .town-agent-legend small { grid-column: 2; font-size: 11px; font-weight: 400; color: #7a6a55; }
 .town-view .town-agent-legend button:first-child { display: block; }
+
+/* 菜地与收菜 */
+.town-view .town-crop { cursor: pointer; }
+.town-view .town-ripe { animation: town-ripe 2.4s ease-in-out infinite; transform-box: fill-box; transform-origin: 50% 100%; }
+@keyframes town-ripe { 0%, 100% { transform: translateY(0) scale(1); } 50% { transform: translateY(-1.5px) scale(1.04); } }
+.town-view .town-sway { animation: town-sway 3.6s ease-in-out infinite; transform-box: fill-box; transform-origin: 50% 100%; }
+@keyframes town-sway { 0%, 100% { transform: rotate(-3deg); } 50% { transform: rotate(3deg); } }
+.town-view .town-svg.is-world.is-far .town-crop { display: none; }
+.town-view .town-svg.is-offline .town-ripe, .town-view .town-svg.is-offline .town-sway { animation: none; }
+@media (prefers-reduced-motion: reduce) { .town-view .town-ripe, .town-view .town-sway { animation: none; } }
+.town-view .town-world-tools button.town-basket.has-ripe { background: #fff1dc; border-color: #e07b39; color: #8a3a12; font-weight: 700; }
+.town-view .town-world-tools button:disabled { opacity: 0.5; cursor: default; }
+.town-view .town-harvest-bar {
+  position: absolute; z-index: 4; left: 12px; top: 56px; width: min(420px, 38%); padding: 12px 14px; border-radius: 12px;
+  background: rgba(255, 250, 240, 0.97); border: 2px solid #e07b39; color: #3a2a1c; font-size: 13px;
+}
+.town-view .town-harvest-bar p { margin: 0 0 6px; }
+.town-view .town-harvest-title { display: flex; justify-content: space-between; gap: 8px; color: #8a3a12; }
+.town-view .town-harvest-now { font-size: 14px; }
+.town-view .town-harvest-hint { color: #7a6a55; font-size: 12px; }
+.town-view .town-harvest-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.town-view .town-harvest-actions button { padding: 4px 10px; border-radius: 8px; border: 1px solid #d8c7a6; background: #fff; font-size: 12px; cursor: pointer; }
+
+.town-view .town-empty {
+  position: absolute; z-index: 3; left: 50%; top: 42%; transform: translate(-50%, -50%); max-width: min(520px, 86%);
+  display: flex; flex-direction: column; gap: 6px; padding: 14px 18px; border-radius: 12px;
+  background: rgba(255, 250, 240, 0.95); border: 1px solid var(--town-line, #e2d5bd); color: #5a4a36; font-size: 13px; line-height: 1.6;
+}
+.town-view .town-empty strong { font-size: 15px; color: #3a2a1c; }

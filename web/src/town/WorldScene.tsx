@@ -15,10 +15,11 @@ import type { WorldPlan } from './clusters'
 import { InteriorScene } from './InteriorScene'
 import { Campfire, Fence, Flowers, Pine, Pond, Rock, Windmill, YARD_TINT, terrainOf, type Terrain } from './scenery'
 import { statusChips, statusOf, sumStatus, type StatusCounts } from './status'
+import { Field } from './field'
+import { harvestResult, ripeQueue } from './harvest'
 import { AGENTS, agentChips, agentCounts, agentLegend, agentOf, mainAgent, sumAgents, type Agent } from './agents'
 
-/** 每个街区的待验收架、退件筐最多摆几个箱子，其余只计数。 */
-const SHELF_MAX = 3
+/** 每个街区的退件筐最多摆几个箱子，其余只计数。 */
 const BIN_MAX = 2
 /** 告示栏最多钉几张卡片。 */
 const BOARD_MAX = 4
@@ -94,11 +95,8 @@ export function WorldScene({ model, world, view, far, selected, highlight, onSel
       const stale = c.status === 'stale'
       for (const r of c.runs.filter((x) => x.phase === 'moving')) parcels.push({ p: r, at: iso(gx - 0.05, gy - 0.43, 12), stale, moving: !stale })
     })
-    d.b.parcels.filter(onReviewDesk).slice(0, SHELF_MAX).forEach((p, i) => {
-      parcels.push({ p, at: iso(d.ox + 6.8 + i * 0.6, d.oy + 5.85, 12), stale: false, moving: false })
-    })
     d.b.parcels.filter((p) => p.phase === 'failed').slice(0, BIN_MAX).forEach((p, i) => {
-      parcels.push({ p, at: iso(d.ox + 7.15 + i * 0.5, d.oy + 7.45, 9), stale: false, moving: false })
+      parcels.push({ p, at: iso(d.ox + 4.45 + i * 0.5, d.oy + 7.65, 9), stale: false, moving: false })
     })
     seatsOf.set(d.key, mine)
     slotsOf.set(d.key, parcels.sort((a, b) => a.p.run.id - b.p.run.id))
@@ -120,6 +118,7 @@ export function WorldScene({ model, world, view, far, selected, highlight, onSel
   const boardAt = iso(6.0, 8.0)
   const P = world.plaza
   // 远景名牌跟着视野放大，拉得再远也认得出项目名。
+  const nowMs = Date.parse(model.now) || Date.now()
   const plateK = Math.min(2.4, Math.max(0.8, view.w / 2900))
   const mapMode = view.w > MAP_W
 
@@ -197,7 +196,6 @@ export function WorldScene({ model, world, view, far, selected, highlight, onSel
         )
         const d = byKey.get(key)!
         const plot = districtPlot(d)
-        const review = d.b.parcels.filter(onReviewDesk).length
         const failed = d.b.parcels.filter((p) => p.phase === 'failed').length
         const h = hash(d.key)
         const lead = agents ? mainAgent(agentAt.get(d.key)!) : null
@@ -210,21 +208,18 @@ export function WorldScene({ model, world, view, far, selected, highlight, onSel
               : <Tree at={iso(d.ox + 8.6, d.oy + 0.4)} k={0.8 + (h % 3) * 0.1} />}
             {terrainAt.get(`${d.cell.cx},${d.cell.cy}`) === 'hill' && <Rock gx={d.ox + 8.2} gy={d.oy + 4.4} k={1.2} />}
             <Flowers gx={d.ox + 0.4} gy={d.oy + 5.4} seed={h} />
-            <Flowers gx={d.ox + 8.3} gy={d.oy + 7.0} seed={h >> 4} />
+            <Flowers gx={d.ox + 5.0} gy={d.oy + 8.0} seed={h >> 4} />
             {d.kind === 'wild' && <Campfire gx={d.ox + 7.2} gy={d.oy + 2.4} />}
             {d.kind === 'wild' && <Fence gx={d.ox + 0.3} gy={d.oy + INNER_D - 0.5} len={1.9} />}
             {d.kind === 'wild' && <Fence gx={d.ox + 4.6} gy={d.oy + INNER_D - 0.5} len={4.0} />}
             <Building plot={plot} shape={TIERS[d.tier].shape} b={d.b} selected={isSel('building', d.b.key)} dimClass={dim(false)} onSelect={() => onSelect({ kind: 'building', key: d.b.key })} />
-            {review > 0 && (
-              <g className={`town-shelf${dim(highlight === 'review')}`}>
-                <IsoBox gx={d.ox + 6.4} gy={d.oy + 5.4} w={2.1} d={0.95} h={12} top="#e8d2a8" left="#b98a52" right="#9c7140" />
-                <Tag at={iso(d.ox + 7.45, d.oy + 5.9, 52)} text={`待验收 ${review}${review > SHELF_MAX ? ` · 摆了 ${SHELF_MAX}` : ''}`} bg="#eef0ff" fg="#2f3a8f" small border="#5b6cd8" />
-              </g>
-            )}
+            {/* 门口的菜地：一棵菜一个工作项，熟了 = 待你验收 */}
+            <Field gx={d.ox + 5.5} gy={d.oy + 4.9} b={d.b} pending={model.pendingApprovals} now={nowMs}
+              selectedKey={selected?.kind === 'item' ? selected.key : null} dimClass={dim(highlight === 'review')} onSelect={onSelect} />
             {failed > 0 && (
               <g className={dim(highlight === 'failed')}>
-                <IsoBox gx={d.ox + 6.7} gy={d.oy + 7.0} w={1.3} d={0.9} h={9} top="#7a3a32" left="#a5483e" right="#8a3c33" />
-                <Tag at={iso(d.ox + 7.35, d.oy + 7.45, 40)} text={`失败 ${failed}`} bg="#d2483d" fg="#fff" small />
+                <IsoBox gx={d.ox + 4.0} gy={d.oy + 7.2} w={1.3} d={0.9} h={9} top="#7a3a32" left="#a5483e" right="#8a3c33" />
+                <Tag at={iso(d.ox + 4.65, d.oy + 7.65, 40)} text={`失败 ${failed}`} bg="#d2483d" fg="#fff" small />
               </g>
             )}
             {statusAt.get(d.key)!.blocked > 0 && (
@@ -474,6 +469,8 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far'> & {
   const [byAgent, setByAgent] = useState(false)
   const [agentFocus, setAgentFocus] = useState<Agent | null>(null)
   const legend = useMemo(() => agentLegend(model.buildings), [model])
+  // 收菜：开始时记下这一批熟了的菜，一棵一棵飞过去打开验收卡片；收下或退回后自动去下一棵。
+  const [harvest, setHarvest] = useState<{ ids: string[]; index: number } | null>(null)
   const insideB = inside ? model.buildings.find((b) => b.key === inside) ?? null : null
   useEffect(() => {
     if (!inside) return
@@ -523,10 +520,45 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far'> & {
 
   // 桌面模式巡游：全景 → 各个需要注意的街区 → 全景；有人刚操作过、抽屉打开时暂停。
   const stops = useMemo(() => tourStops(world, (d) => attentionOf(d, needsYou), aspect), [world, aspect, needsYou])
+  const ripe = useMemo(() => ripeQueue(world.districts.map((d) => d.b)), [world])
+  const results = harvest ? harvest.ids.map((id) => harvestResult(id, model.buildings)) : []
+  const goHarvest = (ids: string[], index: number) => {
+    setHarvest({ ids, index })
+    const id = ids[index]
+    const d = world.districts.find((x) => x.b.items.some((w) => w.id === id))
+    if (!d) return
+    lastTouch.current = Date.now()
+    // 验收卡片从右边滑出、盖住大半个画面：镜头对准这块菜地，让它落在左边露出来的那一条里。
+    const [fx, fy] = iso(d.ox + 7, d.oy + 6.4)
+    flyTo(clampCamera({ cx: fx + 1000 * 0.33, cy: fy - 20, w: 1000 }, world.bounds), 900)
+    props.onSelect({ kind: 'item', key: id })
+  }
+  const startHarvest = () => { if (!ripe.length) return; setInside(null); goHarvest(ripe.map((r) => r.item.id), 0) }
+  const nextPending = (from: number, step: 1 | -1) => {
+    if (!harvest) return -1
+    for (let i = from + step; i >= 0 && i < harvest.ids.length; i += step) if (results[i] === 'pending') return i
+    return -1
+  }
+  // 当前这棵收下或退回了：稍等一下，自动去下一棵还没收的。
+  const current = harvest ? results[harvest.index] : undefined
+  useEffect(() => {
+    if (!harvest || current === 'pending') return
+    const t = window.setTimeout(() => {
+      const n = nextPending(harvest.index, 1)
+      if (n >= 0) goHarvest(harvest.ids, n)
+    }, 900)
+    return () => window.clearTimeout(t)
+  }, [harvest?.index, current])
+  useEffect(() => {
+    if (!harvest) return
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !inside) setHarvest(null) }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [harvest, inside])
   const [stopIndex, setStopIndex] = useState(0)
   const [tick, setTick] = useState(0)
   useEffect(() => {
-    if (!kiosk || paused || inside || stops.length < 2) return
+    if (!kiosk || paused || inside || harvest || stops.length < 2) return
     const t = window.setTimeout(() => {
       // 刚拖过或缩放过：这一轮先不动，过一会儿再试。
       if (Date.now() - lastTouch.current < 30_000) { setTick((n) => n + 1); return }
@@ -535,7 +567,7 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far'> & {
       flyTo(stops[next], 1400)
     }, rotateMs)
     return () => window.clearTimeout(t)
-  }, [kiosk, paused, inside, stops, stopIndex, rotateMs, tick])
+  }, [kiosk, paused, inside, harvest, stops, stopIndex, rotateMs, tick])
 
   // 滚轮缩放：以光标为中心。
   useEffect(() => {
@@ -595,6 +627,8 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far'> & {
         <button type="button" onClick={() => zoomBy(1.4)} aria-label="缩小" title="缩小">－</button>
         <button type="button" onClick={() => { lastTouch.current = Date.now(); flyTo(fitAll()) }} title="看全部街区">全景</button>
         <button type="button" onClick={() => { lastTouch.current = Date.now(); flyTo(fitCamera(cellBox(world.plaza.ox, world.plaza.oy), aspect, 1.1)) }} title="回到中央广场">广场</button>
+        <button type="button" className={`town-basket${ripe.length ? ' has-ripe' : ''}`} onClick={startHarvest} disabled={!ripe.length && !harvest}
+          title={ripe.length ? `熟了 ${ripe.length} 棵：一棵一棵打开验收卡片，收下或退回` : '现在没有熟了的菜（没有待验收的工作项）'}>收菜 {ripe.length}</button>
         <button type="button" aria-pressed={byAgent} className={byAgent ? 'is-on' : undefined} onClick={() => { setByAgent(!byAgent); setAgentFocus(null) }} title="按会话来自哪个 Agent 着色">按 Agent 看</button>
       </div>
       {byAgent && (
@@ -610,8 +644,40 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far'> & {
       )}
       <MiniMap world={world} view={view} needsYou={needsYou} pending={model.pendingApprovals} onJump={(p) => { lastTouch.current = Date.now(); flyTo(clampCamera({ cx: p[0], cy: p[1], w: Math.min(camera.w, 1500) }, world.bounds), 600) }} />
       <p className="town-world-hint">拖动地图移动 · 滚轮缩放 · 拉远看全部项目</p>
+      {harvest && <HarvestBar ids={harvest.ids} index={harvest.index} results={results} model={model}
+        onPrev={() => { const n = nextPending(harvest.index, -1); if (n >= 0) goHarvest(harvest.ids, n) }}
+        onNext={() => { const n = nextPending(harvest.index, 1); if (n >= 0) goHarvest(harvest.ids, n) }}
+        onReopen={() => goHarvest(harvest.ids, harvest.index)} onEnd={() => setHarvest(null)} />}
         </>
       )}
+    </div>
+  )
+}
+
+/** 收菜进度条：第几棵、这棵是什么、已收几棵、退回几棵。收下 / 退回的按钮在验收卡片里。 */
+function HarvestBar({ ids, index, results, model, onPrev, onNext, onReopen, onEnd }: {
+  ids: string[]; index: number; results: ReturnType<typeof harvestResult>[]; model: TownModel; onPrev: () => void; onNext: () => void; onReopen: () => void; onEnd: () => void
+}) {
+  const item = model.buildings.flatMap((b) => b.items).find((w) => w.id === ids[index])
+  const harvested = results.filter((r) => r === 'harvested').length
+  const returned = results.filter((r) => r === 'returned').length
+  const left = results.filter((r) => r === 'pending').length
+  const now = results[index]
+  return (
+    <div className="town-harvest-bar" role="region" aria-label="收菜" onPointerDown={(e) => e.stopPropagation()}>
+      <p className="town-harvest-title">
+        <strong>收菜 {index + 1}/{ids.length}</strong>
+        <span>已收 {harvested} · 退回 {returned} · 还剩 {left}</span>
+      </p>
+      {left === 0 ? <p className="town-harvest-now">这一批都看完了。收下的进了粮仓，退回的重新种下，Agent 会接着改。</p>
+        : <p className="town-harvest-now">{now === 'harvested' ? '收下了 ✓ ' : now === 'returned' ? '退回重种 ↺ ' : ''}<code>{ids[index]}</code> {item?.title ?? '这项已不在地里'}</p>}
+      <p className="town-harvest-hint">右边的验收卡片里看交付说明，点“验收通过”收下，“退回修改”重新种。</p>
+      <div className="town-harvest-actions">
+        <button type="button" onClick={onPrev}>上一棵</button>
+        <button type="button" onClick={onReopen}>重新打开卡片</button>
+        <button type="button" onClick={onNext}>跳过，下一棵</button>
+        <button type="button" onClick={onEnd}>结束收菜</button>
+      </div>
     </div>
   )
 }

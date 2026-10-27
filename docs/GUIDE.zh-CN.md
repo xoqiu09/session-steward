@@ -309,7 +309,7 @@ scripts/demo.sh              # 终端 2：同一个 STEWARD_HOME 下运行
 bin/steward open             # 打开面板
 ```
 
-`scripts/serve-demo.sh` 是终端 1 的简写，固定使用 `/tmp/steward-demo`。脚本最后会在后台挂起两个权限请求，等待面板决定，输出写到 `$STEWARD_HOME/perm1.out`、`perm2.out`。
+`scripts/serve-demo.sh` 是终端 1 的简写，固定使用 `/tmp/steward-demo`；没有配置文件时会写入端口 7799、不扫描历史会话的配置，不会和正式服务抢 7788。脚本最后会在后台挂起两个权限请求，等待面板决定，输出写到 `$STEWARD_HOME/perm1.out`、`perm2.out`。
 
 ## 目录结构
 

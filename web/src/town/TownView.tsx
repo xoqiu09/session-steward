@@ -240,6 +240,10 @@ export function TownView({ snap, conn, repoId, provider, sel, onSelectItem, onSe
       </div>
       <div className="town-diorama" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
         {offline && <div className="town-offline" role="status"><strong>状态待更新</strong><span>连接中断，画面停在 {hm(shown.now)}，不代表 Agent 仍在工作。</span></div>}
+        {!offline && model.buildings.length === 0 && <div className="town-empty" role="status">
+          <strong>这台电脑还没有工作记录</strong>
+          <span>数据只存在本机的 ~/.steward，不会随代码同步到别的电脑。先用演示数据看看，或运行 steward install 后让 Claude Code / Codex 干活，项目和小人就会出现在这里。</span>
+        </div>}
         {asWorld
           ? <WorldStage model={model} needsYou={urgent} selected={selected} highlight={highlight} onSelect={onSelect} changed={changed} offline={offline}
               kiosk={kiosk} rotateMs={rotateMs} paused={paused} focusKey={selKey} plan={plan} />
