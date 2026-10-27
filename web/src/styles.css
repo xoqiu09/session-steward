@@ -540,3 +540,24 @@ select.outcome { font-size: 12px; margin: 2px 0 4px; }
 .delivery-review .review-facts{display:grid;grid-template-columns:96px 1fr;gap:6px 12px;margin:8px 0 12px}.delivery-review .review-facts dt{color:#64428a;font-weight:700}.delivery-review .review-facts dd{margin:0}.delivery-review .review-facts small{font-size:12px}
 .delivery-review .review-steps{margin:0 0 8px;padding-left:20px}.delivery-review .review-steps li{margin:3px 0}
 .delivery-review .linkish{border:0;padding:0;background:none;color:#2d6cdf;text-decoration:underline;cursor:pointer;font:inherit}
+.session-activity h3 small{font-weight:400;font-size:12px}
+.activity-turns{list-style:none;margin:6px 0;padding:0;display:flex;flex-direction:column;gap:6px}
+.activity-turn details{border:1px solid #e6dfd2;border-radius:8px;background:#fffdf8}
+.activity-turn.is-open details{border-color:#e3a23d}
+.activity-turn.has-fail details{border-color:#e7b3ad}
+.activity-turn summary{display:grid;grid-template-columns:72px minmax(0,1fr);gap:2px 8px;padding:7px 10px;cursor:pointer;list-style:none}
+.activity-turn summary::-webkit-details-marker{display:none}
+.activity-when{grid-row:span 2;color:#7a6a55;font-size:12px;white-space:nowrap}
+.activity-opener{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.activity-meta{color:#7a6a55;font-size:12px}
+.activity-steps{list-style:none;margin:0;padding:4px 10px 8px;border-top:1px dashed #e6dfd2}
+.activity-steps li{display:grid;grid-template-columns:42px 14px auto minmax(0,1fr);align-items:baseline;gap:6px;padding:2px 0;font-size:12.5px}
+.activity-time{color:#9a8a75;font-variant-numeric:tabular-nums}
+.activity-mark{text-align:center;font-weight:700;color:#9a8a75}
+.activity-steps .tone-ok .activity-mark{color:#3f8f4f}
+.activity-steps .tone-fail .activity-mark,.activity-steps .tone-fail .activity-label{color:#c0392b}
+.activity-steps .tone-running .activity-mark{color:#e3a23d}
+.activity-steps .tone-ask .activity-mark,.activity-steps .tone-ask .activity-label{color:#a66a00}
+.activity-label{white-space:nowrap}
+.activity-detail{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#5a4a36;background:none;font-size:12px}
+.activity-raw{margin-top:8px}.activity-raw summary{cursor:pointer;color:#7a6a55;font-size:12px}
