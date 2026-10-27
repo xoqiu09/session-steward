@@ -31,6 +31,8 @@ Claude Code / Codex hooks ──> steward-hook ──> steward serve (127.0.0.1:
 
 ## 安装
 
+> 数据只存在你自己电脑的 `~/.steward`，仓库里不带任何人的工作记录。拉下代码、装好以后面板是空的，这是正常的：先看下面的演示数据，或正式安装 hooks 后让 Agent 干活。
+
 需要 `git` 和 Go 1.26.5 及以上（见 `go.mod`）。构建好的 Web 界面已提交在仓库里，只有修改前端时才需要 Node。
 
 ```sh

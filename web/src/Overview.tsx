@@ -52,7 +52,9 @@ export function Overview({ snap, groups, onSelectItem, onSelectSession, onOpenAt
     {quiet.length > 0 && <details className="quiet-projects"><summary>近期无活动 · {quiet.length} 个项目 · 待审阅／验收 {quiet.reduce((n,p) => n + p.counts.review, 0)}</summary><p className="hint">最近 24 小时没有新活动，旧回报和待验收仍保留。展开可查看；有新活动或正式审批请求时会自动回到上方。</p><div className="overview-projects">{quiet.map(renderProject)}</div></details>}
     {focus && filtered.length === 0 && <div className="overview-empty">当前筛选范围没有需要你处理的工作项。未归属会话的审批仍可在右侧关注队列处理。</div>}
     {!focus && projects.length > 0 && current.length === 0 && <p className="overview-empty">当前没有近期活动的项目，可以展开上方项目查看旧回报和待验收。</p>}
-    {projects.length === 0 && (archivedOnly.length ? <p className="overview-empty">当前没有需要推进的工作；已归档记录可在下方历史中查看。</p> : <div className="overview-empty"><h2>先让一个真实任务回报进展</h2><p>会话已发现，但还没有可展示的工作项。用下面的接入指令让 Agent 明确项目和任务，之后在阶段节点更新简报。</p></div>)}
+    {projects.length === 0 && (archivedOnly.length ? <p className="overview-empty">当前没有需要推进的工作；已归档记录可在下方历史中查看。</p> : (snap.sessions ?? []).length === 0
+      ? <div className="overview-empty"><h2>这台电脑还没有会话记录</h2><p>数据只存在本机的 ~/.steward，不会随代码同步。运行 steward install 装好 hooks，再用 Claude Code 或 Codex 干活，会话和工作项就会出现在这里；也可以先按 README 跑演示数据看看。</p></div>
+      : <div className="overview-empty"><h2>先让一个真实任务回报进展</h2><p>会话已发现，但还没有可展示的工作项。用下面的接入指令让 Agent 明确项目和任务，之后在阶段节点更新简报。</p></div>)}
     <HistoryItems snap={snap} items={archivedOnly} onSelect={onSelectItem} />
     <div className="overview-inbox"><div><strong>{loose ? `${loose} 个近期会话尚未归属` : '近期会话已整理'}{missing > 0 ? ` · ${missing} 项暂无内容回报` : ''}</strong><p>无活动的历史记录收在“会话”中。标题和目录是归属线索，内容简报由 Agent 回报或由你补充。</p></div><button className="btn small" onClick={onOpenAttribution}>整理会话归属</button></div>
     <ReportingHelp />

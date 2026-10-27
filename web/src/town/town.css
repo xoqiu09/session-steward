@@ -196,3 +196,10 @@
 .town-view .town-harvest-hint { color: #7a6a55; font-size: 12px; }
 .town-view .town-harvest-actions { display: flex; flex-wrap: wrap; gap: 6px; }
 .town-view .town-harvest-actions button { padding: 4px 10px; border-radius: 8px; border: 1px solid #d8c7a6; background: #fff; font-size: 12px; cursor: pointer; }
+
+.town-view .town-empty {
+  position: absolute; z-index: 3; left: 50%; top: 42%; transform: translate(-50%, -50%); max-width: min(520px, 86%);
+  display: flex; flex-direction: column; gap: 6px; padding: 14px 18px; border-radius: 12px;
+  background: rgba(255, 250, 240, 0.95); border: 1px solid var(--town-line, #e2d5bd); color: #5a4a36; font-size: 13px; line-height: 1.6;
+}
+.town-view .town-empty strong { font-size: 15px; color: #3a2a1c; }
