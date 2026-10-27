@@ -185,12 +185,17 @@ func serve() error {
 	}()
 	// 用量统计：只读 transcript 中的 token 计数（默认关闭）
 	if cfg.UsageFromTranscripts {
+		c.UsageDetail = tokenusage.DefaultFinder()
 		go func() {
 			f := tokenusage.DefaultFinder()
 			t := time.NewTicker(60 * time.Second)
 			defer t.Stop()
+			// 第一次把近一年的会话都归档一遍（只补还没有按天归档的），之后每分钟只看近 7 天。
+			since := 370 * 24 * time.Hour
 			for {
-				if _, err := c.RefreshUsage(ctx, f, 7*24*time.Hour); err != nil && ctx.Err() == nil {
+				_, err := c.RefreshUsage(ctx, f, since)
+				since = 7 * 24 * time.Hour
+				if err != nil && ctx.Err() == nil {
 					log.Printf("用量统计失败: %v", err)
 				}
 				select {

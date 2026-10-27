@@ -14,6 +14,7 @@ import { actorLabel, liveSummary, parseDeepLink, projectActorRows, resolveDeepLi
 import { NewManaged } from './Managed'
 import { ReviewPanel } from './P2'
 import { isRemote, remoteReadOnlyMessage } from './access'
+import { HistoryView } from './history/HistoryView'
 import { TownView } from './town/TownView'
 import { fullPanelHref, kioskHref, parseTownRoute } from './town/route'
 
@@ -30,7 +31,7 @@ export default function App() {
   const [repoId, setRepoId] = useState<number | 'all'>('all')
   const [provider, setProvider] = useState<string>('all')
   const [route, setRoute] = useState(() => parseTownRoute(window.location.search, window.location.hash))
-  const [view, setView] = useState<'overview' | 'town' | 'canvas' | 'list'>(() => (route.town ? 'town' : 'overview'))
+  const [view, setView] = useState<'overview' | 'town' | 'canvas' | 'list' | 'history'>(() => (route.town ? 'town' : 'overview'))
   // 桌面模式里点告示栏、验收台时，在抽屉里打开关注队列。
   const [kioskQueue, setKioskQueue] = useState(false)
   const [expandAll, setExpandAll] = useState(false)
@@ -139,6 +140,7 @@ export default function App() {
             <button className={view === 'town' ? 'on' : ''} onClick={() => setView('town')}>小镇</button>
             <button className={view === 'canvas' ? 'on' : ''} onClick={() => setView('canvas')}>画布</button>
             <button className={view === 'list' ? 'on' : ''} onClick={() => setView('list')}>列表</button>
+            <button className={view === 'history' ? 'on' : ''} onClick={() => setView('history')}>历史</button>
           </div>
           {view === 'town' && <a className="btn small" href={kioskHref(window.location.pathname)} title="全屏小镇，适合挂在副屏或手机上；自动轮播项目">桌面模式</a>}
           {view === 'canvas' && <button className="btn small" onClick={() => setExpandAll((v) => !v)}>{expandAll ? '默认折叠' : '全部展开'}</button>}
@@ -169,7 +171,7 @@ export default function App() {
             <ReactFlowProvider>
               <Canvas snap={snap} groups={groups} selected={sel?.kind === 'item' ? sel.id : null} onSelectItem={selectItem} onOpenAttribution={openAttributions} expandAll={expandAll || !!query.trim()} />
             </ReactFlowProvider>
-          ) : (
+          ) : view === 'history' ? <HistoryView snap={snap} onSelectSession={selectSession} onSelectItem={selectItem} /> : (
             <ItemTable groups={groups} onSelect={selectItem} />
           )}
         </div>

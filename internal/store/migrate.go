@@ -26,6 +26,18 @@ var migrations = []migration{
  text TEXT NOT NULL,
  captured_at TEXT NOT NULL
 )`)},
+	// 每个会话按本地日期、模型归档的 token 数（含子 Agent）。只增不删：Agent 清理旧记录后，历史日历里的数字仍在。
+	{3, execSQL(`CREATE TABLE IF NOT EXISTS usage_daily (
+ session_id INTEGER NOT NULL REFERENCES sessions(id),
+ day TEXT NOT NULL,
+ model TEXT NOT NULL,
+ input INTEGER NOT NULL DEFAULT 0,
+ output INTEGER NOT NULL DEFAULT 0,
+ cache_read INTEGER NOT NULL DEFAULT 0,
+ cache_write INTEGER NOT NULL DEFAULT 0,
+ PRIMARY KEY (session_id, day, model)
+);
+CREATE INDEX IF NOT EXISTS usage_daily_day ON usage_daily(day)`)},
 }
 
 func execSQL(q string) func(*sql.Tx) error {

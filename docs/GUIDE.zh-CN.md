@@ -285,7 +285,8 @@ steward-hook report --goal "…" --progress "…" --blocker "…" --next "…"  
 
 - 检查门合并：只对 `checks` 里配置了命令的仓库（按仓库名或 git common dir 匹配）生效。批准合并后（`auto_merge`，或面板“运行检查并合并”），服务先确认源/目标仍是批准时的 SHA，再在临时 detached worktree 中合并并逐条运行检查（argv，不经过 shell）。全部通过才用比较后交换更新本地目标分支；目标分支在某个目录中检出时要求该目录没有已跟踪改动并用 `--ff-only`。任一检查失败、SHA 移动或服务重启都不合并。检查输出末尾脱敏后保存。“已合并”仍只由 Git 扫描确认；不推送远程。合并提交使用仓库自己的 Git 身份。
 - 跨 Agent 交接：工作项详情“交接给其他 Agent”。交接包只由简报、功能清单和 Git 记录生成，不含对话正文，标明是 Agent 自述。确认后从当前分支头新建 worktree 启动接手 Agent，交接包作为首条提示传入（`prompt_arg`），并写到该 worktree 私有 git 目录的 `steward-handoff.md`（不会进入提交）。上一位会话不会被停止，未提交改动不会带过去；接手会话自动关联同一工作项。
-- 用量：`usage_from_transcripts: true` 时，每分钟从本机 `~/.claude/projects` 与 `~/.codex/sessions` 的 JSONL 中只解码 token 计数字段，按会话保存，按工作项汇总；同一会话做过多个工作项时无法拆分，界面会标出重复计入。默认关闭。
+- 用量：`usage_from_transcripts: true` 时，每分钟从本机 `~/.claude/projects` 与 `~/.codex/sessions` 的 JSONL 中只解码 token 计数字段，按会话保存，按工作项汇总；同一会话做过多个工作项时无法拆分，界面会标出重复计入。默认关闭。开启后还会按本地日期和模型把每个会话（含 Claude 子 Agent）的数字归档到 `usage_daily`，只增不删：Agent 清理旧记录后，“历史”里的数字仍在；第一次启动会补归档近一年的会话。会话详情的“消耗”打开时现读本地记录，显示按模型、按轮的 token 和子 Agent（类型、一句任务说明、是否完成），不读对话正文。
+- 历史：顶部“历史”标签按天显示近一年的活动热力图（干活量 / token / 验收）、本周 / 近 7 天 / 近 30 天合计和近 30 天各 Agent 的 token；点某天看那天哪些工作项交付、被验收、退回或受阻，以及哪些会话在干活。活动和验收来自本机记录，不需要开启用量统计；token 部分需要。
 - 更多 Agent：`agents` 的值可以是命令数组，也可以是 `{"argv": [...], "provider": "...", "hooks": false, "prompt_arg": false}`。没有 hooks 的 Agent 只有托管终端画面，界面会说明它不会自动回报。
 
 ## 远程访问、复盘与 AI 摘要

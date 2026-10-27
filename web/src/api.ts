@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { isRemote, remoteReadOnlyMessage } from './access'
-import type { AISummary, AttributionDecision, BriefEdit, Handoff, ManagedSession, MergeJob, Review, Snapshot } from './types'
+import type { AISummary, AttributionDecision, BriefEdit, DayDetail, Handoff, HistoryResp, ManagedSession, MergeJob, Review, SessionUsageDetail, Snapshot } from './types'
 
 export class ApiError extends Error {
   status: number
@@ -46,6 +46,9 @@ export const api = {
   decideAttributions: (decisions: AttributionDecision[]) => call('POST', '/api/attributions/decide', { decisions }),
   snapshot: () => call<Snapshot>('GET', '/api/snapshot'),
   sessionEvents: (id: number) => call<Record<string, unknown>[]>('GET', `/api/sessions/${id}/events`),
+  sessionUsage: (id: number) => call<SessionUsageDetail>('GET', `/api/sessions/${id}/usage`),
+  history: (days = 370) => call<HistoryResp>('GET', `/api/history?days=${days}`),
+  historyDay: (date: string) => call<DayDetail>('GET', `/api/history/day?date=${encodeURIComponent(date)}`),
   bind: (sid: number, workItemId: string) => call('POST', `/api/sessions/${sid}/bind`, { work_item_id: workItemId }),
   unbind: (sid: number, outcome: string) => call('POST', `/api/sessions/${sid}/unbind`, { outcome }),
   createItem: (b: { id: string; title: string; repo_id?: number; repo_path?: string; branch?: string; acceptance?: string; needs_merge?: boolean; session_id?: number }) =>
