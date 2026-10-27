@@ -358,7 +358,15 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.SetCookie(w, &http.Cookie{Name: cookieName, Value: s.PanelToken, Path: "/", HttpOnly: true, SameSite: http.SameSiteStrictMode, MaxAge: 30 * 24 * 3600})
-	http.Redirect(w, r, "/", http.StatusSeeOther)
+	http.Redirect(w, r, loginNext(r.URL.Query().Get("next")), http.StatusSeeOther)
+}
+
+// loginNext：登录后跳回本站的哪一页（App 用它直接打开小镇）。只接受本站路径，不接受外站或协议相对地址。
+func loginNext(next string) string {
+	if !strings.HasPrefix(next, "/") || strings.HasPrefix(next, "//") || strings.ContainsAny(next, "\\\r\n") {
+		return "/"
+	}
+	return next
 }
 
 func writeJSON(w http.ResponseWriter, code int, v any) {
