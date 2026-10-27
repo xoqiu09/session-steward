@@ -1,4 +1,4 @@
-import type { Approval, Handoff, ManagedSession, MergeJob, MergePayload, Session, Snapshot, WorkItem } from '../types'
+import type { Approval, Handoff, ManagedSession, MergeJob, MergePayload, Run, Session, Snapshot, WorkItem } from '../types'
 import { providerLabel, sessionsFor, sessionSignal } from '../model'
 
 // 运行台只做展示映射：把快照里已有的字段归到六种执行状态，不新增判断规则。
@@ -158,4 +158,42 @@ export function clock(ts: string): string {
   const d = new Date(ts)
   if (!ts || Number.isNaN(d.getTime())) return '—'
   return `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+}
+
+export interface SessionRuns { sessionId: number; provider: Run['provider']; runs: Run[]; open: boolean; outcome: string }
+
+/** 同一尝试里同一会话的多段运行合成一行：会话被重复关联时，层级里不再出现一串相同的 #号。 */
+export function runsBySession(runs: readonly Run[]): SessionRuns[] {
+  const out = new Map<number, SessionRuns>()
+  for (const r of runs) {
+    const g = out.get(r.session_id) ?? { sessionId: r.session_id, provider: r.provider, runs: [], open: false, outcome: '' }
+    g.runs.push(r)
+    g.open = g.open || !r.ended_at
+    g.outcome = r.ended_at ? r.outcome : g.outcome
+    out.set(r.session_id, g)
+  }
+  return [...out.values()]
+}
+
+export interface ReviewGuide {
+  /** Agent 交付时说的话（自述），没有则为空。 */
+  said: { text: string; sessionId: number | null; at: string } | null
+  progress: string
+  branch: string
+  acceptance: string
+  sessionIds: number[]
+}
+
+/** 验收卡片要讲清楚：Agent 说交付了什么、东西在哪、按什么标准判断。都只是快照里已有的字段。 */
+export function reviewGuide(snap: Snapshot, item: WorkItem): ReviewGuide {
+  const f = item.brief?.fields ?? {}
+  const said = f.summary?.text ? f.summary : f.progress?.text ? f.progress : null
+  const cand = candidateOf(snap, item)
+  return {
+    said: said ? { text: said.text, sessionId: said.session_id, at: said.at } : null,
+    progress: said !== f.progress && f.progress?.text ? f.progress.text : '',
+    branch: cand?.ref || item.branch,
+    acceptance: item.acceptance.trim(),
+    sessionIds: [...new Set((snap.runs ?? []).filter((r) => r.work_item_id === item.id).map((r) => r.session_id))],
+  }
 }
