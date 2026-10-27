@@ -14,7 +14,8 @@ import {
 import type { WorldPlan } from './clusters'
 import { InteriorScene } from './InteriorScene'
 import { TownGuide } from './TownGuide'
-import { Campfire, Fence, Flowers, Pine, Pond, Rock, Windmill, YARD_TINT, terrainOf, type Terrain } from './scenery'
+import { Bush, Campfire, Fence, Flowers, Lakes, Mound, Pine, Pond, Reeds, Rock, Windmill, YARD_TINT, terrainOf, type Terrain } from './scenery'
+import { cellsInView, gridOfView, sceneryOf, terrainAtCell, tintBlob, type CellScenery } from './terrain'
 import { statusChips, statusOf, sumStatus, type StatusCounts } from './status'
 import { Field } from './field'
 import { harvestResult, ripeQueue } from './harvest'
@@ -28,6 +29,12 @@ const GUIDE_SEEN = 'ss.town.guideSeen'
 const BOARD_MAX = 4
 /** 视野宽于此时只画村庄名牌（村里的项目合并成一块），中央和野外项目仍各一块。 */
 const MAP_W = 3600
+/** 视野里的空地多于这么多块时（拉得很远），只给世界范围内的空地画景物，外面只铺地面和地形色。 */
+const SCENERY_MAX = 160
+/** 地形色斑最多画这么多块。 */
+const TINT_MAX = 900
+/** 地形色：森林深一点、山坡偏黄、湖边偏青；草甸就是地面本色。 */
+const LAND_TINT: Partial<Record<Terrain, string>> = { forest: '#c3d6a6', hill: '#e0dbb8', lake: '#cfe3c2' }
 
 const hash = (s: string) => { let h = 0; for (const ch of s) h = (h * 31 + ch.charCodeAt(0)) | 0; return Math.abs(h) }
 
@@ -76,8 +83,21 @@ export function WorldScene({ model, world, view, far, selected, highlight, onSel
   for (const v of world.villages) for (const c of v.cells) terrainAt.set(`${c.cx},${c.cy}`, terrainOf(v.key))
   for (const d of world.districts) if (!terrainAt.has(`${d.cell.cx},${d.cell.cy}`)) terrainAt.set(`${d.cell.cx},${d.cell.cy}`, d.kind === 'wild' ? terrainOf(d.key) : 'meadow')
   const tintOf = (c: Cell) => YARD_TINT[terrainAt.get(`${c.cx},${c.cy}`) ?? 'meadow']
-  const empty: { ox: number; oy: number }[] = []
-  for (const cx of cxs) for (const cy of cys) if (!used.has(`${cx},${cy}`)) empty.push({ ox: cx * CELL_W, oy: cy * CELL_D })
+  // 空地：视野里所有没有项目的格子都按地形长景物，拖到世界外面也是连着的山水，不是桌子边。
+  // 紧挨项目的空地只放矮的花草石头，项目周围保持干净。
+  const visible = cellsInView(view).filter((c) => !used.has(`${c.cx},${c.cy}`))
+  const inWorld = (c: Cell) => cxs.has(c.cx) && cys.has(c.cy)
+  const sceneryCells = visible.length > SCENERY_MAX ? visible.filter(inWorld) : visible
+  const isNear = (c: Cell) => { for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) if (used.has(`${c.cx + dx},${c.cy + dy}`)) return true; return false }
+  const lakeAt = (cx: number, cy: number) => !used.has(`${cx},${cy}`) && terrainAtCell(cx, cy) === 'lake' && !isNear({ cx, cy })
+  const landOf = (c: Cell) => sceneryOf(c, isNear(c), { e: lakeAt(c.cx + 1, c.cy), s: lakeAt(c.cx, c.cy + 1), w: lakeAt(c.cx - 1, c.cy), n: lakeAt(c.cx, c.cy - 1) })
+  const empty = sceneryCells.map((c) => ({ c, s: landOf(c) }))
+  // 拉得很远时，世界外的空地只画湖（树太多太小，画了也看不清），拉远拉近山水的位置不变。
+  if (sceneryCells !== visible) {
+    const drawn = new Set(sceneryCells.map((c) => `${c.cx},${c.cy}`))
+    for (const c of visible) if (!drawn.has(`${c.cx},${c.cy}`) && terrainAtCell(c.cx, c.cy) === 'lake') empty.push({ c, s: { ...landOf(c), props: [], mounds: [] } })
+  }
+  const ground = gridOfView(view)
 
   // 角色、包裹的位置，按街区分组：每个街区整体按前后顺序画，后面的不会盖住前面的。
   type Seat = { key: string; c: BuildingView['characters'][number]; plot: Plot; gx: number; gy: number }
@@ -105,7 +125,10 @@ export function WorldScene({ model, world, view, far, selected, highlight, onSel
     slotsOf.set(d.key, parcels.sort((a, b) => a.p.run.id - b.p.run.id))
     seats.push(...mine)
   }
-  const depthOrder = [{ key: '__plaza', depth: 0, cx: 0 }, ...world.districts.map((d) => ({ key: d.key, depth: d.cell.cx + d.cell.cy, cx: d.cell.cx }))]
+  // 空地和街区一起按前后顺序画：前面一格的树不会被后面的房子盖住。
+  const emptyAt = new Map(empty.map((e) => [`__e${e.c.cx},${e.c.cy}`, e]))
+  const depthOrder = [{ key: '__plaza', depth: 0, cx: 0 }, ...world.districts.map((d) => ({ key: d.key, depth: d.cell.cx + d.cell.cy, cx: d.cell.cx })),
+    ...empty.map((e) => ({ key: `__e${e.c.cx},${e.c.cy}`, depth: e.c.cx + e.c.cy, cx: e.c.cx }))]
     .sort((a, b) => a.depth - b.depth || a.cx - b.cx)
   const byKey = new Map(world.districts.map((d) => [d.key, d]))
   const statusAt = new Map(world.districts.map((d) => [d.key, statusOf(d.b, model.pendingApprovals)]))
@@ -134,9 +157,14 @@ export function WorldScene({ model, world, view, far, selected, highlight, onSel
         </pattern>
       </defs>
 
-      {/* 大地与道路 */}
-      <IsoBox gx={gx0} gy={gy0} w={gx1 - gx0} d={gy1 - gy0} h={26} z={-26} top="#d7e2bf" left="#b48a5e" right="#946c48" />
-      <IsoTile gx={gx0} gy={gy0} w={gx1 - gx0} d={gy1 - gy0} fill="url(#world-grass)" />
+      {/* 大地铺满视野（再加世界范围），没有桌子边；上面是成片的地形色 */}
+      <IsoTile gx={Math.min(ground.gx0, gx0)} gy={Math.min(ground.gy0, gy0)} w={Math.max(ground.gx1, gx1) - Math.min(ground.gx0, gx0)} d={Math.max(ground.gy1, gy1) - Math.min(ground.gy0, gy0)} fill="#d7e2bf" />
+      {visible.length <= TINT_MAX && visible.map((c) => {
+        const tint = LAND_TINT[terrainAtCell(c.cx, c.cy)]
+        return tint ? <polygon key={`tn${c.cx},${c.cy}`} points={tintBlob(c).map(([gx, gy]) => iso(gx, gy).join(',')).join(' ')} fill={tint} opacity="0.75" aria-hidden /> : null
+      })}
+      <IsoTile gx={Math.min(ground.gx0, gx0)} gy={Math.min(ground.gy0, gy0)} w={Math.max(ground.gx1, gx1) - Math.min(ground.gx0, gx0)} d={Math.max(ground.gy1, gy1) - Math.min(ground.gy0, gy0)} fill="url(#world-grass)" />
+      <Lakes shapes={empty.flatMap((e) => (e.s.pond ? [e.s.pond] : []))} />
       {/* 街道：只铺在中央和各村庄的格子上；野外是草地和树林 */}
       {streetCells.map((c) => <IsoTile key={`st${c.cx},${c.cy}`} gx={c.cx * CELL_W - 1} gy={c.cy * CELL_D - 1} w={CELL_W + 0.1} d={CELL_D + 0.1} fill="#e6d9bd" />)}
       {streetCells.map((c) => <IsoTile key={`yd${c.cx},${c.cy}`} gx={c.cx * CELL_W} gy={c.cy * CELL_D} w={INNER_W} d={INNER_D} fill={tintOf(c)} />)}
@@ -151,39 +179,9 @@ export function WorldScene({ model, world, view, far, selected, highlight, onSel
       {/* 村口小广场：井和村名牌 */}
       {world.villages.map((v) => <VillageSquare key={v.key} cell={v.square} name={v.name} terrain={terrainOf(v.key)} />)}
 
-      {/* 空地：池塘、草甸（石头和花）、松林或树林，按格子固定 */}
-      {empty.map(({ ox, oy }) => {
-        const h = hash(`${ox},${oy}`)
-        const kind = h % 10
-        const spot = (i: number): [number, number] => [ox + 0.8 + ((h >> (i * 3)) % 9), oy + 0.8 + ((h >> (i * 4 + 1)) % 8)]
-        if (kind === 0) return (
-          <g key={`e${ox},${oy}`}>
-            <Pond gx={ox + 1.5} gy={oy + 1.5} w={6} d={5} />
-            <Tree at={iso(ox + 0.6, oy + 7.6)} k={0.9} />
-          </g>
-        )
-        if (kind <= 2) return (
-          <g key={`e${ox},${oy}`}>
-            <Rock gx={spot(0)[0]} gy={spot(0)[1]} k={1.3} />
-            <Rock gx={spot(1)[0]} gy={spot(1)[1]} />
-            <Flowers gx={spot(2)[0]} gy={spot(2)[1]} seed={h} />
-            <Flowers gx={spot(3)[0]} gy={spot(3)[1]} seed={h >> 5} />
-            <Tree at={iso(...spot(4))} k={0.9} />
-          </g>
-        )
-        const pines = kind >= 7
-        return (
-          <g key={`e${ox},${oy}`}>
-            {[0, 1, 2, 3, 4, 5].map((i) => {
-              const [gx, gy] = spot(i)
-              const k = 0.8 + ((h >> i) % 4) * 0.12
-              return pines ? <Pine key={i} at={iso(gx, gy)} k={k} /> : <Tree key={i} at={iso(gx, gy)} k={k} />
-            })}
-          </g>
-        )
-      })}
-
       {depthOrder.map(({ key }) => {
+        const e = emptyAt.get(key)
+        if (e) return <EmptyLand key={key} s={e.s} />
         if (key === '__plaza') return (
           <g key="__plaza">
             <IsoTile gx={P.ox + 0.4} gy={P.oy + 0.4} w={INNER_W - 0.4} d={INNER_D - 0.4} fill="#e9dcc2" stroke="#cdbb98" />
@@ -307,6 +305,26 @@ export function WorldScene({ model, world, view, far, selected, highlight, onSel
           note={agents ? '没有会话' : '今天很安静'} />
       </g>
     </svg>
+  )
+}
+
+/** 一块空地上的景物：土丘在下，树、石头、花草按前后顺序摆在上面。湖在地面层统一画。 */
+function EmptyLand({ s }: { s: CellScenery }) {
+  return (
+    <g aria-hidden>
+      {s.mounds.map((m, i) => <Mound key={i} ring={m.ring} lift={m.lift} />)}
+      {s.props.map((p, i) => {
+        const at = iso(p.gx, p.gy)
+        switch (p.kind) {
+          case 'pine': return <Pine key={i} at={at} k={p.k} />
+          case 'tree': return <Tree key={i} at={at} k={p.k} />
+          case 'bush': return <Bush key={i} at={at} k={p.k} />
+          case 'reeds': return <Reeds key={i} at={at} k={p.k} />
+          case 'rock': return <Rock key={i} gx={p.gx - 0.3 * p.k} gy={p.gy - 0.25 * p.k} k={p.k} />
+          default: return <Flowers key={i} gx={p.gx} gy={p.gy} seed={p.seed} />
+        }
+      })}
+    </g>
   )
 }
 

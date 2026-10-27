@@ -133,3 +133,71 @@ export function Fence({ gx, gy, len }: { gx: number; gy: number; len: number }) 
     </g>
   )
 }
+
+type LakeShape = { ring: [number, number][]; cx: number; cy: number; island: { gx: number; gy: number; r: number } | null }
+
+/**
+ * 按轮廓画的湖，轮廓由地形按位置生成，每个湖都不一样。湖是平的，统一画在地面层：
+ * 先画所有湖的岸和描边，再盖上所有水面，相邻格子的湖叠在一起时看不到接缝。
+ */
+export function Lakes({ shapes }: { shapes: LakeShape[] }) {
+  const rings = shapes.map((s) => pts(s.ring.map(([gx, gy]) => iso(gx, gy))))
+  return (
+    <g aria-hidden>
+      {rings.map((r, i) => <polygon key={`b${i}`} points={r} fill="#a9c98f" transform="translate(0,4)" />)}
+      {rings.map((r, i) => <polygon key={`s${i}`} points={r} fill="#6a9cbd" stroke="#6a9cbd" strokeWidth="3" strokeLinejoin="round" />)}
+      {rings.map((r, i) => <polygon key={`w${i}`} points={r} fill="#7fb3d5" />)}
+      {shapes.map((s, i) => {
+        const c = iso(s.cx, s.cy)
+        return [-1, 0, 1].map((j) => (
+          <line key={`l${i}-${j}`} className="town-shimmer" x1={c[0] - 22 + j * 14} y1={c[1] + j * 9} x2={c[0] + 8 + j * 14} y2={c[1] + j * 9} stroke="#e8f4fb" strokeWidth="2" strokeLinecap="round" strokeDasharray="6 10" />
+        ))
+      })}
+      {shapes.map((s, i) => {
+        if (!s.island) return null
+        const [x, y] = iso(s.island.gx, s.island.gy)
+        return <g key={`i${i}`}><ellipse cx={x} cy={y + 2} rx={s.island.r * 34} ry={s.island.r * 17} fill="#9cc07f" /><ellipse cx={x} cy={y} rx={s.island.r * 30} ry={s.island.r * 15} fill="#b7d79a" /></g>
+      })}
+    </g>
+  )
+}
+
+/** 山坡上的土丘：底下一圈深色、上面抬起一圈浅色。 */
+export function Mound({ ring, lift }: { ring: [number, number][]; lift: number }) {
+  const base = ring.map(([gx, gy]) => iso(gx, gy))
+  const cx = ring.reduce((n, p) => n + p[0], 0) / ring.length, cy = ring.reduce((n, p) => n + p[1], 0) / ring.length
+  const top = ring.map(([gx, gy]) => iso(cx + (gx - cx) * 0.62, cy + (gy - cy) * 0.62, lift))
+  return (
+    <g aria-hidden>
+      <polygon points={pts(base)} fill="#cfc79f" />
+      <polygon points={pts(base.map(([x, y], i) => [(x + top[i][0]) / 2, (y + top[i][1]) / 2] as Pt))} fill="#d8d1aa" />
+      <polygon points={pts(top)} fill="#e2dcb8" />
+    </g>
+  )
+}
+
+/** 矮灌木：几团圆。 */
+export function Bush({ at, k = 1 }: { at: Pt; k?: number }) {
+  const [x, y] = at
+  return (
+    <g aria-hidden transform={`translate(${x},${y}) scale(${k})`}>
+      <ellipse rx="11" ry="4" fill="rgba(40,25,10,.16)" />
+      <circle cx="-5" cy="-6" r="6.5" fill="#7aa866" />
+      <circle cx="5" cy="-6" r="6" fill="#86b46f" />
+      <circle cy="-10" r="6" fill="#93c27b" />
+    </g>
+  )
+}
+
+/** 岸边的芦苇。 */
+export function Reeds({ at, k = 1 }: { at: Pt; k?: number }) {
+  const [x, y] = at
+  return (
+    <g aria-hidden transform={`translate(${x},${y}) scale(${k})`} stroke="#6f9a52" strokeWidth="1.6" strokeLinecap="round">
+      <line x1="-4" y1="0" x2="-6" y2="-14" />
+      <line x1="0" y1="0" x2="0" y2="-18" />
+      <line x1="4" y1="0" x2="6" y2="-12" />
+      <rect x="-1.6" y="-22" width="3.2" height="7" rx="1.6" fill="#8a6440" stroke="none" />
+    </g>
+  )
+}
