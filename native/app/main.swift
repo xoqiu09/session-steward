@@ -150,8 +150,12 @@ final class TownWindow: NSObject, WKNavigationDelegate, NSWindowDelegate {
         if window.frame.origin == .zero { window.center() }
     }
 
-    /// 用 token 自动登录，然后直接打开小镇世界地图。token 只在这一次请求里用，不显示。
-    func open(path: String = "/?view=town&world=1") {
+    /// 小镇工作室（桌面模式）和世界地图的入口。
+    static let studio = "/?view=town&kiosk=1"
+    static let world = "/?view=town&world=1"
+
+    /// 用 token 自动登录，然后直接打开小镇工作室。token 只在这一次请求里用，不显示。
+    func open(path: String = TownWindow.studio) {
         guard let token = paths.token() else { showMessage("还没拿到面板登录信息，服务可能没有启动。"); return }
         var c = URLComponents(url: paths.base.appendingPathComponent("login"), resolvingAgainstBaseURL: false)!
         c.queryItems = [URLQueryItem(name: "t", value: token), URLQueryItem(name: "next", value: path)]
@@ -310,6 +314,7 @@ final class StatusMenu: NSObject {
         menu.addItem(countItem)
         menu.addItem(.separator())
         menu.addItem(withTitle: "打开小镇", action: #selector(openTown), keyEquivalent: "").target = self
+        menu.addItem(withTitle: "打开世界地图", action: #selector(openWorld), keyEquivalent: "").target = self
         menu.addItem(withTitle: "打开完整面板", action: #selector(openPanel), keyEquivalent: "").target = self
         menu.addItem(.separator())
         loginItem.action = #selector(toggleLogin)
@@ -339,7 +344,8 @@ final class StatusMenu: NSObject {
         hooksItem.title = Hooks.installed() ? "卸载 hooks…" : "安装 hooks…"
     }
 
-    @objc func openTown() { onOpen("/?view=town&world=1") }
+    @objc func openTown() { onOpen(TownWindow.studio) }
+    @objc func openWorld() { onOpen(TownWindow.world) }
     @objc func openPanel() { onOpen("/") }
     @objc func openQueue() { onOpen("/") }
 
@@ -506,6 +512,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc func reopenTown() { town.open() }
+    @objc func reopenWorld() { town.open(path: TownWindow.world) }
     @objc func restartBackend() {
         // 共用模式下重启：清掉记住的选择，重新问一次（可以改成接管）
         if mode == .shared { UserDefaults.standard.removeObject(forKey: pref("coexist")) }
@@ -538,6 +545,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let fileItem = NSMenuItem()
         let fileMenu = NSMenu(title: "文件")
         fileMenu.addItem(withTitle: "打开小镇", action: #selector(reopenTown), keyEquivalent: "1").target = self
+        fileMenu.addItem(withTitle: "打开世界地图", action: #selector(reopenWorld), keyEquivalent: "2").target = self
         fileMenu.addItem(withTitle: "重新启动服务", action: #selector(restartBackend), keyEquivalent: "").target = self
         fileMenu.addItem(withTitle: "关闭窗口", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
         fileItem.submenu = fileMenu

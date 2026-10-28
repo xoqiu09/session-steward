@@ -42,9 +42,9 @@ Claude Code / Codex hooks ──> steward-hook ──> steward serve (127.0.0.1:
    - 熟悉终端的话，也可以运行 `xattr -dr com.apple.quarantine "/Applications/Session Steward.app"`。
 3. 按引导点“**安装 hooks 并开始**”。引导会先说明要改哪两个文件，改之前会备份，只加 Steward 自己的条目。之后新开的 Claude Code / Codex 会话会出现在小镇里。
 
-App 窗口直接打开小镇，不需要登录链接。菜单栏的小房子图标显示“等你决定”的数量，有新的审批时会弹系统通知。菜单栏里还可以：
+App 窗口直接打开小镇工作室（桌面模式），不需要登录链接。菜单栏的小房子图标显示“等你决定”的数量，有新的审批时会弹系统通知。菜单栏里还可以：
 
-- 打开小镇或完整面板；
+- 打开小镇、世界地图或完整面板；
 - 开关“开机时启动”；
 - 安装或卸载 hooks；
 - “退出并停止采集”。
