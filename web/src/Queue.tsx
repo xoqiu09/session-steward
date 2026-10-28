@@ -136,7 +136,7 @@ function DecisionCard({ a, snap }: { a: Approval; snap: Snapshot }) {
   )
 }
 
-function MergeCard({ group, snap, onSelectItem, advice }: { group: MergeGroup; snap: Snapshot; onSelectItem: (id: string) => void; advice: AdviceGroup[] }) {
+export function MergeCard({ group, snap, onSelectItem, advice }: { group: MergeGroup; snap: Snapshot; onSelectItem: (id: string) => void; advice: AdviceGroup[] }) {
   const a = group.primary
   const p = a.payload as unknown as MergePayload
   const item = (snap.work_items ?? []).find((w) => w.id === a.work_item_id)

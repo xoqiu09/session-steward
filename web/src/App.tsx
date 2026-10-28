@@ -18,6 +18,8 @@ import { HistoryView } from './history/HistoryView'
 import { useHub, remoteDeviceOf } from './hub/hub'
 import { HubSwitch } from './hub/HubSwitch'
 import { TownView } from './town/TownView'
+import { TodayView } from './today/TodayView'
+import { buildToday } from './today/todayModel'
 import { fullPanelHref, kioskHref, parseTownRoute } from './town/route'
 
 type Tab = 'queue' | 'items' | 'sessions' | 'launch' | 'review'
@@ -41,7 +43,7 @@ export default function App() {
   const [repoId, setRepoId] = useState<number | 'all'>('all')
   const [provider, setProvider] = useState<string>('all')
   const [route, setRoute] = useState(() => parseTownRoute(window.location.search, window.location.hash))
-  const [view, setView] = useState<'overview' | 'town' | 'canvas' | 'list' | 'history'>(() => (route.town ? 'town' : 'overview'))
+  const [view, setView] = useState<'today' | 'overview' | 'town' | 'canvas' | 'list' | 'history'>(() => (new URLSearchParams(window.location.search).get('view') === 'today' ? 'today' : route.town ? 'town' : 'overview'))
   // 从历史日历点“回放这一天”：切到小镇并打开时间条。
   const [replayDay, setReplayDay] = useState<string | undefined>(undefined)
   // 桌面模式里点告示栏、验收台时，在抽屉里打开关注队列。
@@ -49,6 +51,8 @@ export default function App() {
   const [expandAll, setExpandAll] = useState(false)
   const [sessionScope, setSessionScope] = useState<SessionScope>('recent')
   const [attributionOpen, setAttributionOpen] = useState(false)
+  // 每日十分钟已经列出了关注队列的内容：侧栏默认只留详情位置，需要时再展开原来的标签页。
+  const [todaySideTabs, setTodaySideTabs] = useState(false)
 
   const [deep, setDeep] = useState<Deep>(() => parseDeepLink(window.location.hash))
   useEffect(() => {
@@ -80,6 +84,8 @@ export default function App() {
   const totalItems = groups.reduce((sum, g) => sum + g.items.length, 0)
   const providers = [...new Set((snap.sessions ?? []).map((s) => s.provider))]
   const counts = queueCounts(snap, repoId, provider)
+  const todayLeft = (() => { const t = buildToday(snap, ''); return t.decide.length + t.review.length + t.stuck.length })()
+  const todayEntry = <a className="btn small today-entry" href={`${window.location.pathname}?view=today`} onClick={(e) => { if (!route.kiosk) { e.preventDefault(); setView('today') } }} title="每日十分钟：要你决定、等你验收、卡住了的，一页看完">{todayLeft ? `要你处理 ${todayLeft} 件` : '每日十分钟'}</a>
   const actors = projectActorRows(snap, groups, provider)
   const quietCount = sessionBuckets(snap, provider, repoId).quiet.length
   const attributionRecords = scopedAttributions(snap, repoId, provider)
@@ -109,6 +115,7 @@ export default function App() {
             onSelectRepo={(id) => setRepoId(id)} onAllRepos={() => setRepoId('all')} onQueue={openQueue} kiosk rotateMs={route.rotateMs} paused={drawer} noReplay={hub.scope === 'all'}
             bar={<span className="kiosk-tools">
               {hubSwitch}
+              {todayEntry}
               <span className={`conn conn-${conn}`}>{conn === 'live' ? '实时' : conn === 'offline' ? '已断开，重连中' : '连接中'}</span>
               {isRemote() && <span className="remote-tag" title={remoteReadOnlyMessage}>远程只读</span>}
               <a className="btn small" href={fullPanelHref(path, null)} title="回到 Session Steward 完整面板">退出桌面模式</a>
@@ -149,6 +156,7 @@ export default function App() {
           <input className="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="查找 #编号或标题（展开相关依赖）" aria-label="搜索" />
           <label className="check"><input type="checkbox" checked={showDone} onChange={(e) => setShowDone(e.target.checked)} /> 已完成</label>
           <div className="seg" role="group" aria-label="视图">
+            <button className={view === 'today' ? 'on' : ''} onClick={() => setView('today')}>每日十分钟</button>
             <button className={view === 'overview' ? 'on' : ''} onClick={() => setView('overview')}>项目简报</button>
             <button className={view === 'town' ? 'on' : ''} onClick={() => setView('town')}>小镇</button>
             <button className={view === 'canvas' ? 'on' : ''} onClick={() => setView('canvas')}>画布</button>
@@ -173,15 +181,16 @@ export default function App() {
               : <button className="btn small primary" onClick={() => { setSel(null); setAttributionOpen(false); setTab('launch') }}>＋ 新建会话</button>}
           </div>
         })()}
-        <div className={view === 'overview' ? 'workbench-overview overview-hidden' : 'workbench-overview'}>
+        <div className={view === 'overview' || view === 'today' ? 'workbench-overview overview-hidden' : 'workbench-overview'}>
           <div className="overview-line"><strong>项目推进</strong><span>{totalItems} 个工作项</span><span>{sessionBuckets(snap, provider, repoId).recent.length} 个近期会话</span><button onClick={() => { setSel(null); setAttributionOpen(false); setTab('queue') }}>审批／决定 {counts.action} · 待审阅／验收 {counts.review}</button></div>
           <div className="project-shortcuts">{groups.map((g) => <button key={g.key} disabled={g.repoId == null} className={repoId === g.repoId ? 'on' : ''} onClick={() => { if (g.repoId != null) { setRepoId(g.repoId); setSel(null); setAttributionOpen(false); setTab('queue') } }} title={g.name}><strong>{g.name}</strong><small>工作项 {g.items.length} · 待关联 {g.sessions.length}{projectQueueCounts(snap, g.repoId).action ? ` · 需审批 ${projectQueueCounts(snap, g.repoId).action}` : ''}</small></button>)}</div>
         </div>
         <div className="stage">
           {view === 'town' && hubToast}
           {view === 'town' ? <TownView key={hub.merged ? "all" : "here"} world={route.world} snap={hub.merged ?? snap} conn={conn} repoId={repoId} provider={provider} sel={sel} onSelectItem={townItem} onSelectSession={townSession} replayDay={replayDay}
-            noReplay={hub.scope === 'all'} bar={hubSwitch}
+            noReplay={hub.scope === 'all'} bar={<>{hubSwitch}{todayEntry}</>}
             onSelectRepo={(id) => setRepoId(id)} onAllRepos={() => setRepoId('all')} onQueue={(lane) => { setSel(null); setAttributionOpen(false); setTab('queue'); setQueueFocus(lane) }} />
+            : view === 'today' ? <TodayView snap={snap} onSelectItem={selectItem} onOpenTown={() => setView('town')} device={hub.enabled ? hub.status?.device ?? '' : undefined} />
             : view === 'overview' ? <Overview snap={snap} groups={groups} onSelectItem={selectItem} onSelectSession={selectSession} onOpenAttribution={openAttributions} pendingCount={counts.action} reviewCount={counts.review} expandQuiet={!!query.trim() || repoId !== 'all'} onQueue={(lane = 'action') => { setSel(null); setAttributionOpen(false); setTab('queue'); setQueueFocus(lane) }} /> : view === 'canvas' ? (
             <ReactFlowProvider>
               <Canvas snap={snap} groups={groups} selected={sel?.kind === 'item' ? sel.id : null} onSelectItem={selectItem} onOpenAttribution={openAttributions} expandAll={expandAll || !!query.trim()} />
@@ -192,7 +201,12 @@ export default function App() {
         </div>
       </main>
       <aside className="side">
-        {attributionOpen ? <AttributionPanel snap={snap} repoId={repoId} provider={provider} onClose={() => setAttributionOpen(false)} onSelectItem={selectItem} /> : detail ?? (
+        {attributionOpen ? <AttributionPanel snap={snap} repoId={repoId} provider={provider} onClose={() => setAttributionOpen(false)} onSelectItem={selectItem} /> : detail ?? (view === 'today' && !todaySideTabs ? (
+          <div className="side-body today-side">
+            <p>点任意一行的标题或“详情”，完整的交付、简报和来源会在这里打开。</p>
+            <button className="btn small" onClick={() => setTodaySideTabs(true)}>显示关注队列、工作项和会话</button>
+          </div>
+        ) : (
           <>
             <nav className="tabs" role="tablist">
               <button role="tab" aria-selected={tab === 'queue'} className={tab === 'queue' ? 'on' : ''} onClick={() => { setTab('queue'); setQueueFocus('action') }}>关注队列 {counts.action > 0 && <span className="badge" title="需要你审批或决定">{counts.action}</span>}</button>
@@ -209,7 +223,7 @@ export default function App() {
               {tab === 'sessions' && <SessionList snap={snap} onSelect={selectSession} provider={provider} repoId={repoId} scope={sessionScope} onScopeChange={setSessionScope} />}
             </div>
           </>
-        )}
+        ))}
       </aside>
     </div>
   )
