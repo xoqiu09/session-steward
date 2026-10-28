@@ -30,3 +30,12 @@ it('切换按钮列出每台的在线状态', () => {
   expect(html).toContain('台式机（本机）')
   expect(html).toContain('笔记本 · 10 分钟前')
 })
+
+it('其他设备推不上去时，在“这台”视图里也提示推送失败', () => {
+  const html = renderToStaticMarkup(<HubSwitch scope="here" onScope={() => {}} merged={null} error="" now="2026-10-27T06:00:00Z"
+    status={{ role: 'agent', url: 'https://hub.example.ts.net:8443', last_error: '中心机返回 401' }} />)
+  expect(html).toContain('推送失败')
+  expect(html).toContain('中心机返回 401')
+  const ok = renderToStaticMarkup(<HubSwitch scope="here" onScope={() => {}} merged={null} error="" now="2026-10-27T06:00:00Z" status={{ role: 'agent', last_error: '' }} />)
+  expect(ok).not.toContain('推送失败')
+})

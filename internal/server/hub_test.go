@@ -94,3 +94,13 @@ func TestHubPushPullAndMerge(t *testing.T) {
 		t.Fatalf("agent 取回 %d %s", w.Code, w.Body.String()[:min(200, len(w.Body.String()))])
 	}
 }
+
+// hub.url 指到别的服务（例如 443 上的其他程序）时，即使返回 200 也不算推送成功。
+func TestHubPushRejectsOtherService(t *testing.T) {
+	other := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write([]byte("<html>hello</html>")) }))
+	defer other.Close()
+	agent := &Hub{Role: "agent", URL: other.URL, Secret: hubSecret, SelfID: "dev-nb", SelfName: "笔记本"}
+	if err := agent.Push(context.Background(), hubCore(t, "agent")); err == nil || !strings.Contains(err.Error(), "hub.url") {
+		t.Fatalf("应提示检查 hub.url：%v", err)
+	}
+}
