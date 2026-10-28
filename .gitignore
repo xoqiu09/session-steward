@@ -9,3 +9,5 @@
 
 /.claude/
 /Icon?
+/dist-release/
+/dist-app/

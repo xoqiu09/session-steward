@@ -1,0 +1,29 @@
+name: release
+
+# 推送 v* 标签时，在 macOS 上编译 arm64 / amd64 两个预编译包（含通知助手），建一个草稿 Release。
+# 草稿要人检查后再手动发布；未签名、未公证，README 写了首次打开的办法。
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go vet ./...
+      - run: go test ./...
+      - run: sh scripts/release.sh "$GITHUB_REF_NAME"
+      - name: Draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist-release/*.tar.gz dist-release/*.zip dist-release/SHA256SUMS \
+            --draft --title "Session Steward $GITHUB_REF_NAME" \
+            --notes "macOS 预编译版本（未签名）。App：下载对应芯片的 .app.zip，解压后拖进“应用程序”，首次打开见 README“App 安装”。命令行一行安装：\`curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/main/scripts/install.sh | sh\`，或下载对应架构的包后看里面的“安装说明.txt”。校验：\`shasum -a 256 -c SHA256SUMS\`。"

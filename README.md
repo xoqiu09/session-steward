@@ -33,6 +33,45 @@ Claude Code / Codex hooks ──> steward-hook ──> steward serve (127.0.0.1:
 
 > 数据只存在你自己电脑的 `~/.steward`，仓库里不带任何人的工作记录。拉下代码、装好以后面板是空的，这是正常的：先看下面的演示数据，或正式安装 hooks 后让 Agent 干活。
 
+### App 安装（macOS，推荐给测试者）
+
+1. 在 [Releases](https://github.com/xoqiu09/session-steward/releases) 下载对应芯片的 `Session-Steward_<版本>_macOS_arm64.app.zip`（Apple 芯片）或 `…_amd64.app.zip`（Intel），解压后把 **Session Steward** 拖进“应用程序”。
+2. **第一次打开**：这个版本没有 Apple 签名和公证，macOS 会拦一下。
+   - 在“应用程序”里**右键 → 打开 → 打开**。
+   - 如果没有“打开”按钮（较新的 macOS），先双击一次，然后到“系统设置 → 隐私与安全性”，在下方找到 Session Steward，点“仍要打开”。
+   - 熟悉终端的话，也可以运行 `xattr -dr com.apple.quarantine "/Applications/Session Steward.app"`。
+3. 按引导点“**安装 hooks 并开始**”。引导会先说明要改哪两个文件，改之前会备份，只加 Steward 自己的条目。之后新开的 Claude Code / Codex 会话会出现在小镇里。
+
+App 窗口直接打开小镇工作室（桌面模式），不需要登录链接。菜单栏的小房子图标显示“等你决定”的数量，有新的审批时会弹系统通知。菜单栏里还可以：
+
+- 打开小镇、世界地图或完整面板；
+- 开关“开机时启动”；
+- 安装或卸载 hooks；
+- “退出并停止采集”。
+
+关掉窗口不会停止采集。
+
+- **已经装过命令行版**：App 会问你“接管”还是“共用”。
+  - 接管：移除命令行版的开机服务，由 App 负责后台运行。
+  - 共用：命令行服务照常运行，App 只当窗口用。
+  - 同一份数据不会同时有两个服务在跑。
+- **卸载**：先在菜单栏选“卸载 hooks…”，Claude Code / Codex 的配置会恢复原样；再“退出并停止采集”，把 App 拖进废纸篓。数据在 `~/.steward`，需要时自己删除。
+- 没装 tmux 时，“在面板里直接开托管会话”不可用，其他功能照常。
+
+自己从源码打包 App：`sh scripts/build-app.sh`，产物在 `dist-app/`。需要 Go 和 Xcode 命令行工具。
+
+### 一行安装（macOS 预编译版本）
+
+不想装 Go 时，用 GitHub Release 里编好的版本（arm64 / Intel 都有，未签名）：
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/xoqiu09/session-steward/main/scripts/install.sh | sh -s -- --setup
+```
+
+脚本只下载 Release 文件并校验 SHA256，装到 `~/.local/share/session-steward/current`；加 `--setup` 时会逐项询问是否装 hooks、是否开机自启。不加则只放好文件，按提示自己运行。也可以在 Release 页面下载对应架构的包，看里面的“安装说明.txt”。
+
+### 从源码构建
+
 需要 `git` 和 Go 1.26.5 及以上（见 `go.mod`）。构建好的 Web 界面已提交在仓库里，只有修改前端时才需要 Node。
 
 ```sh
