@@ -150,9 +150,10 @@ final class TownWindow: NSObject, WKNavigationDelegate, NSWindowDelegate {
         if window.frame.origin == .zero { window.center() }
     }
 
-    /// 小镇世界地图和工作室（桌面模式）的入口。
+    /// 小镇世界地图、工作室（桌面模式）和每日十分钟的入口。
     static let world = "/?view=town&world=1"
     static let studio = "/?view=town&kiosk=1"
+    static let today = "/?view=today"
 
     /// 用 token 自动登录，然后直接打开小镇世界地图。token 只在这一次请求里用，不显示。
     func open(path: String = TownWindow.world) {
@@ -315,6 +316,7 @@ final class StatusMenu: NSObject {
         menu.addItem(.separator())
         menu.addItem(withTitle: "打开小镇", action: #selector(openTown), keyEquivalent: "").target = self
         menu.addItem(withTitle: "打开工作室", action: #selector(openStudio), keyEquivalent: "").target = self
+        menu.addItem(withTitle: "每日十分钟", action: #selector(openToday), keyEquivalent: "").target = self
         menu.addItem(withTitle: "打开完整面板", action: #selector(openPanel), keyEquivalent: "").target = self
         menu.addItem(.separator())
         loginItem.action = #selector(toggleLogin)
@@ -346,8 +348,10 @@ final class StatusMenu: NSObject {
 
     @objc func openTown() { onOpen(TownWindow.world) }
     @objc func openStudio() { onOpen(TownWindow.studio) }
+    @objc func openToday() { onOpen(TownWindow.today) }
     @objc func openPanel() { onOpen("/") }
-    @objc func openQueue() { onOpen("/") }
+    // 菜单栏“等你决定：N”：直接打开每日十分钟，一页处理完
+    @objc func openQueue() { onOpen(TownWindow.today) }
 
     /// 开机时启动：由 App 自己登记为登录项（代替单独装的 launchd 服务）。
     @objc func toggleLogin() {
@@ -513,6 +517,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc func reopenTown() { town.open() }
     @objc func reopenStudio() { town.open(path: TownWindow.studio) }
+    @objc func reopenToday() { town.open(path: TownWindow.today) }
     @objc func restartBackend() {
         // 共用模式下重启：清掉记住的选择，重新问一次（可以改成接管）
         if mode == .shared { UserDefaults.standard.removeObject(forKey: pref("coexist")) }
@@ -546,6 +551,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let fileMenu = NSMenu(title: "文件")
         fileMenu.addItem(withTitle: "打开小镇", action: #selector(reopenTown), keyEquivalent: "1").target = self
         fileMenu.addItem(withTitle: "打开工作室", action: #selector(reopenStudio), keyEquivalent: "2").target = self
+        fileMenu.addItem(withTitle: "每日十分钟", action: #selector(reopenToday), keyEquivalent: "3").target = self
         fileMenu.addItem(withTitle: "重新启动服务", action: #selector(restartBackend), keyEquivalent: "").target = self
         fileMenu.addItem(withTitle: "关闭窗口", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
         fileItem.submenu = fileMenu
