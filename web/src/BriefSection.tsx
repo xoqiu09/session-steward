@@ -6,6 +6,7 @@ import { AgentBadge, ErrorLine, useAction } from './bits'
 import { ago } from './model'
 import { bindingLabel, outcomeLabel } from './Panels'
 import { attemptsOf, briefKeys, briefLabel, relation, reportCommand, sourceDetail, sourceTag } from './brief'
+import { shownNo } from './hub/ids'
 
 // 简报：每条带来源、时间、出处；缺失就显示缺失。纠错操作可撤销（最近一次）。
 export function BriefSection({ snap, item }: { snap: Snapshot; item: WorkItem }) {
@@ -99,7 +100,7 @@ export function RelayTimeline({ snap, item, onSelectSession, onOutcome }: { snap
                     <span className="pill">{r.ended_at ? (outcomeLabel[r.outcome] ?? r.outcome) : '进行中'}</span>
                   </button>
                   {r.ended_at && !r.outcome && (
-                    <select disabled={isRemote()} className="outcome" aria-label={`补记会话 #${r.session_id} 的结果`} defaultValue="" onChange={(e) => e.target.value && onOutcome(r.id, e.target.value)}>
+                    <select disabled={isRemote()} className="outcome" aria-label={`补记会话 #${shownNo(r.session_id)} 的结果`} defaultValue="" onChange={(e) => e.target.value && onOutcome(r.id, e.target.value)}>
                       <option value="">补记结果…</option>
                       <option value="delivered">交付</option>
                       <option value="failed">失败</option>

@@ -4,12 +4,13 @@ import { api } from './api'
 import { AgentBadge, ErrorLine, useAction } from './bits'
 import { ago, providerLabel } from './model'
 import { shortText } from './stage'
+import { shownNo } from './hub/ids'
 
 const implementation: Record<string, string> = { unknown: '实现待回报', not_started: '未开始', implementing: '实现中', implemented: '已实现 · Agent 回报', conflict: '实现回报待对齐' }
 const validation: Record<string, string> = { unknown: '验证待回报', not_verified: '尚未验证', validating: '验证中', passed: 'Agent 回报验证通过', failed: 'Agent 回报验证失败', conflict: '多候选，验证待对齐' }
 
 export function featureOwner(snap: Snapshot, p: FeatureContribution) {
-  if (p.next_owner === 'agent') return `${providerLabel(p.provider)} #${p.session_id}`
+  if (p.next_owner === 'agent') return `${providerLabel(p.provider)} #${shownNo(p.session_id)}`
   if (p.next_owner === 'user') return '你'
   if (p.next_owner === 'external') return '外部依赖方'
   if (p.next_owner === 'claude' || p.next_owner === 'codex') return `${providerLabel(p.next_owner)}（具体会话待指定）`

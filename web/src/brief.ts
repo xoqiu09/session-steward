@@ -1,4 +1,5 @@
 import type { BriefField, BriefKey, Run, Snapshot, WorkItem } from './types'
+import { shownNo } from './hub/ids'
 
 export const briefLabel: Record<BriefKey, string> = { goal: '目标', summary: '一句话结论', progress: '最新进展', blocker: '卡点', next: '下一步', stage: '当前阶段', next_owner: '下一步负责人' }
 export const briefKeys: BriefKey[] = ['summary', 'goal', 'progress', 'blocker', 'next']
@@ -12,7 +13,7 @@ export function sourceTag(f: BriefField): { label: string; mark: string; cls: st
 export function sourceDetail(f: BriefField): string {
   const via: Record<string, string> = { begin: 'steward-hook begin', report: 'steward-hook report', ask: 'steward-hook ask', deliver: 'steward-hook deliver', user: '面板', confirm: '面板确认', reopened: '工作项重新开始' }
   const s = via[f.source] ?? f.source
-  return f.session_id != null ? `会话 #${f.session_id} · ${s}` : s
+  return f.session_id != null ? `会话 #${shownNo(f.session_id)} · ${s}` : s
 }
 
 export function field(w: WorkItem, k: BriefKey): BriefField | undefined {
