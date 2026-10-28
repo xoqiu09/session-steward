@@ -123,7 +123,7 @@ function useMedia(query: string): boolean {
 
 const PER_PAGE: Record<LayoutName, number> = { wide: 3, portrait: 1 }
 
-export function TownView({ snap, conn, repoId, provider, sel, onSelectItem, onSelectSession, onSelectRepo, onQueue, kiosk = false, rotateMs = DEFAULT_ROTATE_S * 1000, paused = false, layout, bar, world = false, replayDay, noReplay = false }: {
+export function TownView({ snap, conn, repoId, provider, sel, onSelectItem, onSelectSession, onSelectRepo, onAllRepos, onQueue, kiosk = false, rotateMs = DEFAULT_ROTATE_S * 1000, paused = false, layout, bar, world = false, replayDay, noReplay = false }: {
   snap: Snapshot
   conn: Conn
   repoId: number | 'all'
@@ -132,6 +132,8 @@ export function TownView({ snap, conn, repoId, provider, sel, onSelectItem, onSe
   onSelectItem: (id: string) => void
   onSelectSession: (id: number) => void
   onSelectRepo: (id: number) => void
+  /** 只看一个项目时，顶栏显示是哪个项目和“显示全部项目”。 */
+  onAllRepos?: () => void
   onQueue: (lane: 'action' | 'review') => void
   /** 桌面模式：自动轮播项目页。 */
   kiosk?: boolean
@@ -234,6 +236,8 @@ export function TownView({ snap, conn, repoId, provider, sel, onSelectItem, onSe
   }
 
   const pinned = pages.length > 1 ? pages[0].filter((b) => pages.every((pg) => pg.includes(b))).length : 0
+  // 点建筑或项目卡片后整个面板只看这个项目：在小镇里写明，一键回到全部，不然像是别的项目都不见了。
+  const scopedRepo = repoId === 'all' ? null : (shown.repos ?? []).find((r) => r.id === repoId)?.name ?? `项目 #${repoId}`
   return (
     <div className={`town-view${offline ? ' is-offline' : ''}${kiosk ? ' is-kiosk' : ''}`}>
       <div className="town-bar">
@@ -245,6 +249,11 @@ export function TownView({ snap, conn, repoId, provider, sel, onSelectItem, onSe
             </button>
           ))}
         </nav>
+        {scopedRepo && onAllRepos && (
+          <button type="button" className="town-scope" onClick={onAllRepos} title="小镇现在只画这一个项目；点这里显示全部项目">
+            只看「{scopedRepo}」<b>显示全部项目</b>
+          </button>
+        )}
         {!asWorld && pages.length > 1 && (
           <div className="town-pager" role="group" aria-label={`项目分页，第 ${page + 1} 页，共 ${pages.length} 页`}
             title={`共 ${model.buildings.length} 个项目${pinned ? `；${pinned} 个等你处理的项目固定在每页` : ''}${rotating ? `；每 ${Math.round(rotateMs / 1000)} 秒自动翻页` : ''}`}>

@@ -63,7 +63,9 @@
 }
 
 /* 回放 */
-.town-view .town-replay-open { margin-left: 8px; padding: 3px 10px; border-radius: 8px; border: 1px solid #c9b896; background: #fff; font-size: 12px; cursor: pointer; }
+.town-view .town-scope { margin-left: 8px; padding: 3px 4px 3px 10px; border-radius: 999px; border: 1px solid #e0a43a; background: #fff6e2; color: #6b4a12; font-size: 12px; cursor: pointer; white-space: nowrap; }
+.town-view .town-scope b { margin-left: 8px; padding: 1px 8px; border-radius: 999px; background: #e0a43a; color: #fff; font-weight: 600; }
+.town-view .town-replay-open {margin-left: 8px; padding: 3px 10px; border-radius: 8px; border: 1px solid #c9b896; background: #fff; font-size: 12px; cursor: pointer; }
 .town-view .town-replay {
   position: absolute; z-index: 6; left: 50%; bottom: 14px; transform: translateX(-50%); width: min(820px, calc(100% - 24px));
   display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 12px; background: rgba(40, 46, 80, 0.94); color: #fff; font-size: 13px;

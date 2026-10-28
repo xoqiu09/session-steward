@@ -116,3 +116,22 @@ describe('TownView 分页与版式', () => {
       onSelectItem={() => {}} onSelectSession={() => {}} onSelectRepo={() => {}} onQueue={() => {}} />)).not.toContain('town-pager')
   })
 })
+
+describe('TownView 只看一个项目', () => {
+  const render = (repoId: number | 'all', world = false) => renderToStaticMarkup(
+    <TownView snap={snap} conn="live" repoId={repoId} provider="all" sel={null} layout="wide" world={world}
+      onSelectItem={() => {}} onSelectSession={() => {}} onSelectRepo={() => {}} onAllRepos={() => {}} onQueue={() => {}} />)
+
+  it('筛到一个项目时，工作室和世界地图都写明只看哪个项目，并能一键显示全部', () => {
+    for (const world of [false, true]) {
+      const html = render(1, world)
+      expect(html).toContain('只看「demo-repo」')
+      expect(html).toContain('显示全部项目')
+    }
+  })
+
+  it('看全部项目时不显示', () => {
+    expect(render('all')).not.toContain('town-scope')
+    expect(render('all', true)).not.toContain('town-scope')
+  })
+})
