@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -115,7 +116,15 @@ func (s *Server) handleHubPull(w http.ResponseWriter, r *http.Request) {
 		fail(w, r, http.StatusUnauthorized, "unauthorized")
 		return
 	}
-	snap, err := s.Core.HubMerged(r.Context(), s.Hub.SelfID, s.Hub.SelfName)
+	// viewer=来取的那台设备：只给“除它以外”的部分，由它用自己的数据接上，本机才是它自己。
+	// 不带 viewer 的旧版设备照旧拿中心机视角的合并视图。
+	var snap *core.Snapshot
+	var err error
+	if viewer := r.URL.Query().Get("viewer"); viewer != "" && len(viewer) <= 80 {
+		snap, err = s.Core.HubOthers(r.Context(), s.Hub.SelfID, s.Hub.SelfName, viewer)
+	} else {
+		snap, err = s.Core.HubMerged(r.Context(), s.Hub.SelfID, s.Hub.SelfName)
+	}
 	if err != nil {
 		writeErr(w, err)
 		return
@@ -123,7 +132,7 @@ func (s *Server) handleHubPull(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, snap)
 }
 
-// handleHubSnapshot：面板的“全部设备”视图。中心机就地合并；其他设备向中心取回。
+// handleHubSnapshot：面板的“全部设备”视图。中心机就地合并；其他设备向中心取回其余部分，再接上自己的数据。
 func (s *Server) handleHubSnapshot(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case s.Hub == nil || s.Hub.Role == "":
@@ -136,7 +145,7 @@ func (s *Server) handleHubSnapshot(w http.ResponseWriter, r *http.Request) {
 		}
 		writeJSON(w, 200, snap)
 	default:
-		req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, strings.TrimRight(s.Hub.URL, "/")+"/api/hub/pull", nil)
+		req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, strings.TrimRight(s.Hub.URL, "/")+"/api/hub/pull?viewer="+url.QueryEscape(s.Hub.SelfID), nil)
 		if err != nil {
 			writeErr(w, err)
 			return
@@ -152,8 +161,24 @@ func (s *Server) handleHubSnapshot(w http.ResponseWriter, r *http.Request) {
 			fail(w, r, http.StatusBadGateway, fmt.Sprintf("中心机返回 %d", resp.StatusCode))
 			return
 		}
-		w.Header().Set("Content-Type", "application/json")
-		io.Copy(w, io.LimitReader(resp.Body, 64<<20))
+		var others core.Snapshot
+		if err := json.NewDecoder(io.LimitReader(resp.Body, 64<<20)).Decode(&others); err != nil {
+			fail(w, r, http.StatusBadGateway, "中心机返回的内容看不懂："+err.Error())
+			return
+		}
+		// 旧版中心机不认 viewer，返回的是它视角的合并视图（里面有它标的本机）：只能原样显示
+		for _, d := range others.Devices {
+			if d.Self || d.ID == s.Hub.SelfID {
+				writeJSON(w, 200, others)
+				return
+			}
+		}
+		snap, err := s.Core.HubCombine(r.Context(), s.Hub.SelfID, s.Hub.SelfName, &others)
+		if err != nil {
+			writeErr(w, err)
+			return
+		}
+		writeJSON(w, 200, snap)
 	}
 }
 
