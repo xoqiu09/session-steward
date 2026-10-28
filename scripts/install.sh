@@ -46,7 +46,7 @@ fetch() {
 	if [ -n "$src" ]; then cp "$src/$1" "$tmp/$1"
 	else curl -fsSL -o "$tmp/$1" "https://github.com/$REPO/releases/download/$version/$1"; fi
 }
-echo "下载 Session Steward $version（$arch）…"
+echo "下载 Session Steward ${version}（${arch}）…"
 fetch "$name.tar.gz" || die "下载 $name.tar.gz 失败"
 fetch SHA256SUMS || die "下载 SHA256SUMS 失败"
 want=$(awk -v f="$name.tar.gz" '$2 == f { print $1 }' "$tmp/SHA256SUMS")
