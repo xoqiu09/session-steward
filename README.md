@@ -1,92 +1,70 @@
 # Session Steward
 
-给 Claude Code 和 Codex 用的本机进展与验收台。多个 Agent 同时在多个项目里干活时，Session Steward 让你在一分钟左右看懂：每个项目做到哪了、卡在哪、下一步谁来做、哪些事在等你。
+给 Claude Code 和 Codex 用的本机进展与验收台。好几个 Agent 同时在好几个项目里干活时，它把这些工作画成一座小镇，让你一眼看出：每个项目做到哪了、卡在哪、下一步谁来做、哪些事在等你。
 
 [完整使用手册](docs/GUIDE.zh-CN.md) · [安全策略](SECURITY.md) · MIT 许可证 · [English summary](#english-summary)
 
-> **状态：早期，欢迎试用和反馈。** 作者在 macOS 上日常使用；界面目前只有中文。Linux 可以构建并运行核心服务，测试较少；Windows 能编译，尚未测试。
+> **状态：早期试用版，欢迎体验和反馈。** 作者每天在 macOS 上使用。界面目前只有中文。App 只支持 macOS；Linux 能跑核心服务，测试较少；Windows 能编译，没有测试过。
 
-![工作小镇：建筑是项目，带编号的小人是会话，告示栏是等你决定的请求，验收台上是等你验收的交付（演示数据）](docs/images/town.jpg)
+![小镇世界地图：每栋房子是一个项目，相关的项目聚成村庄，中央广场上是告示栏（等你决定）和验收台（演示数据）](docs/images/town.jpg)
 
-## 能做什么
+## 它能帮你做什么
 
-- **按项目看简报。** Claude Code 和 Codex 的会话按项目和工作项归并，每个项目显示阶段、一句话结论、卡点、下一步和负责人，而不只是一长串会话。
-- **一个队列放所有等你的事。** 工具权限请求、Agent 的明确提问、等待批准的合并、等待验收的交付都在右侧队列里。
-- **在面板里批准或拒绝工具权限。** 每个决定绑定到具体请求（工具、参数、工作目录），迟到的决定不会作用到另一个请求上；面板不在线时，Agent 回到自己的原生确认。
-- **“Agent 说做完了”不等于“已验收”。** 进展和交付由 Agent 自己回报，只有你能把工作标为已验收。Stop、沉默或会话空闲都不算完成。
-- **工作小镇。** 把当前工作画成桌上的微缩工作室，适合挂在副屏上随时瞄一眼（见下文）。
-- **可选功能**，未配置时不生效：独立 worktree + tmux 中的托管会话和只读实时终端、带检查门的本地合并、跨 Agent 交接包、按工作项统计 token 用量、macOS 通知、经你自己的私有网络只读远程查看。
+- **一张地图看全部工作。** 房子是项目，小人是正在干活的会话，熟了的菜是等你验收的交付，广场上的告示栏是等你决定的事。地图可以拖动、缩放，点房子能走进项目内部。
+- **一个队列放所有等你的事。** 工具权限请求、Agent 的明确提问、等待批准的合并、等待验收的交付，都集中在面板右侧。
+- **在面板里批准或拒绝工具权限。** 每个决定绑定到具体的请求（工具、参数、目录），不会误用到别的请求上。面板不在线时，Agent 回到自己原来的确认方式。
+- **“Agent 说做完了”不等于“已验收”。** 进展和交付由 Agent 自己回报，只有你能把工作标为已验收。会话停止、沉默或空闲都不算完成。
+- **按项目看简报。** 每个项目显示阶段、一句话结论、卡点、下一步和负责人，而不是一长串会话。
+- **多台电脑合成一座小镇（可选）。** 几台电脑的工作可以汇总到一台“中心机”，在任何一台上切到“全部设备”查看。
 
 ![项目简报：按项目列出进展、卡点和下一步，右侧是需要你处理的请求（演示数据）](docs/images/brief.jpg)
 
-## 工作方式
+## 快速开始
 
-```
-Claude Code / Codex hooks ──> steward-hook ──> steward serve (127.0.0.1:7788) ──> Web 面板
-                                   │                 │
-                                   └ 本地暂存         └ SQLite（~/.steward）
-```
+数据只保存在你自己电脑的 `~/.steward`，仓库里不带任何人的工作记录。所以刚装好时小镇是空的，这是正常的：可以先[用演示数据看一眼](#先用演示数据看一眼)，或者装好 hooks 后让 Agent 干活。
 
-`steward` 是一个 Go 单二进制，内嵌 Web 界面。`steward install` 为 Claude Code 和 Codex 追加 hook 条目，调用 `steward-hook` 把事件转发给本机服务。Agent 用 `steward-hook begin` / `report` / `deliver` 回报进展；hooks 会在每个会话开始时给它一段可直接照做的说明。
+### 方式一：下载 App（macOS，推荐）
 
-## 安装
-
-> 数据只存在你自己电脑的 `~/.steward`，仓库里不带任何人的工作记录。拉下代码、装好以后面板是空的，这是正常的：先看下面的演示数据，或正式安装 hooks 后让 Agent 干活。
-
-### App 安装（macOS，推荐给测试者）
-
-1. 在 [Releases](https://github.com/xoqiu09/session-steward/releases) 下载对应芯片的 `Session-Steward_<版本>_macOS_arm64.app.zip`（Apple 芯片）或 `…_amd64.app.zip`（Intel），解压后把 **Session Steward** 拖进“应用程序”。
+1. 打开 [Releases](https://github.com/xoqiu09/session-steward/releases)，下载对应芯片的 `Session-Steward_<版本>_macOS_arm64.app.zip`（Apple 芯片）或 `…_amd64.app.zip`（Intel）。解压后把 **Session Steward** 拖进“应用程序”。还没有发布版本时，用方式二自己打包。
 2. **第一次打开**：这个版本没有 Apple 签名和公证，macOS 会拦一下。
    - 在“应用程序”里**右键 → 打开 → 打开**。
-   - 如果没有“打开”按钮（较新的 macOS），先双击一次，然后到“系统设置 → 隐私与安全性”，在下方找到 Session Steward，点“仍要打开”。
+   - 如果没有“打开”按钮（较新的 macOS）：先双击一次，再到“系统设置 → 隐私与安全性”，在下方找到 Session Steward，点“仍要打开”。
    - 熟悉终端的话，也可以运行 `xattr -dr com.apple.quarantine "/Applications/Session Steward.app"`。
-3. 按引导点“**安装 hooks 并开始**”。引导会先说明要改哪两个文件，改之前会备份，只加 Steward 自己的条目。之后新开的 Claude Code / Codex 会话会出现在小镇里。
+3. 按引导点“**安装 hooks 并开始**”。引导会先说明要改哪两个文件，改之前会备份，只添加 Steward 自己的条目。
+4. 新开一个 Claude Code 或 Codex 会话，让它干点活，小镇里就会出现房子和小人。用 Codex 的话，要先在 Codex 里信任新加的 hooks。
 
-App 窗口直接打开小镇的世界地图，不需要登录链接。菜单栏的小房子图标显示“等你决定”的数量，有新的审批时会弹系统通知。菜单栏里还可以：
+### 方式二：从源码打包 App（macOS）
 
-- 打开小镇（世界地图）、工作室（桌面模式）或完整面板；
-- 开关“开机时启动”；
-- 安装或卸载 hooks；
-- “退出并停止采集”。
-
-关掉窗口不会停止采集。
-
-- **已经装过命令行版**：App 会问你“接管”还是“共用”。
-  - 接管：移除命令行版的开机服务，由 App 负责后台运行。
-  - 共用：命令行服务照常运行，App 只当窗口用。
-  - 同一份数据不会同时有两个服务在跑。
-- **卸载**：先在菜单栏选“卸载 hooks…”，Claude Code / Codex 的配置会恢复原样；再“退出并停止采集”，把 App 拖进废纸篓。数据在 `~/.steward`，需要时自己删除。
-- 没装 tmux 时，“在面板里直接开托管会话”不可用，其他功能照常。
-
-自己从源码打包 App：`sh scripts/build-app.sh`，产物在 `dist-app/`。需要 Go 和 Xcode 命令行工具。
-
-### 一行安装（macOS 预编译版本）
-
-不想装 Go 时，用 GitHub Release 里编好的版本（arm64 / Intel 都有，未签名）：
+需要 `git`、Go 1.26.5 及以上，以及 Xcode 命令行工具（`xcode-select --install`）。前端已经构建好放在仓库里，不需要 Node。
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/xoqiu09/session-steward/main/scripts/install.sh | sh -s -- --setup
+git clone https://github.com/xoqiu09/session-steward
+cd session-steward
+sh scripts/build-app.sh
 ```
 
-脚本只下载 Release 文件并校验 SHA256，装到 `~/.local/share/session-steward/current`；加 `--setup` 时会逐项询问是否装 hooks、是否开机自启。不加则只放好文件，按提示自己运行。也可以在 Release 页面下载对应架构的包，看里面的“安装说明.txt”。
+产物是 `dist-app/Session Steward.app`。把它拖进“应用程序”，然后按方式一的第 2～4 步操作。
 
-### 从源码构建
+### 方式三：命令行版（macOS / Linux）
 
-需要 `git` 和 Go 1.26.5 及以上（见 `go.mod`）。构建好的 Web 界面已提交在仓库里，只有修改前端时才需要 Node。
+不想用 App，或者在 Linux 上：
 
 ```sh
 git clone https://github.com/xoqiu09/session-steward
 cd session-steward
 go build -ldflags "-X main.BuildCommit=$(git describe --always --dirty)" -o bin/ ./cmd/...
+bin/steward install            # 给 Claude Code 和 Codex 加 hooks
+bin/steward service install    # 仅 macOS：登录后自动在后台运行
+bin/steward open               # 打印登录链接并打开面板
 ```
 
-- `bin/steward` 和 `bin/steward-hook` 要放在同一个目录；仓库放在一个长期不动的位置。
-- `-ldflags` 注入 `steward version` 显示的版本号（`make go` 会自动加上），省略时显示 `dev`。
-- `steward install` 会把 `steward-hook` 复制到 `~/.steward/bin/`，hooks 调用的是这份副本。**重新构建后请再运行一次 `bin/steward install`**，否则 hooks 仍使用旧版本。
+- Linux 上没有 `service install`，用 `bin/steward serve` 在前台运行，或者自己写 systemd 用户服务。
+- 仓库放在一个长期不动的位置，不要放在“文稿”“桌面”“下载”里，否则后台服务首次启动可能被系统卡住。
+- 有发布版本后，macOS 也可以一行安装预编译的命令行版：`curl -fsSL https://raw.githubusercontent.com/xoqiu09/session-steward/main/scripts/install.sh | sh -s -- --setup`。脚本只下载 Release 里的文件并校验 SHA256，每一步都会先问你。
 
 ## 先用演示数据看一眼
 
-使用独立的数据目录和端口，不会碰 `~/.steward`、`~/.claude` 或 `~/.codex`。需要 `python3`、`curl` 和 `git`。
+用一个单独的数据目录和端口，不会碰 `~/.steward`、`~/.claude` 或 `~/.codex`。需要先按方式三构建出 `bin/`，还需要 `python3`、`curl` 和 `git`。
 
 ```sh
 export STEWARD_HOME=/tmp/steward-demo && mkdir -p "$STEWARD_HOME"
@@ -96,99 +74,116 @@ bin/steward serve        # 终端 1，保持运行
 
 ```sh
 export STEWARD_HOME=/tmp/steward-demo
-scripts/demo.sh          # 终端 2
-bin/steward open         # 打印登录链接并打开面板
+scripts/demo.sh          # 终端 2：灌入 3 个虚构项目
+bin/steward open         # 打印登录链接并打开面板，顶部点“小镇”
 ```
 
-看完在终端 1 按 Ctrl+C 停掉即可。
+看完在终端 1 按 Ctrl+C 停掉，删掉 `/tmp/steward-demo` 即可。
 
-## 正式使用
+## 怎么用
 
-在一个没有设置 `STEWARD_HOME` 的终端里：
+### 跑通第一个真实任务
 
-```sh
-bin/steward serve            # 在 127.0.0.1:7788 启动服务（或用下面的后台常驻）
-bin/steward install          # 为 Claude Code 和 Codex 添加 hooks（或：install claude|codex）
-bin/steward status           # 列出还没完成的项
-bin/steward open             # 打印登录链接并打开面板
-```
+1. 装好 hooks 后，新开一个 Claude Code 或 Codex 会话，像平时一样给它任务。
+2. hooks 会在会话开始时给 Agent 一段说明，Agent 会自己登记任务、回报进展、在做完时交付。小镇里出现一栋房子，门口有正在干活的小人。
+3. Agent 需要权限时，告示栏上会多一张卡片，面板右侧的“关注队列”里可以直接允许或拒绝。
+4. Agent 交付后，菜地里的菜会“熟了”。点“收菜”逐个查看交付了什么、在哪个分支、验收标准是什么，满意就“验收通过”，不满意就“退回修改”。
 
-- `install` 只在 `~/.claude/settings.json` 和 `~/.codex/hooks.json` 中追加自己的条目（标记为 `--mark=steward-v1`），会先备份原文件，其他工具的 hooks 保持不变。`bin/steward uninstall` 只恢复或移除这些条目。
-- Codex 需要你在 Codex 里信任新的 hooks 后才会运行。
-- 之后新会话就会出现在面板里。Agent 按 hooks 给的说明登记和回报后，项目简报和小镇才有内容。详见[使用手册](docs/GUIDE.zh-CN.md#先用一个真实任务验证价值)。
+更细的说明和常见问题见[使用手册](docs/GUIDE.zh-CN.md#先用一个真实任务验证价值)。
 
-### 后台常驻（macOS）
+### 小镇
 
-```sh
-bin/steward service install    # 注册为当前用户的 LaunchAgent：登录后自动启动，退出后自动拉起
-bin/steward service status
-bin/steward service restart    # 重新构建 steward 后运行
-bin/steward service uninstall
-```
+App 打开就是小镇的世界地图。
 
-- 同一个 `STEWARD_HOME` 和端口只能有一个 `serve`：安装前先停止手动启动的 `steward serve`（端口被占用时 `install` 会拒绝）。
-- plist 指向执行 `install` 时那个 `steward` 的绝对路径；在原位置重新构建后运行 `service restart`，换了位置就重新 `install`。
-- 日志写在 `$STEWARD_HOME/logs/`（默认 `~/.steward/logs/`）。Linux 暂不支持，请用 `bin/steward serve` 或自己的 systemd 用户服务。详见[使用手册](docs/GUIDE.zh-CN.md#后台常驻macos-launchd)。
-
-更新：`git pull --ff-only`，重新构建，`bin/steward install`，`bin/steward service restart`。
-
-## 工作小镇
-
-面板顶部视图切换里的“小镇”，或直接打开：
-
-- `http://127.0.0.1:7788/?view=town`：进入小镇；
-- `http://127.0.0.1:7788/?kiosk=1`：全屏桌面模式，隐藏其他界面，项目多时自动轮播（`&rotate=秒数` 调整间隔），适合常开在副屏上。
-
-画面里的东西对应真实数据：
-
-| 画面 | 含义 |
+| 地图上的东西 | 意思 |
 | --- | --- |
-| 建筑 | 一个项目；招牌上方列出最多两项当前任务（待验收、受阻优先） |
-| 带编号的小人 | 一个近期会话；同一 Agent 的多个会话是不同的人 |
-| 工位上的纸箱 | 一次还没结束的运行 |
-| 退件架 | 近一天失败的运行 |
-| 你的验收台 | 等你验收的工作项 |
-| 告示栏、举牌 | 需要你处理的请求，与顶部“审批／决定”同一口径 |
-| 灰色、云朵 | 状态待更新：长时间没有新事件，不当作仍在工作 |
+| 房子 | 一个项目。越大说明未完成的工作和最近的活动越多：小木屋 → 房子 → 工坊 → 大楼 |
+| 村庄 | 最近一起开发、互相有关的几个项目，围着一口井 |
+| 野外的小屋 | 还有未完成的工作、但 7 天没动静的项目 |
+| 中央广场 | 全镇合计、你的验收台、告示栏（等你决定的事） |
+| 小人 | 一个会话，衣服颜色表示是哪个 Agent；同一个 Agent 的两个会话是两个人 |
+| 熟了的菜 | 一个等你验收的交付 |
+| 红白路障、退件筐、小纸箱 | 有受阻的工作项、最近失败的运行、正在进行的运行 |
+| 灰色、云朵 | 状态待更新：很久没有新事件，不当作还在工作 |
 
-小镇只读：点选角色、包裹或告示卡，打开的是原有的会话或工作项详情，审批和验收仍在原处处理。小镇不批准、不验收、不派单。连接中断时画面变灰并注明停在哪一刻。没有 Agent 在干活时小镇会比较空，这是正常的。
+常用操作：
 
-## 在其他设备上查看（只读）
+- **拖动和缩放**：拖动地图移动，滚轮缩放；右上角“全景”看全部，“广场”回到中间，右下角小地图点哪飞到哪。
+- **点房子**：走进项目内部，工作台是工作项，墙上白板是这个项目等你决定的事；按 Esc 或“← 回到世界”出来。
+- **点小人**：打开会话详情，“复制恢复命令”粘到终端就能接着那个会话干。
+- **收菜 N**：逐个打开等你验收的交付。
+- **按 Agent 看**：名牌改成每个 Agent 有几个会话，点图例只突出一个。
+- **回放**：选一天、拖到某个时刻，看当时小镇的样子。
+- **怎么看**：打开小镇里的完整说明。第一次来时按钮旁有提示。
 
-用 `tailscale serve` 只在你的 tailnet 内转发面板，在 `config.json` 的 `remote_hosts` 填主机名后运行 `steward service restart`，再用 `steward remote` 生成远程登录链接。远程端只能查看，审批和验收回本机做。步骤见[在其他设备上查看小镇](docs/GUIDE.zh-CN.md#在其他设备上查看小镇只读)。
+小镇只用来看：它不批准、不验收、不派单，这些都在面板里做。连接中断时画面会变灰，并写明停在哪一刻。
 
-**不要**用 `tailscale funnel` 或公网代理暴露面板。
+其他视图：
+
+- **工作室**：App 菜单“文件 → 打开工作室”（⌘2），一个桌面上的微缩工作室，适合常开在副屏上，项目多时自动翻页。
+- **完整面板**：菜单栏小房子图标 → “打开完整面板”，里面有项目简报、画布、列表和历史。
+- 在浏览器里：`http://127.0.0.1:7788/?view=town&world=1` 是世界地图，`?kiosk=1` 是全屏的工作室，`?kiosk=1&world=1` 是全屏的世界地图。
+
+### App 菜单
+
+菜单栏的小房子图标显示“等你决定”的数量，有新的审批时会弹系统通知。菜单里可以：打开小镇、工作室或完整面板；开关“开机时启动”；安装或卸载 hooks；“退出并停止采集”。关掉窗口不会停止采集。
+
+已经装过命令行版时，App 会问你“接管”还是“共用”：接管会移除命令行版的开机服务，由 App 在后台运行；共用则命令行服务照常运行，App 只当窗口用。同一份数据不会有两个服务同时在跑。
+
+### 多台电脑（可选，默认关闭）
+
+选一台常开的电脑当中心机，其他电脑每 15 秒把摘要推给它，任何一台的小镇顶部都可以切到“全部设备”。摘要只含项目名、工作项标题和状态、会话的 Agent 和状态、审批的种类，不含对话、命令和目录路径。别的电脑上的工作只能看，审批和验收要回到那台电脑上做。需要 Tailscale，配置步骤见[使用手册](docs/GUIDE.zh-CN.md#在其他设备上查看小镇只读)。
+
+在其他设备上只读查看面板也是同样的方式：用 `tailscale serve` 只在你的 tailnet 内转发，**不要**用 `tailscale funnel` 或公网代理暴露面板。
+
+## 更新与卸载
+
+- **App**：下载新版本替换“应用程序”里的旧版；从源码打包的，`git pull --ff-only` 后重新运行 `sh scripts/build-app.sh` 再替换。
+- **命令行版**：`git pull --ff-only`，重新构建，再运行 `bin/steward install` 和 `bin/steward service restart`。`install` 会把新的 `steward-hook` 复制到 `~/.steward/bin/`，不重新运行的话 hooks 还在用旧版本。
+- **卸载 App**：菜单栏选“卸载 hooks…”，Claude Code / Codex 的配置会恢复原样；再“退出并停止采集”，把 App 拖进废纸篓。
+- **卸载命令行版**：`bin/steward service uninstall && bin/steward uninstall`。
+- 数据在 `~/.steward`，确定不要了再自己删除。
+
+## 已知限制
+
+- App 没有 Apple 签名和公证，第一次打开要手动放行。
+- 界面只有中文。App 只支持 macOS；Linux 只测过核心服务；Windows 没有测试过。
+- Agent 要按 hooks 给的说明登记和回报，项目简报和小镇才有内容；没有 Agent 在干活时小镇会比较空。
+- 小镇只画有未完成工作项或近期会话的项目，其他项目不会出现在地图上（在完整面板里仍然能看到）。
+- 没装 tmux 时，“在面板里直接开托管会话”不可用，其他功能照常。
 
 ## 隐私与安全
 
-- 在本机运行，只监听回环地址，`Host` 不是回环地址的请求会被拒绝。没有遥测。
+- 只在本机运行，只监听回环地址，`Host` 不是回环地址的请求会被拒绝。没有遥测。
 - 两个随机 token，权限 `0600`：一个给 hooks（只能访问 `/hook/*`），一个给面板（只能访问 `/api/*`，使用 HttpOnly、SameSite=Strict 的 cookie，写操作还要检查 Origin 和 `X-Steward`）。`steward open` 打印的登录链接含面板 token，不要发给别人。
-- 存储的是脱敏后的事件元数据（事件类型、工具名、指纹、截断并遮蔽密钥的预览），不存原始载荷或完整对话。
-- 只有你配置了才会访问网络：`ntfy_url`、`summary_command` 或 `remote_hosts`。远程访问是只读的，使用单独的 token；反向代理必须保留原始 `Host` 头，否则远程请求会被当作本机请求而无法登录。
+- 保存的是脱敏后的事件元数据（事件类型、工具名、指纹、截断并遮蔽密钥的预览），不保存原始载荷或完整对话。
+- 只有你配置了才会访问网络：`ntfy_url`、`summary_command`、`remote_hosts` 或多设备的 `hub`。远程查看是只读的，使用单独的 token。
 
 发现安全问题请按 [SECURITY.md](SECURITY.md) 私下报告，不要开公开 Issue。
 
-## 参与测试与反馈
+## 反馈
 
 欢迎在 [Issues](https://github.com/xoqiu09/session-steward/issues) 里反馈。为了能复现，请附上：
 
-- 系统和版本：`bin/steward version`，以及你用的 Claude Code / Codex 客户端和版本；
+- 版本：App 菜单“关于 Session Steward”或 `bin/steward version`，以及你用的 Claude Code / Codex 客户端和版本；
 - 发生了什么、你期望的是什么；
-- 截图（项目简报、小镇或详情抽屉）。截图前确认里面没有不想公开的项目名或内容，**不要贴登录链接、token、`~/.steward` 下的文件或对话全文**。
+- 截图（小镇、项目简报或详情）。截图前确认里面没有不想公开的项目名或内容，**不要贴登录链接、token、`~/.steward` 下的文件或对话全文**。
 
 ## 开发
 
 ```sh
 make build     # 在 web/ 里 npm ci && npm run build，再 go build（注入版本号）
 make test      # go test -race ./... 和 web 下的 npm test
-make notifier  # 仅 macOS：带深链跳转的通知助手应用
+make notifier  # 仅 macOS：带深链跳转的通知助手
+sh scripts/build-app.sh   # 仅 macOS：打包 App 到 dist-app/
 ```
 
-- 改 Go：`go test ./...`，状态机或并发相关再跑 `go test -race ./...`。
-- 改前端：在 `web/` 里 `npm test` 和 `npm run build`，并提交重新构建的 `web/dist`（CI 会检查）。
+- 改 Go：`go test ./...`，改状态机或并发相关时再跑 `go test -race ./...`。
+- 改前端：在 `web/` 里 `npm test` 和 `npm run build`，并提交重新构建的 `web/dist`。
+- 发布：推送 `v*` 标签后，GitHub Actions 会构建 arm64 / Intel 两种 App 和命令行包，建一个草稿 Release，检查后手动发布。
 - 测试和演示只用合成数据；开发约定见 [AGENTS.md](AGENTS.md)。
 
-目录：`cmd/steward`（服务与命令行）、`cmd/steward-hook`（hook 适配器）、`internal/`（核心状态机、存储、服务端、安装、通知、后台服务）、`web/`（React + Vite，小镇在 `web/src/town/`）、`native/macos`（Swift 通知助手）。
+目录：`cmd/steward`（服务与命令行）、`cmd/steward-hook`（hook 适配器）、`internal/`（核心状态机、存储、服务端、安装、通知、后台服务）、`web/`（React + Vite，小镇在 `web/src/town/`）、`native/app`（macOS App 外壳）、`native/macos`（通知助手）。
 
 ## 许可证
 
@@ -196,4 +191,4 @@ make notifier  # 仅 macOS：带深链跳转的通知助手应用
 
 ## English summary
 
-Session Steward is a local progress and acceptance desk for Claude Code and Codex. Hooks forward session events to a single Go binary listening on `127.0.0.1:7788`; the web panel groups work by project, shows what each agent is doing, what is blocked and what is waiting for you, and lets you approve tool permissions in place. Only you can mark work as accepted. A read-only “town” view (`?view=town`, full-screen `?kiosk=1`) draws the same live data as a miniature workshop. Status: early; the UI is Chinese-only; used daily on macOS. Build with Go 1.26.5+ (`go build -o bin/ ./cmd/...`), try it with demo data via `scripts/demo.sh`, then `bin/steward install` and `bin/steward service install` (macOS). Feedback is welcome in Issues; report security issues privately per [SECURITY.md](SECURITY.md).
+Session Steward is a local progress and acceptance desk for Claude Code and Codex. Hooks forward session events to a single Go binary listening on `127.0.0.1:7788`; the web panel draws your work as a town (projects are houses, sessions are people, deliveries waiting for review are ripe crops), groups work by project, shows what is blocked and what is waiting for you, and lets you approve tool permissions in place. Only you can mark work as accepted. Optionally, several Macs can be merged into one town through a hub. Status: early; the UI is Chinese-only; used daily on macOS. Get the macOS app from Releases or build it with `sh scripts/build-app.sh` (Go 1.26.5+ and Xcode command line tools), or build the CLI with `go build -o bin/ ./cmd/...`, try it with demo data via `scripts/demo.sh`, then `bin/steward install`. Feedback is welcome in Issues; report security issues privately per [SECURITY.md](SECURITY.md).
