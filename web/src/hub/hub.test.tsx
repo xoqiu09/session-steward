@@ -2,6 +2,8 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { expect, it } from 'vitest'
 import { HUB_STRIDE, labelRemote, remoteDeviceOf } from './hub'
 import { HubSwitch } from './HubSwitch'
+import { TownView } from '../town/TownView'
+import { fakeApproval } from '../town/fixtures'
 import type { Snapshot } from '../types'
 
 const merged: Snapshot = {
@@ -22,6 +24,14 @@ it('认出别台电脑上的工作项和会话，本机的照常打开', () => {
 it('别台电脑的项目名带上设备名，本机的不变', () => {
   const names = labelRemote(merged).repos!.map((r) => r.name)
   expect(names).toEqual(['app', 'app · 笔记本'])
+})
+
+it('合并视图的审批不带详情时，小镇照常打开', () => {
+  const bare = { ...fakeApproval({ id: '笔记本:A-1', kind: 'merge', status: 'pending', repo_id: HUB_STRIDE + 1 }), payload: null as unknown as Record<string, unknown> }
+  const s = labelRemote({ ...merged, approvals: [bare] })
+  expect(s.approvals?.[0].payload).toEqual({})
+  const noop = () => {}
+  expect(() => renderToStaticMarkup(<TownView snap={s} conn="live" repoId="all" provider="all" sel={null} onSelectItem={noop} onSelectSession={noop} onSelectRepo={noop} onQueue={noop} kiosk world noReplay />)).not.toThrow()
 })
 
 it('切换按钮列出每台的在线状态', () => {
