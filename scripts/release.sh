@@ -19,8 +19,9 @@ for arch in arm64 amd64; do
 		NOTIFIER_TARGET=$target sh scripts/build-notifier.sh "$dir/Session Steward.app" >/dev/null
 	fi
 	cp LICENSE "$dir/"
+	# 变量后紧跟全角字符时要加花括号：macOS 自带的 bash 3.2 在 en_US.UTF-8 下会把它当成变量名的一部分
 	cat > "$dir/安装说明.txt" <<TXT
-Session Steward $version（macOS $arch，未签名）
+Session Steward ${version}（macOS ${arch}，未签名）
 
 1. 把这个文件夹放在一个长期不动的位置（不要放在“文稿”“桌面”“下载”里），例如 ~/.local/share/session-steward。
 2. ./steward install          # 给 Claude Code / Codex 加 hooks（只追加自己的条目，先备份）
