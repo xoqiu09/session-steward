@@ -103,15 +103,31 @@ func (c *Core) HubStore(ctx context.Context, sum HubSummary) error {
 // HubMerged 中心机把自己和各设备的摘要合成一张快照。本机的编号不变（点开仍能看详情）；
 // 其他设备的编号加前缀或偏移，避免撞号；项目带上设备名。selfID 为中心机自己的设备编号。
 func (c *Core) HubMerged(ctx context.Context, selfID, selfName string) (*Snapshot, error) {
-	self, err := c.HubLocalSummary(ctx, selfID, selfName, false)
+	others, err := c.HubOthers(ctx, selfID, selfName, selfID)
 	if err != nil {
 		return nil, err
 	}
-	merged := &Snapshot{Cursor: self.Snapshot.Cursor, Now: self.Snapshot.Now}
-	now := c.St.Now()
-	merged.Devices = append(merged.Devices, HubDevice{ID: selfID, Name: selfName, Self: true, ReceivedAt: self.SentAt, Online: true})
-	addSnap(merged, self.Snapshot, selfName, 0, "")
-	rows, err := c.St.R().QueryContext(ctx, `SELECT device_id, name, received_at, body FROM hub_devices WHERE device_id<>? ORDER BY name, device_id`, selfID)
+	return c.HubCombine(ctx, selfID, selfName, others)
+}
+
+// HubOthers 中心机替一台设备（viewerID）准备“除它以外”的部分：中心机自己和其余设备的摘要，
+// 按设备名排序，编号一律加前缀或偏移，都不标为本机。那台设备再用 HubCombine 接上自己的数据，
+// 这样每台看到的“本机”都是它自己。viewerID 等于中心机自己时，就是其余各台。
+func (c *Core) HubOthers(ctx context.Context, hubID, hubName, viewerID string) (*Snapshot, error) {
+	type part struct {
+		id, name, at string
+		online       bool
+		snap         *Snapshot
+	}
+	var parts []part
+	if viewerID != hubID {
+		sum, err := c.HubLocalSummary(ctx, hubID, hubName, false)
+		if err != nil {
+			return nil, err
+		}
+		parts = append(parts, part{hubID, hubName, sum.SentAt, true, sum.Snapshot})
+	}
+	rows, err := c.St.R().QueryContext(ctx, `SELECT device_id, name, received_at, body FROM hub_devices WHERE device_id<>? AND device_id<>? ORDER BY name, device_id`, hubID, viewerID)
 	if err != nil {
 		return nil, err
 	}
@@ -126,16 +142,41 @@ func (c *Core) HubMerged(ctx context.Context, selfID, selfName string) (*Snapsho
 		devs = append(devs, d)
 	}
 	rows.Close()
-	for i, d := range devs {
+	now := c.St.Now()
+	for _, d := range devs {
 		var sum HubSummary
 		if json.Unmarshal([]byte(d.body), &sum) != nil || sum.Snapshot == nil {
 			continue
 		}
 		at, _ := time.Parse(time.RFC3339Nano, d.at)
-		merged.Devices = append(merged.Devices, HubDevice{ID: d.id, Name: d.name, ReceivedAt: d.at, Online: now.Sub(at) <= HubOnlineAfter})
-		addSnap(merged, sum.Snapshot, d.name, int64(i+1)*hubIDStride, d.name+":")
+		parts = append(parts, part{d.id, d.name, d.at, now.Sub(at) <= HubOnlineAfter, sum.Snapshot})
 	}
-	sort.SliceStable(merged.Devices[1:], func(a, b int) bool { return merged.Devices[1+a].Name < merged.Devices[1+b].Name })
+	// 偏移倍数按设备列表的顺序给：界面用“第几台非本机设备”认出编号属于谁
+	sort.SliceStable(parts, func(a, b int) bool { return parts[a].name < parts[b].name })
+	out := &Snapshot{}
+	for i, p := range parts {
+		out.Devices = append(out.Devices, HubDevice{ID: p.id, Name: p.name, ReceivedAt: p.at, Online: p.online})
+		addSnap(out, p.snap, p.name, int64(i+1)*hubIDStride, p.name+":")
+	}
+	return out, nil
+}
+
+// HubCombine 把本机摘要放在最前面（编号不变、标为本机），接上 HubOthers 给的其余部分。
+func (c *Core) HubCombine(ctx context.Context, selfID, selfName string, others *Snapshot) (*Snapshot, error) {
+	self, err := c.HubLocalSummary(ctx, selfID, selfName, false)
+	if err != nil {
+		return nil, err
+	}
+	merged := &Snapshot{Cursor: self.Snapshot.Cursor, Now: self.Snapshot.Now}
+	merged.Devices = append(merged.Devices, HubDevice{ID: selfID, Name: selfName, Self: true, ReceivedAt: self.SentAt, Online: true})
+	addSnap(merged, self.Snapshot, selfName, 0, "")
+	merged.Devices = append(merged.Devices, others.Devices...)
+	merged.Repos = append(merged.Repos, others.Repos...)
+	merged.Sessions = append(merged.Sessions, others.Sessions...)
+	merged.WorkItems = append(merged.WorkItems, others.WorkItems...)
+	merged.Deps = append(merged.Deps, others.Deps...)
+	merged.Runs = append(merged.Runs, others.Runs...)
+	merged.Approvals = append(merged.Approvals, others.Approvals...)
 	return merged, nil
 }
 
