@@ -16,10 +16,15 @@ export function remoteDeviceOf(snap: Snapshot, kind: 'item' | 'session', id: str
   return n > 0 ? devs.filter((d) => !d.self)[n - 1]?.name ?? '另一台电脑' : null
 }
 
-/** 合并视图里其他设备的项目名后面带上设备名，小镇名牌一眼看出是哪台。 */
+/** 合并视图里其他设备的项目名后面带上设备名，小镇名牌一眼看出是哪台。
+ *  摘要不带审批详情（payload 为 null），补成空对象，按本机快照写的页面才不会读空。 */
 export function labelRemote(s: Snapshot): Snapshot {
   const self = s.devices?.find((d) => d.self)?.name
-  return { ...s, repos: (s.repos ?? []).map((r) => (r.device && r.device !== self ? { ...r, name: `${r.name} · ${r.device}` } : r)) }
+  return {
+    ...s,
+    repos: (s.repos ?? []).map((r) => (r.device && r.device !== self ? { ...r, name: `${r.name} · ${r.device}` } : r)),
+    approvals: (s.approvals ?? []).map((a) => (a.payload ? a : { ...a, payload: {} })),
+  }
 }
 
 export function useHub() {
