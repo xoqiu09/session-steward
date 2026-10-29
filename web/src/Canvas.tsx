@@ -1,21 +1,15 @@
-import { useEffect, useMemo, useState } from 'react'
-import { Background, Controls, Handle, MarkerType, Position, ReactFlow, useReactFlow, type Edge, type Node, type NodeProps } from '@xyflow/react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Background, Handle, MarkerType, Position, ReactFlow, useReactFlow, type Edge, type Node, type NodeProps } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import type { Session, Snapshot, WorkItem } from './types'
-import { type Group, ago, itemStatusLabel, layers, itemSignal, projectAttention, sessionRepo, sessionsFor, type Signal } from './model'
+import { type Group, ago, itemStatusLabel, itemSignal, projectQueueCounts, sessionRepo, sessionsFor, type Signal } from './model'
 import { AgentBadge } from './bits'
 import { attemptSummary, progressView, sourceTag } from './brief'
-
-const CARD_W = 260
-const CARD_H = 168
-const GAP_X = 50
-const GAP_Y = 14
-const GROUP_PAD = 16
-const HEADER_H = 36
-const MAX_ROWS = 3 // 同一层超过这个数量就换到下一列，避免一列过长
+import { canvasLayout, canvasReadingViewport, CARD_W, CARD_H, CANVAS_ZOOM, type CanvasProject } from './canvasLayout'
+import './canvas.css'
 
 type ItemData = { item: WorkItem; sessions: Session[]; signal: Signal; progress: ReturnType<typeof progressView>; attempts: string; now: string; selected: boolean; onSelect: (id: string) => void }
-type HeadData = { group: Group; collapsed: boolean; toggle: (k: string) => void; counts: Record<string, number>; actions: number; running: number; missing: number; stale: number; onAttribution: () => void }
+type HeadData = { group: Group; collapsed: boolean; toggle: (key: string) => void; counts: Record<string, number>; actions: number; running: number; onAttribution: () => void }
 
 function ItemNode({ data }: NodeProps<Node<ItemData>>) {
   const { item, sessions, signal, progress, now, selected } = data
@@ -45,144 +39,136 @@ function ItemNode({ data }: NodeProps<Node<ItemData>>) {
 }
 
 function HeaderNode({ data }: NodeProps<Node<HeadData>>) {
-  const { group, collapsed, counts, actions, running, missing, stale } = data
-  return (
-    <button className="group-head" onClick={() => data.toggle(group.key)} aria-expanded={!collapsed}>
-      <span className="caret">{collapsed ? '▸' : '▾'}</span><strong>{group.name}</strong>
-      <span className="muted">工作项 {group.items.length}</span>
-      {running > 0 && <span className="pill st-in_progress">Agent 运行 {running}</span>}
-      {actions > 0 && <span className="pill warn">待你处理 {actions}</span>}
-      {counts.blocked > 0 && <span className="pill st-blocked">阻塞 {counts.blocked}</span>}
-      {missing > 0 && <span className="pill muted" title="执行中或待验收但没有进展回报">无回报 {missing}</span>}
-      {stale > 0 && <span className="pill warn" title="回报之后仍有较多新活动">可能过期 {stale}</span>}
-      {group.sessions.length > 0 && <span className="pill muted link" role="link" tabIndex={0} title="未归属会话不单独占卡，在归属面板按线索批量处理"
-        onClick={(e) => { e.stopPropagation(); data.onAttribution() }}
-        onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); e.preventDefault(); data.onAttribution() } }}>＋{group.sessions.length} 个会话待归属</span>}
+  const { group, collapsed, counts, actions, running } = data
+  return <div className="canvas-project-head">
+    <button className="canvas-project-toggle nodrag nopan" onClick={() => data.toggle(group.key)} aria-expanded={!collapsed} aria-label={`${collapsed ? '展开' : '收起'}项目 ${group.name}`}>
+      <span aria-hidden="true">{collapsed ? '▸' : '▾'}</span><strong title={group.name}>{group.name}</strong>
+      <span className="canvas-project-total">{group.items.length} 项工作</span>
     </button>
-  )
+    <div className="canvas-project-meta">
+      {running > 0 && <span className="canvas-run">运行中 {running}</span>}
+      {actions > 0 && <span className="canvas-action">待决定 {actions}</span>}
+      {counts.review > 0 && <span className="canvas-review">待验收 {counts.review}</span>}
+      {counts.blocked > 0 && <span className="canvas-blocked">受阻 {counts.blocked}</span>}
+      {running === 0 && actions === 0 && !counts.review && !counts.blocked && <span>{group.items.length ? '展开查看工作与依赖' : '暂无工作项'}</span>}
+      {group.sessions.length > 0 && <button className="canvas-attribution nodrag nopan" onClick={data.onAttribution}>待归属会话 {group.sessions.length}</button>}
+    </div>
+  </div>
 }
-
-function GroupBox() {
-  return <div className="group-box" />
-}
-
-// 项目切换时回到可读比例；状态更新保留用户的平移与缩放。适应全图由左下角按钮控制。
-function ReadableViewport({ layoutKey }: { layoutKey: string }) {
-  const rf = useReactFlow()
-  useEffect(() => {
-    const t = window.setTimeout(() => rf.setViewport({ x: 24, y: 20, zoom: 0.85 }, { duration: 200 }), 30)
-    return () => window.clearTimeout(t)
-  }, [layoutKey, rf])
-  return null
-}
-
+function GroupBox() { return <div className="canvas-project-box" /> }
 const nodeTypes = { item: ItemNode, head: HeaderNode, box: GroupBox }
 
-export function Canvas(props: {
-  snap: Snapshot
-  groups: Group[]
-  selected: string | null
-  onSelectItem: (id: string) => void
-  onOpenAttribution: () => void
-  expandAll: boolean
-}) {
+export function Canvas(props: { snap: Snapshot; groups: Group[]; selected: string | null; onSelectItem: (id: string) => void; onOpenAttribution: () => void; expandAll: boolean }) {
   const { snap, groups, selected, expandAll } = props
-  // 默认折叠：没有活跃事项的项目
+  const rf = useReactFlow()
+  const surface = useRef<HTMLDivElement>(null)
+  const [width, setWidth] = useState(0)
+  const [ready, setReady] = useState(false)
+  const [zoom, setZoom] = useState(CANVAS_ZOOM)
+  const [focusKey, setFocusKey] = useState('')
+  const [showDependencies, setShowDependencies] = useState(true)
   const [toggled, setToggled] = useState<Record<string, boolean>>({})
-  const isCollapsed = (g: Group) => {
-    if (g.key in toggled) return toggled[g.key]
-    if (expandAll) return false
-    // 只有待开始工作项或只有未归属会话的项目默认折叠；未归属会话在标题行显示数量
-    return !g.items.some((w) => w.status !== 'todo')
-  }
-  const toggle = (k: string) => {
-    const g = groups.find((x) => x.key === k)
-    const cur = g ? isCollapsed(g) : false
-    setToggled((t) => ({ ...t, [k]: !cur }))
-  }
+  const seeded = useRef<string | null>(null)
+  const pendingProject = useRef<string | null>(null)
+  const lastSelection = useRef<string | null>(null)
+  // Stable project positions are more useful here than reordering the map on each activity event.
+  const layoutGroups = useMemo(() => [...groups].sort((a, b) => a.name.localeCompare(b.name, 'zh-CN', { numeric: true }) || a.key.localeCompare(b.key)), [groups])
+  const collapsed = useMemo(() => new Set(groups.filter(g => g.key in toggled ? toggled[g.key] : !expandAll && !g.items.some(w => w.status !== 'todo')).map(g => g.key)), [groups, toggled, expandAll])
+  const toggle = useCallback((key: string) => {
+    pendingProject.current = key
+    setFocusKey(key)
+    setToggled(previous => {
+      const g = groups.find(g => g.key === key)
+      const current = key in previous ? previous[key] : !expandAll && !g?.items.some(w => w.status !== 'todo')
+      return { ...previous, [key]: !current }
+    })
+  }, [groups, expandAll])
+  useEffect(() => {
+    const element = surface.current
+    if (!element) return
+    const measure = () => setWidth(Math.round(element.getBoundingClientRect().width))
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [])
+  const projects = useMemo(() => canvasLayout(layoutGroups, snap.deps ?? [], width || 900, collapsed), [layoutGroups, snap.deps, width, collapsed])
+  const membership = groups.map(g => g.key).sort().join('|')
+  const read = useCallback((rect?: { x: number; y: number }) => {
+    if (rect) void rf.setViewport(canvasReadingViewport(rect, width), { duration: 200 })
+  }, [rf, width])
+  useEffect(() => {
+    if (!ready || width <= 0 || !projects.length || seeded.current === membership) return
+    seeded.current = membership
+    read(projects[0])
+  }, [ready, width, projects, membership, read])
+  useEffect(() => {
+    if (!pendingProject.current) return
+    read(projects.find(p => p.group.key === pendingProject.current))
+    pendingProject.current = null
+  }, [projects, read])
 
   const { nodes, edges } = useMemo(() => {
-    const nodes: Node[] = []
-    const edges: Edge[] = []
-    const deps = snap.deps ?? []
-    let y = 0
-    for (const g of groups) {
-      const collapsed = isCollapsed(g)
-      const counts: Record<string, number> = { in_progress: 0, review: 0, blocked: 0 }
+    const nodes: Node[] = [], edges: Edge[] = []
+    const running = new Map<number | null, number>()
+    for (const s of snap.sessions ?? []) if (s.freshness === 'live' && s.state === 'running') {
+      const repo = sessionRepo(snap, s); running.set(repo, (running.get(repo) ?? 0) + 1)
+    }
+    for (const p of projects) {
+      const g = p.group, counts: Record<string, number> = {}
       for (const w of g.items) counts[w.status] = (counts[w.status] ?? 0) + 1
-      nodes.push({ id: `head:${g.key}`, type: 'head', position: { x: 0, y }, data: { group: g, collapsed, toggle, counts, actions: projectAttention(snap, g.repoId), running: (snap.sessions ?? []).filter((s) => sessionRepo(snap, s) === g.repoId && s.freshness === 'live' && s.state === 'running').length, missing: g.items.filter((w) => ['in_progress', 'review', 'blocked'].includes(w.status) && progressView(snap, w).empty).length, stale: g.items.filter((w) => !!w.brief?.stale).length, onAttribution: props.onOpenAttribution }, draggable: false, selectable: false })
-      if (collapsed || g.items.length === 0) {
-        y += HEADER_H + 20
-        continue
-      }
-      const top = y + HEADER_H
-      const lay = layers(g.items, deps)
-      // 每层内按状态排序：执行中、阻塞、待验收优先
-      const order: Record<string, number> = { blocked: 0, in_progress: 1, review: 2, todo: 3, done: 4, abandoned: 5 }
-      const cols = new Map<number, WorkItem[]>()
-      for (const w of g.items) {
-        const l = lay.get(w.id) ?? 0
-        ;(cols.get(l) ?? cols.set(l, []).get(l)!).push(w)
-      }
-      let colX = 0
-      let maxRows = 0
-      const layerKeys = [...cols.keys()].sort((a, b) => a - b)
-      for (const l of layerKeys) {
-        const list = cols.get(l)!.sort((a, b) => order[a.status] - order[b.status] || a.id.localeCompare(b.id))
-        const sub = Math.ceil(list.length / MAX_ROWS)
-        list.forEach((w, i) => {
-          const c = Math.floor(i / MAX_ROWS)
-          const r = i % MAX_ROWS
-          const sessions = sessionsFor(snap, w.id).filter((s) => s.data_source === 'live' && s.state !== 'ended')
-          nodes.push({
-            id: w.id,
-            type: 'item',
-            position: { x: GROUP_PAD + colX + c * (CARD_W + 16), y: top + GROUP_PAD + r * (CARD_H + GAP_Y) },
-            data: { item: w, sessions, signal: itemSignal(snap, w), progress: progressView(snap, w), attempts: attemptSummary(snap, w.id), now: snap.now, selected: selected === w.id, onSelect: props.onSelectItem },
-            draggable: false,
-          })
-        })
-        maxRows = Math.max(maxRows, Math.min(list.length, MAX_ROWS))
-        colX += sub * (CARD_W + 16) + GAP_X
-      }
-      const h = Math.max(1, maxRows) * (CARD_H + GAP_Y) + GROUP_PAD * 2
-      nodes.unshift({
-        id: `box:${g.key}`, type: 'box', position: { x: 0, y: top }, data: {},
-        style: { width: Math.max(colX + GROUP_PAD, 620), height: h, zIndex: -1 }, draggable: false, selectable: false,
-      })
-      y = top + h + 28
-    }
-    const visible = new Set(nodes.map((n) => n.id))
-    for (const d of deps) {
-      if (!visible.has(d.upstream) || !visible.has(d.downstream)) continue
-      edges.push({
-        id: `${d.upstream}->${d.downstream}`,
-        source: d.upstream,
-        target: d.downstream,
-        animated: !d.satisfied,
-        label: d.cond === 'merged' ? '需合并' : undefined,
-        className: d.satisfied ? 'edge-ok' : 'edge-wait',
-        markerEnd: { type: MarkerType.ArrowClosed },
+      nodes.push({ id: `box:${g.key}`, type: 'box', position: { x: p.x, y: p.y }, data: {}, style: { width: p.width, height: p.height, zIndex: -1 }, draggable: false, selectable: false })
+      nodes.push({ id: `head:${g.key}`, type: 'head', position: { x: p.x + 16, y: p.y + 12 }, style: { width: p.width - 32 }, data: { group: g, collapsed: p.collapsed, toggle, counts, actions: projectQueueCounts(snap, g.repoId).action, running: running.get(g.repoId) ?? 0, onAttribution: props.onOpenAttribution }, draggable: false, selectable: false })
+      for (const { item, x, y } of p.cards) nodes.push({
+        id: item.id, type: 'item', position: { x, y }, style: { width: CARD_W, height: CARD_H }, draggable: false,
+        data: { item, sessions: sessionsFor(snap, item.id).filter(s => s.data_source === 'live' && s.state !== 'ended'), signal: itemSignal(snap, item), progress: progressView(snap, item), attempts: attemptSummary(snap, item.id), now: snap.now, selected: selected === item.id, onSelect: props.onSelectItem },
       })
     }
+    const visible = new Set(nodes.map(n => n.id))
+    for (const d of snap.deps ?? []) if (visible.has(d.upstream) && visible.has(d.downstream)) edges.push({
+      id: `${d.upstream}->${d.downstream}`, source: d.upstream, target: d.downstream, animated: false,
+      label: d.cond === 'merged' ? '需合并' : undefined, className: d.satisfied ? 'edge-ok' : 'edge-wait', markerEnd: { type: MarkerType.ArrowClosed },
+    })
     return { nodes, edges }
-  }, [snap, groups, selected, toggled, expandAll])
-
-  if (!groups.length) {
-    return (
-      <div className="empty">
-        <p>还没有工作项或活跃会话。</p>
-        <p className="muted">安装 hooks 后打开一个 Claude Code 或 Codex 会话，它会出现在这里；也可以在右侧新建工作项。</p>
+  }, [projects, snap, selected, toggle, props.onSelectItem, props.onOpenAttribution])
+  const chosenProject: CanvasProject | undefined = projects.find(p => p.group.key === focusKey)
+  const selectedCard = projects.flatMap(p => p.cards).find(c => c.item.id === selected)
+  useEffect(() => {
+    if (!selected) { lastSelection.current = null; return }
+    const key = `${selected}:${width}`
+    if (!selectedCard || lastSelection.current === key) return
+    lastSelection.current = key
+    read(selectedCard)
+  }, [selected, selectedCard, width, read])
+  const projectChange = (key: string) => { setFocusKey(key); read(projects.find(p => p.group.key === key)) }
+  return <section className="work-canvas" aria-label="项目工作画布">
+    <header className="canvas-toolbar">
+      <div className="canvas-heading"><h2>工作画布</h2><span>{groups.length} 个项目 · {groups.reduce((n, g) => n + g.items.length, 0)} 项工作</span></div>
+      <div className="canvas-tools">
+        <select aria-label="定位画布项目" value={chosenProject ? focusKey : ''} onChange={e => projectChange(e.target.value)}>
+          <option value="" disabled>跳转到项目…</option>{projects.map(p => <option key={p.group.key} value={p.group.key}>{p.group.name}</option>)}
+        </select>
+        <button className="btn small" onClick={() => read(chosenProject ?? projects[0])} disabled={!projects.length}>适合阅读</button>
+        <button className="btn small" onClick={() => { void rf.fitView({ padding: 0.12, maxZoom: 1, duration: 200 }) }} disabled={!projects.length}>全景</button>
+        <button className="btn small" onClick={() => read(selectedCard)} disabled={!selectedCard}>定位选中</button>
       </div>
-    )
-  }
-  return (
-    <ReactFlow nodes={nodes} edges={edges} nodeTypes={nodeTypes} defaultViewport={{ x: 24, y: 20, zoom: 0.85 }} fitViewOptions={{ padding: 0.1, maxZoom: 1 }}
-      minZoom={0.15} nodesConnectable={false} proOptions={{ hideAttribution: true }}>
-      <Background gap={20} size={1} />
-      <Controls showInteractive={false} />
-      <ReadableViewport layoutKey={groups.map((g) => `${g.key}:${isCollapsed(g)}`).join('|')} />
-    </ReactFlow>
-  )
+    </header>
+    <div className="canvas-surface" ref={surface}>
+      {groups.length ? <ReactFlow nodes={nodes} edges={showDependencies ? edges : []} nodeTypes={nodeTypes}
+        defaultViewport={{ x: 24, y: 20, zoom: CANVAS_ZOOM }} minZoom={0.15} maxZoom={1.5}
+        onInit={() => setReady(true)} onViewportChange={v => setZoom(v.zoom)} nodesConnectable={false} onlyRenderVisibleElements
+        proOptions={{ hideAttribution: true }}>
+        <Background gap={24} size={1} color="#d5d9d1" />
+      </ReactFlow> : <div className="empty"><p>当前筛选下没有工作项或活跃会话。</p><p className="muted">调整顶部筛选，或新建工作项后查看。</p></div>}
+      <div className="canvas-bottom-tools">
+        <div className="canvas-zoom" role="group" aria-label="画布缩放">
+          <button aria-label="缩小画布" title="缩小" onClick={() => { void rf.zoomOut({ duration: 150 }) }}>−</button>
+          <output aria-label="当前画布缩放">{Math.round(zoom * 100)}%</output>
+          <button aria-label="放大画布" title="放大" onClick={() => { void rf.zoomIn({ duration: 150 }) }}>＋</button>
+        </div>
+        <label className="canvas-dependencies"><input type="checkbox" checked={showDependencies} onChange={e => setShowDependencies(e.target.checked)} />显示依赖{edges.length ? ` ${edges.length}` : ''}</label>
+      </div>
+    </div>
+    <p className={`canvas-caption ${zoom < 0.65 ? 'canvas-overview-hint' : ''}`} role="status">{zoom < 0.65 ? '当前为全景。用“跳转到项目”或“适合阅读”看清任务内容。' : '拖动空白移动 · 滚轮缩放 · 点卡片查看详情；连线表示任务依赖。'}</p>
+  </section>
 }
-
