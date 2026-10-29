@@ -234,7 +234,14 @@ func TestMacIsolatedInstall(t *testing.T) {
 					p.Commit = strings.Repeat("f", 40)
 				}
 				if interactive != "" {
-					seed := exec.Command(filepath.Join(app, "Contents/MacOS/steward-hook"), "begin", "--title", "T0 合成升级通知验收", "--project", "synthetic-update", "--provider", "codex", "--session", "synthetic-update-notification")
+					start := exec.Command(filepath.Join(app, "Contents/MacOS/steward-hook"), "codex", "SessionStart")
+					start.Env = append(os.Environ(), "STEWARD_HOME="+home)
+					payload, _ := json.Marshal(map[string]string{"session_id": "synthetic-update-notification", "cwd": dir, "hook_event_name": "SessionStart"})
+					start.Stdin = strings.NewReader(string(payload))
+					if output, err := start.CombinedOutput(); err != nil {
+						t.Fatalf("synthetic session: %v %s", err, output)
+					}
+					seed := exec.Command(filepath.Join(app, "Contents/MacOS/steward-hook"), "begin", "--title", "T0 合成升级通知验收", "--project", dir, "--provider", "codex", "--session", "synthetic-update-notification")
 					seed.Dir = dir
 					seed.Env = append(os.Environ(), "STEWARD_HOME="+home)
 					if output, err := seed.CombinedOutput(); err != nil {
