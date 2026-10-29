@@ -488,7 +488,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func application(_ application: NSApplication, open urls: [URL]) {
         for url in urls {
-            guard let target = PanelTarget.fromIncomingURL(url, base: paths.base) else { continue }
+            guard let target = PanelTarget.fromIncomingURL(url, base: paths.base, scheme: panelURLScheme(in: Bundle.main) ?? "session-steward") else { continue }
             if let path = navigation.receive(target) { town.open(path: path) }
         }
     }

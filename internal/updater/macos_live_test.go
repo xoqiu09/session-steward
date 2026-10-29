@@ -3,6 +3,7 @@
 package updater
 
 import (
+	"encoding/json"
 	"fmt"
 	"net"
 	"os"
@@ -27,6 +28,10 @@ func TestMacIsolatedInstall(t *testing.T) {
 	for _, mode := range []string{"own", "shared"} {
 		for _, failHealth := range []bool{false, true} {
 			t.Run(fmt.Sprintf("%s/healthFailure=%v", mode, failHealth), func(t *testing.T) {
+				interactive := os.Getenv("SS_UPDATE_TEST_INTERACTIVE_DIR")
+				if interactive != "" && (mode != "own" || failHealth) {
+					t.Skip("interactive notifications use the successful App-owned transaction; run the full matrix separately")
+				}
 				dir := t.TempDir()
 				home := filepath.Join(dir, "home")
 				if os.Getenv("SS_UPDATE_TEST_INTERNAL_HOME") == "1" {
@@ -116,6 +121,10 @@ func TestMacIsolatedInstall(t *testing.T) {
 						_ = os.Remove(agent.PlistPath)
 					}
 					_, _ = command("/usr/bin/pkill", "-TERM", "-f", "^"+regexpQuote(filepath.Join(app, "Contents/MacOS/SessionSteward"))+"( |$)")
+					for _, path := range []string{app, filepath.Join(app, "Contents/MacOS/Session Steward.app"), filepath.Join(home, "bin/Session Steward.app")} {
+						_, _ = command("/usr/bin/pkill", "-TERM", "-f", "^"+regexpQuote(filepath.Join(path, "Contents/MacOS/StewardNotifications"))+"( |$)")
+						_, _ = command(launchServicesRegister, "-u", path)
+					}
 				})
 				run := func(name string, args ...string) ([]byte, error) {
 					if name == "/usr/bin/open" {
@@ -193,6 +202,7 @@ func TestMacIsolatedInstall(t *testing.T) {
 				}
 				if os.Getenv("SS_UPDATE_TEST_NATIVE") == "1" {
 					setTestIdentity(t, app, label)
+					setTestHelperIdentity(t, filepath.Join(home, "bin/Session Steward.app"), label)
 				}
 				p, e := prepare(app, home, mode, work, 123, m, agent.PlistPath)
 				if e != nil {
@@ -214,6 +224,18 @@ func TestMacIsolatedInstall(t *testing.T) {
 				if failHealth {
 					p.Commit = strings.Repeat("f", 40)
 				}
+				if interactive != "" {
+					seed := exec.Command(filepath.Join(app, "Contents/MacOS/steward-hook"), "begin", "--title", "T0 合成升级通知验收", "--project", "synthetic-update", "--provider", "codex", "--session", "synthetic-update-notification")
+					seed.Dir = dir
+					seed.Env = append(os.Environ(), "STEWARD_HOME="+home)
+					if output, err := seed.CombinedOutput(); err != nil {
+						t.Fatalf("synthetic item: %v %s", err, output)
+					}
+					if e = host.Start(p, false); e != nil {
+						t.Fatal(e)
+					}
+					interactiveCheckpoint(t, interactive, "before", app, home, label)
+				}
 				err := Apply(p, host)
 				if failHealth {
 					if err == nil || p.State != "rolled_back" {
@@ -223,6 +245,9 @@ func TestMacIsolatedInstall(t *testing.T) {
 					b, _ := os.ReadFile(filepath.Join(work, "app-startup.log"))
 					t.Log("native startup", string(b))
 					t.Fatalf("install failed %s %v", p.State, err)
+				}
+				if interactive != "" {
+					interactiveCheckpoint(t, interactive, "after", app, home, label)
 				}
 				b, _ := os.ReadFile(filepath.Join(home, "config.json"))
 				if string(b) != string(config) {
@@ -249,6 +274,30 @@ func TestMacIsolatedInstall(t *testing.T) {
 	}
 }
 
+// Optional human/CUA checkpoints exercise real notification banners and clicks.
+// A marker only resumes the fixture; it is never interpreted as user acceptance.
+func interactiveCheckpoint(t *testing.T, dir, phase, app, home, label string) {
+	t.Helper()
+	if !filepath.IsAbs(dir) || os.Getenv("SS_UPDATE_TEST_NATIVE") != "1" || os.Getenv("SS_UPDATE_TEST_LAUNCHSERVICES") != "1" {
+		t.Fatal("interactive checks require an absolute output path and isolated native LaunchServices mode")
+	}
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	b, _ := json.MarshalIndent(map[string]string{"phase": phase, "app": app, "home": home, "bundle_identifier": label}, "", "  ")
+	if err := os.WriteFile(filepath.Join(dir, phase+".json"), b, 0600); err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("notification checkpoint %s; waiting for %s", phase, filepath.Join(dir, phase+".continue"))
+	for until := time.Now().Add(10 * time.Minute); time.Now().Before(until); {
+		if _, err := os.Stat(filepath.Join(dir, phase+".continue")); err == nil {
+			return
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+	t.Fatal("notification click checkpoint expired; no click verification claimed")
+}
+
 func writeExclusive(path string, b []byte) error {
 	f, e := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0644)
 	if e != nil {
@@ -264,7 +313,18 @@ func writeExclusive(path string, b []byte) error {
 
 func setTestIdentity(t *testing.T, app, label string) {
 	t.Helper()
-	if _, e := command("/usr/libexec/PlistBuddy", "-c", "Set :CFBundleIdentifier "+label, filepath.Join(app, "Contents/Info.plist")); e != nil {
+	if _, e := command("/usr/libexec/PlistBuddy", "-c", "Set :CFBundleIdentifier "+label, "-c", "Set :CFBundleURLTypes:0:CFBundleURLSchemes:0 "+label, filepath.Join(app, "Contents/Info.plist")); e != nil {
+		t.Fatal(e)
+	}
+	setTestHelperIdentity(t, filepath.Join(app, "Contents/MacOS/Session Steward.app"), label)
+	if _, e := command("/usr/bin/codesign", "--force", "--sign", "-", app); e != nil {
+		t.Fatal(e)
+	}
+}
+
+func setTestHelperIdentity(t *testing.T, app, hostLabel string) {
+	t.Helper()
+	if _, e := command("/usr/libexec/PlistBuddy", "-c", "Set :CFBundleIdentifier "+hostLabel+".notifications", "-c", "Set :StewardHostBundleIdentifier "+hostLabel, filepath.Join(app, "Contents/Info.plist")); e != nil {
 		t.Fatal(e)
 	}
 	if _, e := command("/usr/bin/codesign", "--force", "--sign", "-", app); e != nil {

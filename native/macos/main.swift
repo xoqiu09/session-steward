@@ -16,7 +16,8 @@ func panelURL(_ text: String) -> URL? {
 
 final class Notifications: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
     let center = UNUserNotificationCenter.current()
-    let directory = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".steward/notifications")
+    let directory = notificationDirectory(arguments: CommandLine.arguments, environment: ProcessInfo.processInfo.environment,
+                                          userHome: FileManager.default.homeDirectoryForCurrentUser)
     let auditQueue = DispatchQueue(label: "steward.notification-audit")
 
     override init() {
@@ -152,7 +153,8 @@ final class Notifications: NSObject, NSApplicationDelegate, UNUserNotificationCe
         }
         let config = NSWorkspace.OpenConfiguration()
         config.activates = true
-        NSWorkspace.shared.open([target.appURL(port: url.port ?? 80)], withApplicationAt: app, configuration: config) { _, error in
+        let scheme = Bundle(url: app).flatMap { panelURLScheme(in: $0) } ?? "session-steward"
+        NSWorkspace.shared.open([target.appURL(port: url.port ?? 80, scheme: scheme)], withApplicationAt: app, configuration: config) { _, error in
             if error == nil { self.record("opened_app", id) }
             else { self.record("open_failed", id) }
         }

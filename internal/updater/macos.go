@@ -291,6 +291,8 @@ type MacHost struct {
 	run func(string, ...string) ([]byte, error)
 }
 
+const launchServicesRegister = "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
+
 func (h MacHost) command(name string, args ...string) ([]byte, error) {
 	if h.run != nil {
 		return h.run(name, args...)
@@ -322,7 +324,17 @@ func (h MacHost) Stop(p *Plan) error {
 	}
 	for _, base := range []string{filepath.Join(p.App, "Contents/MacOS"), filepath.Join(p.Home, "bin")} {
 		path := filepath.Join(base, "Session Steward.app/Contents/MacOS/StewardNotifications")
-		_, _ = h.command("/usr/bin/pkill", "-TERM", "-f", "^"+regexpQuote(path)+"( |$)")
+		pattern := "^" + regexpQuote(path) + "( |$)"
+		_, _ = h.command("/usr/bin/pkill", "-TERM", "-f", pattern)
+		for i := 0; ; i++ {
+			if _, e := h.command("/usr/bin/pgrep", "-f", pattern); e != nil {
+				break
+			}
+			if i == 99 {
+				return errors.New("通知助手没有停止，安装保持原样")
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
 	}
 	// Do not mutate files while any backend still holds the listening port.
 	for i := 0; i < 100; i++ {
@@ -338,6 +350,11 @@ func regexpQuote(s string) string {
 	return r.Replace(s)
 }
 func (h MacHost) Start(p *Plan, rollback bool) error {
+	// Re-register the exact installed path after both replacement and recovery.
+	// This refreshes URL/document handlers without choosing a default handler.
+	if _, e := h.command(launchServicesRegister, "-f", p.App); e != nil {
+		return fmt.Errorf("无法重新登记 App 链接：%w", e)
+	}
 	if p.Mode == "shared" {
 		if _, e := h.command("/bin/launchctl", "bootstrap", fmt.Sprintf("gui/%d", os.Getuid()), p.Plist); e != nil {
 			return e
