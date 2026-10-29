@@ -29,8 +29,8 @@ function Section({ index, title, children, tone }: { index: string; title: strin
 }
 
 // 工作项运行台：当前 vs 候选 → 旧运行与交接 → 时间线 → 命令/结果。只读展示，写操作由调用方按权限放在 children 中。
-export function RunDesk({ snap, item, remote, onClose, onSelectSession, attention, actions, children }: {
-  snap: Snapshot; item: WorkItem; remote: boolean; onClose: () => void; onSelectSession: (id: number) => void; attention?: ReactNode; actions?: ReactNode; children?: ReactNode
+export function RunDesk({ snap, item, remote, onClose, onSelectSession, attention, actions, conversation, children }: {
+  snap: Snapshot; item: WorkItem; remote: boolean; onClose: () => void; onSelectSession: (id: number) => void; attention?: ReactNode; actions?: ReactNode; conversation?: ReactNode; children?: ReactNode
 }) {
   const repo = (snap.repos ?? []).find((r) => r.id === item.repo_id)
   const sessions = new Map((snap.sessions ?? []).map((s) => [s.id, s]))
@@ -58,6 +58,7 @@ export function RunDesk({ snap, item, remote, onClose, onSelectSession, attentio
         </p>
       </header>
       {remote && <p className="rd-banner" role="note">远程只读：此页写入口已移除。启动、审批、交接、合并与简报纠错需在本机面板进行。</p>}
+      {conversation}
       <WorkOverview snap={snap} item={item} />
       {attention}
       {writers.length > 0 && <p className="rd-alert" role="note">交接后仍有 {writers.length} 个原会话可以继续写入。需要排查时展开下方“执行记录”。</p>}

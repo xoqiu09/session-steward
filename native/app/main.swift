@@ -95,19 +95,30 @@ extension Notification.Name {
 
 // MARK: - 窗口
 
+private final class SnapshotReceiver: NSObject, WKScriptMessageHandler {
+    weak var owner: TownWindow?
+    func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+        owner?.receiveSnapshot(message)
+    }
+}
+
 final class TownWindow: NSObject, WKNavigationDelegate, NSWindowDelegate {
     let window: NSWindow
     let web: WKWebView
     let paths: Paths
+    var onSnapshot: (([String: Any]) -> Void)?
+    private let receiver = SnapshotReceiver()
 
     init(paths: Paths) {
         self.paths = paths
         let config = WKWebViewConfiguration()
         config.websiteDataStore = .default()
+        config.userContentController.add(receiver, name: "stewardSnapshot")
         web = WKWebView(frame: .zero, configuration: config)
         window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1280, height: 820),
                           styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
         super.init()
+        receiver.owner = self
         window.title = "Session Steward"
         window.contentView = web
         window.setFrameAutosaveName("SessionStewardMain")
@@ -118,7 +129,7 @@ final class TownWindow: NSObject, WKNavigationDelegate, NSWindowDelegate {
     }
 
     /// 小镇世界地图、工作室（桌面模式）和每日十分钟的入口。
-    static let world = "/?view=town&world=1"
+    static let world = PanelNavigation.world
     static let studio = "/?view=town&kiosk=1"
     static let today = "/?view=today"
 
@@ -134,6 +145,20 @@ final class TownWindow: NSObject, WKNavigationDelegate, NSWindowDelegate {
     func show() {
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    fileprivate func receiveSnapshot(_ message: WKScriptMessage) {
+        guard message.frameInfo.isMainFrame, let url = message.frameInfo.request.url,
+              url.scheme == "http", url.host == paths.base.host, url.port == paths.base.port,
+              let snapshot = message.body as? [String: Any], snapshot["cursor"] is NSNumber,
+              snapshot["work_items"] is [[String: Any]], snapshot["approvals"] is [[String: Any]],
+              JSONSerialization.isValidJSONObject(snapshot),
+              let data = try? JSONSerialization.data(withJSONObject: snapshot), data.count <= 2_000_000 else { return }
+        onSnapshot?(snapshot)
+    }
+
+    func refreshWhenActive() {
+        web.evaluateJavaScript("window.dispatchEvent(new Event('steward:foreground'))", completionHandler: nil)
     }
 
     func showMessage(_ text: String) {
@@ -269,6 +294,12 @@ final class StatusMenu: NSObject {
     private let countItem = NSMenuItem(title: "等你决定：—", action: nil, keyEquivalent: "")
     private let loginItem = NSMenuItem(title: "开机时启动", action: nil, keyEquivalent: "")
     private let hooksItem = NSMenuItem(title: "安装 hooks…", action: nil, keyEquivalent: "")
+    private let reminderItem = NSMenuItem(title: "显示顶部提醒（刘海 / 浮层）", action: nil, keyEquivalent: "")
+    private var polling = false
+    private var pollAgain = false
+    private var version = SnapshotVersion()
+    private var generation = 0
+    private var lastWebSnapshot = Date.distantPast
     weak var app: AppDelegate?
     private(set) var pending = -1
 
@@ -287,6 +318,10 @@ final class StatusMenu: NSObject {
         menu.addItem(withTitle: "打开工作室", action: #selector(openStudio), keyEquivalent: "").target = self
         menu.addItem(withTitle: "每日十分钟", action: #selector(openToday), keyEquivalent: "").target = self
         menu.addItem(withTitle: "打开完整面板", action: #selector(openPanel), keyEquivalent: "").target = self
+        reminderItem.action = #selector(toggleReminder)
+        reminderItem.target = self
+        menu.addItem(reminderItem)
+        menu.addItem(withTitle: "发送测试提醒", action: #selector(testNotification), keyEquivalent: "").target = self
         menu.addItem(.separator())
         loginItem.action = #selector(toggleLogin)
         loginItem.target = self
@@ -299,11 +334,20 @@ final class StatusMenu: NSObject {
         quitItem = menu.addItem(withTitle: "退出并停止采集", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "")
         item.menu = menu
         refreshLoginItem()
-        timer = Timer.scheduledTimer(withTimeInterval: 10, repeats: true) { [weak self] _ in self?.poll() }
+        refreshReminder()
         poll()
     }
 
     private var quitItem: NSMenuItem?
+    @objc func toggleReminder() { app?.toggleTopReminder() }
+    @objc func testNotification() { app?.sendTestNotification() }
+
+    func refreshReminder() {
+        let enabled = app?.topReminderEnabled ?? false
+        reminderItem.state = enabled ? .on : .off
+        timer?.invalidate()
+        timer = Timer.scheduledTimer(withTimeInterval: enabled ? 3 : 10, repeats: true) { [weak self] _ in self?.poll() }
+    }
     func setShared(_ shared: Bool) {
         quitItem?.title = shared ? "退出（后台服务由命令行版本管理，不会停止）" : "退出并停止采集"
     }
@@ -344,19 +388,43 @@ final class StatusMenu: NSObject {
     }
 
     /// 读快照里待处理的审批数。拿不到（服务没起来、没登录信息）时显示“—”。
-    func poll() {
-        guard let token = paths.token() else { return show(nil) }
+    func consumeSnapshot(_ snapshot: [String: Any], fromWeb: Bool = false) {
+        guard version.accept(snapshot) else { return }
+        if fromWeb {
+            lastWebSnapshot = Date()
+            if snapshot["reset"] as? Bool == true { generation += 1 }
+        }
+        let approvals = snapshot["approvals"] as? [[String: Any]] ?? []
+        show(approvals.filter { $0["status"] as? String == "pending" }.count)
+        app?.updateAttention(AttentionState.snapshot(snapshot))
+        app?.noticeReconciler.update(snapshot)
+    }
+
+    func poll(force: Bool = false) {
+        if polling { if force { pollAgain = true }; return }
+        if !force && Date().timeIntervalSince(lastWebSnapshot) < 8 { return }
+        guard let token = paths.token() else { app?.updateAttention(AttentionState()); return show(nil) }
+        polling = true
+        let started = generation
+        let requestedAt = Date()
         var req = URLRequest(url: paths.base.appendingPathComponent("api/snapshot"))
         req.timeoutInterval = 5
         req.setValue("steward_panel=\(token)", forHTTPHeaderField: "Cookie")
         URLSession.shared.dataTask(with: req) { [weak self] data, resp, _ in
-            var n: Int? = nil
+            var snapshot: [String: Any]?
             if (resp as? HTTPURLResponse)?.statusCode == 200, let data,
                let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-                let approvals = obj["approvals"] as? [[String: Any]] ?? []
-                n = approvals.filter { ($0["status"] as? String) == "pending" }.count
+                snapshot = obj
             }
-            DispatchQueue.main.async { self?.show(n) }
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.polling = false
+                if started == self.generation, let snapshot { self.consumeSnapshot(snapshot) }
+                else if snapshot == nil && self.lastWebSnapshot < requestedAt {
+                    self.show(nil); self.app?.updateAttention(AttentionState())
+                }
+                if self.pollAgain { self.pollAgain = false; self.poll(force: true) }
+            }
         }.resume()
     }
 
@@ -386,11 +454,44 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let paths = Paths.load()
     lazy var backend = Backend(paths: paths)
     lazy var town = TownWindow(paths: paths)
+    lazy var noticeChannel = NativeNoticeChannel(home: paths.home, helper: Bundle.main.bundleURL.appendingPathComponent("Contents/MacOS/Session Steward.app"))
+    lazy var noticeReconciler = NativeNoticeReconciler(channel: noticeChannel)
     var status: StatusMenu?
     var mode: Mode = .own
     var installingUpdate = false
     lazy var updates = UpdateWindow(app: self)
     @objc func checkUpdates() { updates.show() }
+    private var navigation = PanelNavigation()
+    private var attention: AttentionSurface?
+    var topReminderEnabled: Bool { UserDefaults.standard.bool(forKey: pref("topReminderEnabled")) }
+
+    func toggleTopReminder() {
+        UserDefaults.standard.set(!topReminderEnabled, forKey: pref("topReminderEnabled"))
+        configureAttention()
+        status?.poll()
+    }
+
+    private func configureAttention() {
+        if attention == nil && topReminderEnabled {
+            attention = AttentionSurface { [weak self] path in self?.town.open(path: path) }
+        }
+        attention?.setEnabled(topReminderEnabled)
+        status?.refreshReminder()
+    }
+
+    func updateAttention(_ state: AttentionState) { attention?.update(state) }
+
+    @objc func showTopReminder() {
+        if !topReminderEnabled { toggleTopReminder() }
+        attention?.showExpanded()
+    }
+
+    func application(_ application: NSApplication, open urls: [URL]) {
+        for url in urls {
+            guard let target = PanelTarget.fromIncomingURL(url, base: paths.base) else { continue }
+            if let path = navigation.receive(target) { town.open(path: path) }
+        }
+    }
 
     func applicationDidFinishLaunching(_ note: Notification) {
         // Isolated UI validation never touches onboarding, hooks or a backend.
@@ -411,6 +512,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         buildMainMenu()
         status = StatusMenu(paths: paths) { [weak self] path in self?.town.open(path: path) }
         status?.app = self
+        town.onSnapshot = { [weak self] snapshot in self?.status?.consumeSnapshot(snapshot, fromWeb: true) }
+        configureAttention()
         NotificationCenter.default.addObserver(forName: .backendStopped, object: nil, queue: .main) { [weak self] _ in self?.backendStopped() }
         updates.inspectRecovery()
         if updates.recovery { updates.show(); return }
@@ -474,6 +577,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func startBackend() {
+        navigation.restarting()
         town.showMessage("正在启动 Session Steward…")
         mode = decideMode()
         status?.setShared(mode == .shared)
@@ -487,7 +591,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let ready = backend.waitReady()
             DispatchQueue.main.async {
                 self.status?.poll()
-                if ready { self.town.open(); self.onboardIfNeeded() }
+                if ready { self.town.open(path: self.navigation.backendReady()); self.onboardIfNeeded() }
                 else if self.mode == .shared { self.town.showMessage("命令行版的服务现在没有响应（\(self.paths.listen)）。可以在终端运行 steward service restart，或在菜单里“重新启动服务”时选择接管。") }
                 else { self.town.showMessage("后台服务没有在 \(self.paths.listen) 启动，日志在 \(self.paths.home.path)/logs/app-serve.log。") }
             }
@@ -514,10 +618,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return true
     }
 
+    func applicationDidBecomeActive(_ notification: Notification) {
+        status?.poll(force: true)
+        town.refreshWhenActive()
+    }
+
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 
     func applicationWillTerminate(_ note: Notification) {
         updates.cancelDownload()
+        attention?.setEnabled(false)
         backend.stop() // 只停 App 自己启动的服务
     }
 
@@ -539,6 +649,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         fileMenu.addItem(withTitle: "打开小镇", action: #selector(reopenTown), keyEquivalent: "1").target = self
         fileMenu.addItem(withTitle: "打开工作室", action: #selector(reopenStudio), keyEquivalent: "2").target = self
         fileMenu.addItem(withTitle: "每日十分钟", action: #selector(reopenToday), keyEquivalent: "3").target = self
+        fileMenu.addItem(withTitle: "展开顶部提醒", action: #selector(showTopReminder), keyEquivalent: "4").target = self
+        fileMenu.addItem(withTitle: "发送测试提醒", action: #selector(sendTestNotification), keyEquivalent: "").target = self
         fileMenu.addItem(withTitle: "重新启动服务", action: #selector(restartBackend), keyEquivalent: "").target = self
         fileMenu.addItem(withTitle: "关闭窗口", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
         fileItem.submenu = fileMenu

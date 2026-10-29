@@ -29,10 +29,10 @@ export function DeliveryReview({ snap, item, onSelectSession, actions }: { snap:
             {(g.where.path || g.where.branch) && <CopyButton text={g.where.path || g.where.branch} label={g.where.path ? '复制目录' : '复制分支名'} />}
           </> : <span className="muted">没有记下仓库或分支，回原对话问 Agent 放在哪。</span>}
         </dd>
-        <dt>回原对话</dt>
+        <dt>交付会话</dt>
         <dd className="review-line">
           {s ? <>
-            <span><button type="button" className="linkish" onClick={() => onSelectSession(s.id)}>{providerLabel(s.provider)} 会话 #{s.id}</button>{s.cwd && <> · <code>{s.cwd}</code></>}</span>
+            <span><button type="button" className="linkish" title="查看小镇里的会话记录" onClick={() => onSelectSession(s.id)}>{providerLabel(s.provider)} 会话 #{s.id}</button>{s.cwd && <> · <code>{s.cwd}</code></>}</span>
             {s.resume_command ? <CopyButton text={s.resume_command} label="复制恢复命令" /> : <small className="muted">没有记下恢复命令</small>}
           </> : <span className="muted">没有找到交付会话。</span>}
         </dd>

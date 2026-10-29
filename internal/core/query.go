@@ -142,6 +142,7 @@ type Snapshot struct {
 	// Devices 只在“全部设备”合并视图里有。
 	Devices          []HubDevice `json:"devices,omitempty"`
 	ArchivedProjects int         `json:"archived_projects,omitempty"`
+	TrashedProjects  int         `json:"trashed_projects,omitempty"`
 }
 
 // Snapshot 返回界面需要的完整状态。审批只包含未关闭的和最近 24 小时关闭的。

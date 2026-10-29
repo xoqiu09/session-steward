@@ -19,9 +19,9 @@ import { useHub, remoteDeviceOf } from './hub/hub'
 import { HubSwitch } from './hub/HubSwitch'
 import { TownView } from './town/TownView'
 import { TodayView } from './today/TodayView'
-import { ProjectsPanel } from './ProjectsPanel'
+import { ProjectsPanel, type ProjectScope } from './ProjectsPanel'
 import { buildToday } from './today/todayModel'
-import { fullPanelHref, kioskHref, parseTownRoute } from './town/route'
+import { fullPanelHref, kioskHref, parseTownRoute, worldTownRoute } from './town/route'
 import { shownNo } from './hub/ids'
 
 type Tab = 'queue' | 'items' | 'sessions' | 'launch' | 'review'
@@ -46,6 +46,11 @@ export default function App() {
   const [provider, setProvider] = useState<string>('all')
   const [route, setRoute] = useState(() => parseTownRoute(window.location.search, window.location.hash))
   const [view, setView] = useState<'today' | 'overview' | 'town' | 'canvas' | 'list' | 'history'>(() => (new URLSearchParams(window.location.search).get('view') === 'today' ? 'today' : route.town ? 'town' : 'overview'))
+  const openTown = () => {
+    setRoute(worldTownRoute)
+    setView('town')
+    history.replaceState(null, '', fullPanelHref(window.location.pathname, null))
+  }
   // 从历史日历点“回放这一天”：切到小镇并打开时间条。
   const [replayDay, setReplayDay] = useState<string | undefined>(undefined)
   // 桌面模式里点告示栏、验收台时，在抽屉里打开关注队列。
@@ -53,18 +58,19 @@ export default function App() {
   const [expandAll, setExpandAll] = useState(false)
   const [sessionScope, setSessionScope] = useState<SessionScope>('recent')
   const [attributionOpen, setAttributionOpen] = useState(false)
-  const [projectsOpen, setProjectsOpen] = useState(false)
+  const [projectsOpen, setProjectsOpen] = useState<ProjectScope | null>(null)
   // 每日十分钟已经列出了关注队列的内容：侧栏默认只留详情位置，需要时再展开原来的标签页。
   const [todaySideTabs, setTodaySideTabs] = useState(false)
 
   const [deep, setDeep] = useState<Deep>(() => parseDeepLink(window.location.hash))
+  const [notificationSession, setNotificationSession] = useState<number | undefined>(undefined)
   useEffect(() => {
     const on = () => {
       setDeep(parseDeepLink(window.location.hash))
       const r = parseTownRoute(window.location.search, window.location.hash)
       // Daily-page anchors only scroll within the selected page. The native
       // App may still have its initial ?view=town URL after a toolbar switch.
-      if (r.town && !window.location.hash.startsWith('#today-')) setView('town')
+      if (r.town && !window.location.hash.startsWith('#today-')) { setView('town'); setRoute(r) }
       if (r.kiosk) setRoute(r)
     }
     window.addEventListener('hashchange', on)
@@ -74,6 +80,7 @@ export default function App() {
   useEffect(() => {
     if (!snap || !deep) return
     const target = resolveDeepLink(snap, deep)
+    setNotificationSession(deep.kind === 'approval' ? (snap.approvals ?? []).find(a => a.id === deep.id)?.session_id ?? undefined : undefined)
     if (target) { setAttributionOpen(false); setSel(target) } else if (deep.kind === 'approval') { setSel(null); setTab('queue') }
     setDeep(null)
     history.replaceState(null, '', window.location.pathname + window.location.search)
@@ -96,17 +103,24 @@ export default function App() {
   const attributionRecords = scopedAttributions(snap, repoId, provider)
   const attributionPending = attributionRecords.filter((a) => a.status === 'pending' && !a.plan.historical).length
   const openAttributions = () => { setSel(null); setAttributionOpen(true) }
-  const selectItem = (id: string) => { setAttributionOpen(false); setSel({ kind: 'item', id }) }
+  const selectItem = (id: string) => { setAttributionOpen(false); setNotificationSession(undefined); setSel({ kind: 'item', id }) }
   const selectSession = (id: number) => { setAttributionOpen(false); setSel({ kind: 'session', id }) }
   const openQueue = (lane: 'action' | 'review') => { setSel(null); setAttributionOpen(false); setTab('queue'); setQueueFocus(lane); setKioskQueue(true) }
   const detail = sel ? (
     sel.kind === 'item' ? (
-      <ItemDetail key={sel.id} snap={snap} id={sel.id} onClose={() => setSel(null)} onSelectSession={selectSession} onSelectItem={selectItem} />
+      <ItemDetail key={sel.id} snap={snap} id={sel.id} onClose={() => setSel(null)} onSelectSession={selectSession} onSelectItem={selectItem} preferredSession={notificationSession} />
     ) : (
       <SessionDetail key={sel.id} snap={snap} id={sel.id} onClose={() => setSel(null)} onSelectItem={selectItem} foldEvents={route.kiosk} />
     )
   ) : null
   const queuePanel = <Queue snap={snap} onSelectItem={selectItem} repoId={repoId} provider={provider} reviewOpen={queueFocus === 'review'} onReviewOpenChange={open => setQueueFocus(open ? 'review' : 'action')} />
+
+  const projectShortcuts = <span className="pm-shortcuts" role="group" aria-label="项目管理入口">
+    <button className="btn small" onClick={() => setProjectsOpen('active')}>项目管理</button>
+    <button className="btn small pm-counter" title="查看和恢复本机已归档的项目" onClick={() => setProjectsOpen('archived')}>已归档 {snap.archived_projects ?? 0}</button>
+    <button className="btn small pm-counter" title="查看和恢复本机已删除的项目" onClick={() => setProjectsOpen('trash')}>回收站 {snap.trashed_projects ?? 0}</button>
+  </span>
+  const projectManager = projectsOpen && <ProjectsPanel initialScope={projectsOpen} device={hub.status?.device} onClose={() => { setProjectsOpen(null); setRepoId('all'); setSel(null) }} />
 
   if (route.kiosk) {
     const drawer = sel != null || kioskQueue
@@ -120,12 +134,14 @@ export default function App() {
             onSelectRepo={(id) => setRepoId(id)} onAllRepos={() => setRepoId('all')} onQueue={openQueue} kiosk rotateMs={route.rotateMs} paused={drawer} noReplay={hub.scope === 'all'}
             bar={<span className="kiosk-tools">
               {hubSwitch}
+              {projectShortcuts}
               {todayEntry}
               <span className={`conn conn-${conn}`}>{conn === 'live' ? '实时' : conn === 'offline' ? '已断开，重连中' : '连接中'}</span>
               {isRemote() && <span className="remote-tag" title={remoteReadOnlyMessage}>远程只读</span>}
               <a className="btn small" href={fullPanelHref(path, null)} title="回到 Session Steward 完整面板">退出桌面模式</a>
             </span>} />
         </main>
+        {projectManager}
         {drawer && <div className="kiosk-scrim" onClick={closeDrawer} aria-hidden />}
         {drawer && (
           <aside className="side kiosk-drawer" role="dialog" aria-modal="true" aria-label={sel ? '详情' : '关注队列'}>
@@ -150,7 +166,7 @@ export default function App() {
             <strong>Session Steward</strong>
             <span className={`conn conn-${conn}`}>{conn === 'live' ? '实时' : conn === 'offline' ? '已断开，重连中' : '连接中'}</span>
           </div>
-          <button className="btn small" onClick={() => setProjectsOpen(true)}>管理项目</button>
+          {projectShortcuts}
           <select value={repoId} onChange={(e) => setRepoId(e.target.value === 'all' ? 'all' : Number(e.target.value))} aria-label="项目">
             <option value="all">全部项目</option>
             {(snap.repos ?? []).map((r) => <option key={r.id} value={r.id}>{repoLabel(snap, r.id)}</option>)}
@@ -164,12 +180,12 @@ export default function App() {
           <div className="seg" role="group" aria-label="视图">
             <button className={view === 'today' ? 'on' : ''} onClick={() => setView('today')}>每日十分钟</button>
             <button className={view === 'overview' ? 'on' : ''} onClick={() => setView('overview')}>项目简报</button>
-            <button className={view === 'town' ? 'on' : ''} onClick={() => setView('town')}>小镇</button>
+            <button className={view === 'town' ? 'on' : ''} onClick={openTown}>小镇</button>
             <button className={view === 'canvas' ? 'on' : ''} onClick={() => setView('canvas')}>画布</button>
             <button className={view === 'list' ? 'on' : ''} onClick={() => setView('list')}>列表</button>
             <button className={view === 'history' ? 'on' : ''} onClick={() => setView('history')}>历史</button>
           </div>
-          {view === 'town' && <a className="btn small" href={kioskHref(window.location.pathname)} title="全屏小镇，适合挂在副屏或手机上；自动轮播项目">桌面模式</a>}
+          {view === 'town' && <a className="btn small" href={kioskHref(window.location.pathname, route.world)} title="全屏小镇，适合挂在副屏或手机上">桌面模式</a>}
           {view === 'canvas' && <button className="btn small" onClick={() => setExpandAll((v) => !v)}>{expandAll ? '默认折叠' : '全部展开'}</button>}
           {quietCount > 0 && <button className="btn small" onClick={() => { setSel(null); setAttributionOpen(false); setTab('sessions'); setSessionScope('quiet') }}>已收起会话 {quietCount}</button>}
           <button className="btn small" onClick={openAttributions}>近期归属待确认 {attributionPending}</button>
@@ -187,7 +203,7 @@ export default function App() {
               : <button className="btn small primary" onClick={() => { setSel(null); setAttributionOpen(false); setTab('launch') }}>＋ 新建会话</button>}
           </div>
         })()}
-        <div className={view === 'overview' || view === 'today' ? 'workbench-overview overview-hidden' : 'workbench-overview'}>
+        <div className={view === 'overview' || view === 'today' || view === 'canvas' ? 'workbench-overview overview-hidden' : 'workbench-overview'}>
           <div className="overview-line"><strong>项目推进</strong><span>{totalItems} 个工作项</span><span>{sessionBuckets(snap, provider, repoId).recent.length} 个近期会话</span><button onClick={() => { setSel(null); setAttributionOpen(false); setTab('queue') }}>审批／决定 {counts.action} · 待审阅／验收 {counts.review}</button></div>
           <div className="project-shortcuts">{groups.map((g) => <button key={g.key} disabled={g.repoId == null} className={repoId === g.repoId ? 'on' : ''} onClick={() => { if (g.repoId != null) { setRepoId(g.repoId); setSel(null); setAttributionOpen(false); setTab('queue') } }} title={g.name}><strong>{g.name}</strong><small>工作项 {g.items.length} · 待关联 {g.sessions.length}{projectQueueCounts(snap, g.repoId).action ? ` · 需审批 ${projectQueueCounts(snap, g.repoId).action}` : ''}</small></button>)}</div>
         </div>
@@ -196,12 +212,12 @@ export default function App() {
           {view === 'town' ? <TownView key={hub.merged ? "all" : "here"} world={route.world} snap={hub.merged ?? snap} conn={conn} repoId={repoId} provider={provider} sel={sel} onSelectItem={townItem} onSelectSession={townSession} replayDay={replayDay}
             noReplay={hub.scope === 'all'} bar={<>{hubSwitch}{todayEntry}</>}
             onSelectRepo={(id) => setRepoId(id)} onAllRepos={() => setRepoId('all')} onQueue={(lane) => { setSel(null); setAttributionOpen(false); setTab('queue'); setQueueFocus(lane) }} />
-            : view === 'today' ? <TodayView snap={snap} onSelectItem={selectItem} onOpenTown={() => setView('town')} device={hub.enabled ? hub.status?.device ?? '' : undefined} />
+            : view === 'today' ? <TodayView snap={snap} onSelectItem={selectItem} onOpenTown={openTown} device={hub.enabled ? hub.status?.device ?? '' : undefined} />
             : view === 'overview' ? <Overview snap={snap} groups={groups} onSelectItem={selectItem} onSelectSession={selectSession} onOpenAttribution={openAttributions} pendingCount={counts.action} reviewCount={counts.review} expandQuiet={!!query.trim() || repoId !== 'all'} onQueue={(lane = 'action') => { setSel(null); setAttributionOpen(false); setTab('queue'); setQueueFocus(lane) }} /> : view === 'canvas' ? (
             <ReactFlowProvider>
               <Canvas snap={snap} groups={groups} selected={sel?.kind === 'item' ? sel.id : null} onSelectItem={selectItem} onOpenAttribution={openAttributions} expandAll={expandAll || !!query.trim()} />
             </ReactFlowProvider>
-          ) : view === 'history' ? <HistoryView snap={snap} onSelectSession={selectSession} onSelectItem={selectItem} onReplayDay={(d) => { setReplayDay(d); setView('town') }} /> : (
+          ) : view === 'history' ? <HistoryView snap={snap} onSelectSession={selectSession} onSelectItem={selectItem} onReplayDay={(d) => { setReplayDay(d); openTown() }} /> : (
             <ItemTable groups={groups} onSelect={selectItem} />
           )}
         </div>
@@ -231,7 +247,7 @@ export default function App() {
           </>
         ))}
       </aside>
-      {projectsOpen && <ProjectsPanel onClose={() => { setProjectsOpen(false); setRepoId('all'); setSel(null) }} />}
+      {projectManager}
     </div>
   )
 }

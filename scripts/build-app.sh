@@ -21,8 +21,8 @@ CGO_ENABLED=0 GOOS=darwin GOARCH=$arch go build -trimpath -ldflags "-s -w -X mai
 # 通知助手：steward 在自己旁边找 “Session Steward.app”
 NOTIFIER_TARGET=$target sh scripts/build-notifier.sh "$app/Contents/MacOS/Session Steward.app" >/dev/null
 # App 外壳
-xcrun swiftc -swift-version 5 -target "$target-apple-macos13.0" -O -framework AppKit -framework WebKit -framework ServiceManagement \
-	native/app/*.swift -o "$app/Contents/MacOS/SessionSteward"
+xcrun swiftc -swift-version 5 -target "$target-apple-macos13.0" -O -framework AppKit -framework WebKit -framework ServiceManagement -framework SwiftUI -framework QuartzCore \
+	native/shared/*.swift native/app/*.swift -o "$app/Contents/MacOS/SessionSteward"
 cp native/app/Info.plist "$app/Contents/Info.plist"
 schema=$(go run ./cmd/steward-updater info | /usr/bin/plutil -extract Schema raw -o - -)
 /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString ${version#v}" -c "Set :CFBundleVersion $build" -c "Add :StewardSchema integer $schema" "$app/Contents/Info.plist"
