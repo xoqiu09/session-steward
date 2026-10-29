@@ -611,6 +611,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         fileMenu.addItem(withTitle: "打开工作室", action: #selector(reopenStudio), keyEquivalent: "2").target = self
         fileMenu.addItem(withTitle: "每日十分钟", action: #selector(reopenToday), keyEquivalent: "3").target = self
         fileMenu.addItem(withTitle: "展开顶部提醒", action: #selector(showTopReminder), keyEquivalent: "4").target = self
+        fileMenu.addItem(withTitle: "发送测试提醒", action: #selector(sendTestNotification), keyEquivalent: "").target = self
         fileMenu.addItem(withTitle: "重新启动服务", action: #selector(restartBackend), keyEquivalent: "").target = self
         fileMenu.addItem(withTitle: "关闭窗口", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
         fileItem.submenu = fileMenu

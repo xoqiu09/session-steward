@@ -10,7 +10,10 @@ extension AppDelegate {
         URLSession.shared.dataTask(with: request) { [weak self] data, response, _ in
             guard let self else { return }
             guard (response as? HTTPURLResponse)?.statusCode == 200, let data,
-                  let snapshot = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
+                  let snapshot = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                DispatchQueue.main.async { self.notificationError("本机小镇暂时没有响应，请先确认后台服务已连接。") }
+                return
+            }
             let items = (snapshot["work_items"] as? [[String: Any]] ?? []).sorted {
                 ($0["updated_at"] as? String ?? "") > ($1["updated_at"] as? String ?? "")
             }
