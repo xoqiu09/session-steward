@@ -64,12 +64,12 @@ func copyTree(src, dst string) error {
 		if d.Type()&os.ModeSymlink != 0 {
 			return errors.New("不复制符号链接")
 		}
-		if d.IsDir() {
-			return os.MkdirAll(to, info.Mode().Perm()&0755)
-		}
 		info, e := d.Info()
 		if e != nil {
 			return e
+		}
+		if d.IsDir() {
+			return os.MkdirAll(to, info.Mode().Perm()&0755)
 		}
 		if !info.Mode().IsRegular() {
 			return errors.New("不复制特殊文件")
