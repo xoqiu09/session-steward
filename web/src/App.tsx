@@ -21,7 +21,7 @@ import { TownView } from './town/TownView'
 import { TodayView } from './today/TodayView'
 import { ProjectsPanel } from './ProjectsPanel'
 import { buildToday } from './today/todayModel'
-import { fullPanelHref, kioskHref, parseTownRoute } from './town/route'
+import { fullPanelHref, kioskHref, parseTownRoute, worldTownRoute } from './town/route'
 import { shownNo } from './hub/ids'
 
 type Tab = 'queue' | 'items' | 'sessions' | 'launch' | 'review'
@@ -46,6 +46,11 @@ export default function App() {
   const [provider, setProvider] = useState<string>('all')
   const [route, setRoute] = useState(() => parseTownRoute(window.location.search, window.location.hash))
   const [view, setView] = useState<'today' | 'overview' | 'town' | 'canvas' | 'list' | 'history'>(() => (new URLSearchParams(window.location.search).get('view') === 'today' ? 'today' : route.town ? 'town' : 'overview'))
+  const openTown = () => {
+    setRoute(worldTownRoute)
+    setView('town')
+    history.replaceState(null, '', fullPanelHref(window.location.pathname, null))
+  }
   // 从历史日历点“回放这一天”：切到小镇并打开时间条。
   const [replayDay, setReplayDay] = useState<string | undefined>(undefined)
   // 桌面模式里点告示栏、验收台时，在抽屉里打开关注队列。
@@ -64,7 +69,7 @@ export default function App() {
       const r = parseTownRoute(window.location.search, window.location.hash)
       // Daily-page anchors only scroll within the selected page. The native
       // App may still have its initial ?view=town URL after a toolbar switch.
-      if (r.town && !window.location.hash.startsWith('#today-')) setView('town')
+      if (r.town && !window.location.hash.startsWith('#today-')) { setView('town'); setRoute(r) }
       if (r.kiosk) setRoute(r)
     }
     window.addEventListener('hashchange', on)
@@ -164,12 +169,12 @@ export default function App() {
           <div className="seg" role="group" aria-label="视图">
             <button className={view === 'today' ? 'on' : ''} onClick={() => setView('today')}>每日十分钟</button>
             <button className={view === 'overview' ? 'on' : ''} onClick={() => setView('overview')}>项目简报</button>
-            <button className={view === 'town' ? 'on' : ''} onClick={() => setView('town')}>小镇</button>
+            <button className={view === 'town' ? 'on' : ''} onClick={openTown}>小镇</button>
             <button className={view === 'canvas' ? 'on' : ''} onClick={() => setView('canvas')}>画布</button>
             <button className={view === 'list' ? 'on' : ''} onClick={() => setView('list')}>列表</button>
             <button className={view === 'history' ? 'on' : ''} onClick={() => setView('history')}>历史</button>
           </div>
-          {view === 'town' && <a className="btn small" href={kioskHref(window.location.pathname)} title="全屏小镇，适合挂在副屏或手机上；自动轮播项目">桌面模式</a>}
+          {view === 'town' && <a className="btn small" href={kioskHref(window.location.pathname, route.world)} title="全屏小镇，适合挂在副屏或手机上">桌面模式</a>}
           {view === 'canvas' && <button className="btn small" onClick={() => setExpandAll((v) => !v)}>{expandAll ? '默认折叠' : '全部展开'}</button>}
           {quietCount > 0 && <button className="btn small" onClick={() => { setSel(null); setAttributionOpen(false); setTab('sessions'); setSessionScope('quiet') }}>已收起会话 {quietCount}</button>}
           <button className="btn small" onClick={openAttributions}>近期归属待确认 {attributionPending}</button>
@@ -196,12 +201,12 @@ export default function App() {
           {view === 'town' ? <TownView key={hub.merged ? "all" : "here"} world={route.world} snap={hub.merged ?? snap} conn={conn} repoId={repoId} provider={provider} sel={sel} onSelectItem={townItem} onSelectSession={townSession} replayDay={replayDay}
             noReplay={hub.scope === 'all'} bar={<>{hubSwitch}{todayEntry}</>}
             onSelectRepo={(id) => setRepoId(id)} onAllRepos={() => setRepoId('all')} onQueue={(lane) => { setSel(null); setAttributionOpen(false); setTab('queue'); setQueueFocus(lane) }} />
-            : view === 'today' ? <TodayView snap={snap} onSelectItem={selectItem} onOpenTown={() => setView('town')} device={hub.enabled ? hub.status?.device ?? '' : undefined} />
+            : view === 'today' ? <TodayView snap={snap} onSelectItem={selectItem} onOpenTown={openTown} device={hub.enabled ? hub.status?.device ?? '' : undefined} />
             : view === 'overview' ? <Overview snap={snap} groups={groups} onSelectItem={selectItem} onSelectSession={selectSession} onOpenAttribution={openAttributions} pendingCount={counts.action} reviewCount={counts.review} expandQuiet={!!query.trim() || repoId !== 'all'} onQueue={(lane = 'action') => { setSel(null); setAttributionOpen(false); setTab('queue'); setQueueFocus(lane) }} /> : view === 'canvas' ? (
             <ReactFlowProvider>
               <Canvas snap={snap} groups={groups} selected={sel?.kind === 'item' ? sel.id : null} onSelectItem={selectItem} onOpenAttribution={openAttributions} expandAll={expandAll || !!query.trim()} />
             </ReactFlowProvider>
-          ) : view === 'history' ? <HistoryView snap={snap} onSelectSession={selectSession} onSelectItem={selectItem} onReplayDay={(d) => { setReplayDay(d); setView('town') }} /> : (
+          ) : view === 'history' ? <HistoryView snap={snap} onSelectSession={selectSession} onSelectItem={selectItem} onReplayDay={(d) => { setReplayDay(d); openTown() }} /> : (
             <ItemTable groups={groups} onSelect={selectItem} />
           )}
         </div>
