@@ -4,21 +4,23 @@ import { ManagedPanel, Unmanaged } from './Managed'
 import { HandoffForm, ItemUsageLine, SessionUsageLine } from './P1'
 import { AISummaryBox } from './P2'
 import { managedFor, managedOfSession } from './live'
-import { PermissionCard } from './Queue'
+import { DecisionCard, MergeCard, PermissionCard } from './Queue'
 import { openApprovals } from './model'
-import type { ItemStatus, Session, SessionUsageDetail, Snapshot } from './types'
+import type { ItemStatus, MergeEvidence, Session, SessionUsageDetail, Snapshot } from './types'
 import { api } from './api'
 import { AgentBadge, CopyButton, ErrorLine, useAction } from './bits'
 import { canUndoAttribution } from './attribution'
 import { BriefSection, RelayTimeline } from './BriefSection'
 import { FeatureProgress } from './FeatureProgress'
 import { HistoryItems } from './HistoryItems'
-import { repoLabel } from './workbench'
+import { mergeGroups, repoLabel } from './workbench'
 import { RunDesk } from './ui/RunDesk'
 import { DeliveryReview } from './ui/DeliveryReview'
 import { SessionActivity } from './ui/SessionActivity'
 import { SessionUsagePanel } from './ui/SessionUsagePanel'
 import { BriefReadOnly } from './ui/BriefReadOnly'
+import { WorkStatusActions } from './ui/WorkStatusActions'
+import { requestsForItem } from './ui/WorkOverview'
 import {
   ago, freshnessLabel, itemSignal, itemStatusLabel, mergeStateLabel, nextItemId, providerLabel, repoPrefix, sessionBuckets, sessionName, sessionRepo, sessionSignal, sessionStateLabel, sessionsFor, type SessionScope,
 } from './model'
@@ -26,7 +28,7 @@ import {
 export const outcomeLabel: Record<string, string> = { delivered: '交付', failed: '失败', abandoned: '放弃', handed_off: '转交', historical: '历史关联', attribution_reverted: '已撤销归属', '': '结果待定' }
 export const bindingLabel: Record<string, string> = { manual: '人工绑定', tag: '显式标识', inherited: '继承', branch_guess: '分支推断', auto: '自动关联' }
 
-export function ItemDetail({ snap, id, onClose, onSelectSession }: { snap: Snapshot; id: string; onClose: () => void; onSelectSession: (id: number) => void }) {
+export function ItemDetail({ snap, id, onClose, onSelectSession, onSelectItem = () => {} }: { snap: Snapshot; id: string; onClose: () => void; onSelectSession: (id: number) => void; onSelectItem?: (id: string) => void }) {
   const item = (snap.work_items ?? []).find((w) => w.id === id)
   const act = useAction()
   const [dep, setDep] = useState('')
@@ -43,11 +45,16 @@ export function ItemDetail({ snap, id, onClose, onSelectSession }: { snap: Snaps
   const repo = (snap.repos ?? []).find((r) => r.id === item.repo_id)
 
   return (
-    <RunDesk snap={snap} item={item} remote={remote} onClose={onClose} onSelectSession={onSelectSession} attention={(() => {
-        const sids = new Set(sessions.map((x) => x.id))
-        const perms = openApprovals(snap).filter((a) => a.kind === 'permission' && (a.work_item_id === id || (a.session_id != null && sids.has(a.session_id))))
+    <RunDesk snap={snap} item={item} remote={remote} onClose={onClose} onSelectSession={onSelectSession} actions={<WorkStatusActions key={item.id} item={item} />} attention={(() => {
+        const requests = requestsForItem(snap, item)
+        const perms = requests.filter(a => a.kind === 'permission')
+        const decisions = requests.filter(a => a.kind === 'decision')
+        // Retain every member of the same bound merge, including peer items.
+        const merges = mergeGroups(openApprovals(snap).filter(a => a.kind === 'merge')).filter(g => g.members.some(a => requests.some(r => r.id === a.id)))
         return <>
+          {merges.length > 0 && <section className="item-requests" aria-label="处理代码合并"><h3>处理代码合并</h3>{merges.map(g => <MergeCard key={g.key} group={g} snap={snap} onSelectItem={onSelectItem} advice={[]} compact />)}</section>}
           {perms.length > 0 && <div className="item-permissions"><h3>等待你处理的权限</h3>{perms.map((a) => <PermissionCard key={a.id} a={a} snap={snap} />)}</div>}
+          {decisions.length > 0 && <section className="item-requests" aria-label="等待你回答"><h3>等待你回答</h3>{decisions.map(a => <DecisionCard key={a.id} a={a} snap={snap} />)}</section>}
           {item.automatic_history && <section className="delivery-review" aria-label="自动任务归档"><h3>本轮已自动归档</h3><p>Agent 已回报完成，按例行整理规则收进历史，无需你逐轮验收。可以在这里查看本轮来源；发现问题时可重新开始。</p></section>}
           {item.status === 'review' && item.completion_policy !== 'auto_history' && <DeliveryReview snap={snap} item={item} onSelectSession={onSelectSession} actions={<>
             {remote ? <p className="hint">远程只读，请在本机面板验收。</p> : <div className="row wrap">
@@ -58,6 +65,7 @@ export function ItemDetail({ snap, id, onClose, onSelectSession }: { snap: Snaps
           </>} />}
         </>
       })()}>
+      {item.merge_evidence && <MergeProof evidence={item.merge_evidence} />}
       <AISummaryBox snap={snap} itemId={id} repoId={item.repo_id} />
       {remote ? managedFor(snap, id).length > 0 && <p className="hint">有托管会话正在运行；终端画面和输入只在本机面板提供。</p>
         : managedFor(snap, id).map((m) => <ManagedPanel key={m.id} snap={snap} m={m} session={sessions.find((x) => x.id === m.session_id)} />)}
@@ -113,6 +121,15 @@ export function ItemDetail({ snap, id, onClose, onSelectSession }: { snap: Snaps
       <ErrorLine msg={act.error} />
     </RunDesk>
   )
+}
+
+export function MergeProof({ evidence }: { evidence: MergeEvidence }) {
+  const label = { local_git: '本地目标分支已包含这份代码', remote_git: '远端目标分支已包含这份代码', remote_cached: '已有的远端分支记录包含这份代码', github_pr: 'GitHub 已合并记录与提交一致' }[evidence.method]
+  const link = evidence.url && /^https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/pull\/\d+$/.test(evidence.url) ? evidence.url : undefined
+  return <section className="delivery-review" aria-label="合并核对记录"><h3>已合并 · {label}</h3>
+    <p>源 {evidence.source_sha.slice(0, 10)} → {evidence.target_ref} · {evidence.target_sha.slice(0, 10)}</p>
+    <p className="hint">核对于 {new Date(evidence.checked_at).toLocaleString('zh-CN')}。{link && <a href={link} target="_blank" rel="noreferrer">查看 PR 记录</a>}工作项验收单独保留。</p>
+  </section>
 }
 
 export function SessionDetail({ snap, id, onClose, onSelectItem, foldEvents = false }: { snap: Snapshot; id: number; onClose: () => void; onSelectItem: (id: string) => void; foldEvents?: boolean }) {

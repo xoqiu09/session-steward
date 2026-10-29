@@ -3,6 +3,7 @@ import { statusChips, statusOf, sumStatus } from './status'
 import { buildTown } from './townModel'
 import { fakeApproval, fakeItem, fakeRun, fakeSession } from './fixtures'
 import type { Snapshot } from '../types'
+import { cropsOf, ripeQueue } from './harvest'
 
 const now = '2026-10-26T06:00:00Z'
 const snap: Snapshot = {
@@ -40,5 +41,14 @@ describe('地图上的四种状态', () => {
 
   it('村庄名牌把成员加起来', () => {
     expect(sumStatus([st, st])).toEqual({ working: 2, waiting: 4, review: 2, blocked: 4 })
+  })
+
+  it('paused work no longer prompts review or blocked reminders, while formal decisions and actual activity remain', () => {
+    const changed: Snapshot = { ...snap, work_items: snap.work_items!.map(w => ({ ...w, management: { state: 'paused', at: now } })) }
+    const town = buildTown(changed, now)
+    expect(statusOf(town.buildings[0], town.pendingApprovals)).toEqual({ working: 1, waiting: 2, review: 0, blocked: 0 })
+    expect(town.counts.review).toBe(0)
+    expect(ripeQueue(town.buildings)).toEqual([])
+    expect(cropsOf(town.buildings[0], town.pendingApprovals, Date.parse(now)).crops).toEqual([])
   })
 })

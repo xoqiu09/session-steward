@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest'
 import type { Approval, BriefField, FeatureContribution, ProjectFeature, Session, Snapshot, WorkItem } from '../types'
 import { buildToday } from './todayModel'
 import { TodayView } from './TodayView'
+import { itemSignal, reportedHandoffs } from '../model'
+import { liveSummary } from '../live'
 
 // 合成数据：编出来的项目和工作，不来自任何真实项目。
 const NOW = '2026-10-28T10:00:00Z'
@@ -85,6 +87,41 @@ describe('每日十分钟的四件事', () => {
   it('看过以后只有之后的交付标“新”', () => {
     const fresh = buildToday(snap, t(30)).review.filter((r) => r.fresh).map((r) => r.item.id)
     expect(fresh.sort()).toEqual(['BOOK-9', 'DASH-2'])
+  })
+})
+
+describe('用户管理日常提醒', () => {
+  it('keeps paused/delegated work out of stuck, running, review and advisory counts, with a restore section', () => {
+    const changed: Snapshot = { ...snap, work_items: snap.work_items!.map(w => ['DASH-4', 'BLOG-4', 'DASH-2', 'BOOK-2'].includes(w.id) ? { ...w, management: { state: 'delegated', owner: '合成接手人', note: '已交给另一个会话', at: NOW } } : w) }
+    const t = buildToday(changed, '')
+    expect(t.stuck.some(s => s.item.id === 'DASH-4')).toBe(false)
+    expect(t.review.some(s => s.item.id === 'DASH-2')).toBe(false)
+    expect(t.running.some(w => w.id === 'BOOK-2')).toBe(false)
+    expect(t.decide.some(d => d.kind === 'handoff' && d.item.id === 'BLOG-4')).toBe(false)
+    expect(t.managed).toHaveLength(4)
+    expect(liveSummary(changed).blocked).toBe(liveSummary(snap).blocked - 1)
+    const w = changed.work_items!.find(w => w.id === 'BLOG-4')!
+    expect(reportedHandoffs(changed, w)).toEqual([])
+    expect(itemSignal(changed, w).label).toBe('已转交给 合成接手人')
+    const html = renderToStaticMarkup(<TodayView snap={changed} onSelectItem={() => {}} onOpenTown={() => {}} />)
+    expect(html).toContain('已转交或暂停提醒 4 件')
+    expect(html).toContain('展开管理 / 恢复')
+    expect(html).toContain('管理状态 DASH-4')
+  })
+  it('preserves formal permission and merge requests on paused work', () => {
+    const changed: Snapshot = { ...snap, work_items: snap.work_items!.map(w => ({ ...w, management: { state: 'paused', at: NOW } })) }
+    const t = buildToday(changed, '')
+    expect(t.decide.map(d => d.kind)).toEqual(['permission', 'merge'])
+    expect(t.stuck).toHaveLength(0)
+    expect(t.review).toHaveLength(0)
+    expect(itemSignal(changed, changed.work_items!.find(w => w.id === 'BOOK-8')!).label).toBe('待你批准')
+  })
+  it('acceptance keeps old blockers out of the active queues without losing history data', () => {
+    const changed: Snapshot = { ...snap, work_items: snap.work_items!.map(w => w.id === 'DASH-4' ? { ...w, status: 'done', management: { state: 'accepted', at: NOW } } : w) }
+    const t = buildToday(changed, '')
+    expect(t.stuck.some(s => s.item.id === 'DASH-4')).toBe(false)
+    expect(t.acceptedSince.some(w => w.id === 'DASH-4')).toBe(true)
+    expect(changed.work_items!.find(w => w.id === 'DASH-4')!.brief?.fields.blocker?.text).toBe('沙箱账号还没批下来')
   })
 })
 

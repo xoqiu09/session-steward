@@ -10,6 +10,36 @@ export interface Repo {
   target_ref: string
 }
 
+export interface ProjectInfo extends Repo {
+  archived_at: string
+  open_items: number
+  sessions: number
+  running: number
+  pending: number
+}
+
+export interface MergeSyncStatus {
+  state?: 'idle' | 'missing' | 'checked' | 'failed'
+  pending_items?: number
+  account?: string
+  repo_id: number
+  checked_at: string
+  remote: string
+  target_ref: string
+  target_sha: string
+  error?: string
+  pr_note?: string
+}
+
+export interface MergeEvidence {
+  source_sha: string
+  target_ref: string
+  target_sha: string
+  method: 'local_git' | 'remote_git' | 'remote_cached' | 'github_pr'
+  url?: string
+  checked_at: string
+}
+
 export interface Session {
   id: number
   host_id: string
@@ -41,7 +71,15 @@ export interface Session {
 
 export type ItemStatus = 'todo' | 'in_progress' | 'blocked' | 'review' | 'done' | 'abandoned'
 
+export interface WorkManagement {
+  state: 'accepted' | 'active' | 'paused' | 'delegated'
+  owner?: string
+  note?: string
+  at: string
+}
+
 export interface WorkItem {
+  management?: WorkManagement
   completion_policy?: 'auto_history' | 'manual'
   automatic_history?: boolean
   automatic_issue?: string
@@ -54,6 +92,7 @@ export interface WorkItem {
   acceptance: string
   branch: string
   merge_state: 'none' | 'not_ready' | 'awaiting' | 'approved' | 'merged'
+  merge_evidence?: MergeEvidence
   needs_merge: boolean
   created_at: string
   updated_at: string

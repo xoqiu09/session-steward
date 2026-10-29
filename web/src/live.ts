@@ -1,5 +1,6 @@
 import type { ManagedSession, Session, Snapshot, WorkItem } from './types'
 import { field } from './brief'
+import { attentionManaged } from './workManagement'
 import { groupByRepo, scopedAttention, type Group } from './model'
 import { queueCount } from './Queue'
 import { orderedProjects, PROJECT_RECENT_MS } from './projectActivity'
@@ -13,7 +14,7 @@ export const managedFor = (snap: Snapshot, itemId: string) => (snap.managed ?? [
 export const managedOfSession = (snap: Snapshot, s: Session) => (snap.managed ?? []).find((m) => m.session_id === s.id || (m.state !== 'archived' && !!s.worktree && m.worktree === s.worktree))
 
 const live = (s: Session) => s.data_source === 'live' && s.freshness === 'live'
-const blocked = (w: WorkItem) => !!w.automatic_issue || !['done', 'abandoned', 'review'].includes(w.status) && (w.status === 'blocked' || !w.ready || !!field(w, 'blocker')?.text)
+const blocked = (w: WorkItem) => !attentionManaged(w) && (!!w.automatic_issue || !['done', 'abandoned', 'review'].includes(w.status) && (w.status === 'blocked' || !w.ready || !!field(w, 'blocker')?.text))
 
 // 顶部一行汇总：只按实际事件、回报与审批计数，不估算进度。
 export function liveSummary(snap: Snapshot, repoId: number | 'all' = 'all', provider = 'all') {
@@ -42,11 +43,13 @@ export function projectActor(snap: Snapshot, repoId: number | null, scopedItems?
   const sessions = (snap.sessions ?? []).filter((s) => ids.has(s.work_item_id) && (provider === 'all' || s.provider === provider))
   const lanes = queueLanes(scopedAttention(snap, repoId ?? 'all', provider), snap.now)
   if (lanes.counts.action) return 'user'
-  if (items.some(w => w.automatic_issue)) return 'issue'
+  const reminders = items.filter(w => !attentionManaged(w))
+  if (reminders.some(w => w.automatic_issue)) return 'issue'
   if (sessions.some((s) => live(s) && ['running', 'waiting_permission'].includes(s.state)) || (snap.managed ?? []).some((m) => ids.has(m.work_item_id) && m.state === 'running' && (provider === 'all' || m.agent === provider))) return 'agent'
   const recent = (at?: string) => Date.parse(snap.now) - Date.parse(at || '') >= 0 && Date.parse(snap.now) - Date.parse(at || '') < PROJECT_RECENT_MS
-  const reviewing = items.filter(w => w.status === 'review' || lanes.review.some(r => r.id === w.id))
-  const owners = items.filter(w => !reviewing.includes(w)).map((w) => field(w, 'next_owner')).filter(f => f && recent(f.at)).map(f => f!.text)
+  if (!reminders.length) return 'idle'
+  const reviewing = reminders.filter(w => w.status === 'review' || lanes.review.some(r => r.id === w.id))
+  const owners = reminders.filter(w => !reviewing.includes(w)).map((w) => field(w, 'next_owner')).filter(f => f && recent(f.at)).map(f => f!.text)
   const agentOwns = owners.some((o) => o === 'agent' || o === 'claude' || o === 'codex')
   // A review delivered more than a day ago does not outrank another item an Agent reported owning today.
   // updated_at is not used as the delivery time because Git scans also move it.

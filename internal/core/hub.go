@@ -47,10 +47,15 @@ func trimForHub(s *Snapshot) *Snapshot {
 		})
 	}
 	for _, w := range s.WorkItems {
+		var management *WorkManagement
+		if w.Management != nil {
+			management = &WorkManagement{State: w.Management.State, At: w.Management.At}
+		}
 		out.WorkItems = append(out.WorkItems, WorkItem{
 			ID: w.ID, RepoID: w.RepoID, Title: w.Title, Status: w.Status, MergeState: w.MergeState, NeedsMerge: w.NeedsMerge,
 			CreatedAt: w.CreatedAt, UpdatedAt: w.UpdatedAt, Ready: w.Ready, Waiting: w.Waiting, Agents: w.Agents,
 			CompletionPolicy: w.CompletionPolicy, AutomaticHistory: w.AutomaticHistory,
+			Management: management,
 		})
 	}
 	out.Runs = append(out.Runs, s.Runs...)

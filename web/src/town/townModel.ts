@@ -9,6 +9,7 @@
 // - Run.outcome 只识别明确的字符串，其余原样显示，不猜测成功。
 import type { Approval, Dep, Repo, Run, Session, Snapshot, WorkItem } from '../types'
 import type { Relay } from './relays'
+import { attentionManaged } from '../workManagement'
 
 export type ConnectionState = 'demo' | 'connecting' | 'live' | 'offline' | 'unauthorized'
 
@@ -193,7 +194,7 @@ export function buildTown(snap: Snapshot, clientNow?: string): TownModel {
   if (unassigned.characters.length || unassigned.items.length || unassigned.parcels.length) buildings.push(unassigned)
   for (const b of buildings) b.hiddenCharacters = Math.max(0, b.characters.length - MAX_SEATS)
 
-  const reviewItems = items.filter((w) => w.status === 'review')
+  const reviewItems = items.filter((w) => !attentionManaged(w) && w.status === 'review')
   return {
     now: snap.now, cursor: snap.cursor, buildings, historySessions, pendingApprovals, closedApprovals, reviewItems, deps: snap.deps ?? [], relays: snap.relays ?? [],
     counts: {

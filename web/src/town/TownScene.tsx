@@ -3,6 +3,7 @@ import type { KeyboardEvent, ReactNode } from 'react'
 import { HipRoof, IsoBox, IsoTile, iso, pts, type Pt } from './iso'
 import { MAX_SEATS, characterStatusLabel, clip, itemStatusLabel, parcelPhaseLabel, type BuildingView, type CharacterView, type Highlight, type ParcelView, type TownModel } from './townModel'
 import type { WorkItem } from '../types'
+import { attentionManaged } from '../workManagement'
 
 export type Selection =
   | { kind: 'building'; key: string }
@@ -138,14 +139,14 @@ export function charMatches(c: CharacterView, h: Highlight): boolean {
   if (h === 'working') return c.status === 'working'
   if (h === 'waiting') return c.pendingApprovals.length > 0
   if (h === 'stale') return c.status === 'stale'
-  if (h === 'review') return c.item?.status === 'review'
+  if (h === 'review') return !!c.item && !attentionManaged(c.item) && c.item.status === 'review'
   return c.runs.some((r) => r.phase === 'failed')
 }
 
 // SS 里 Agent 交付表现为工作项进入 review（run.outcome 的 delivered 只在你标记完成时写入），
 // 所以待验收工作项上已结束、未失败的运行放到验收台。
 export function onReviewDesk(p: ParcelView): boolean {
-  return p.item?.status === 'review' && p.phase !== 'moving' && p.phase !== 'failed'
+  return !!p.item && !attentionManaged(p.item) && p.item.status === 'review' && p.phase !== 'moving' && p.phase !== 'failed'
 }
 
 export function parcelMatches(p: ParcelView, h: Highlight, staleSession: boolean): boolean {

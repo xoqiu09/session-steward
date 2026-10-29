@@ -1,5 +1,6 @@
 // 地图上始终要看得见的四种状态：谁在干活、等你决定、待验收、受阻。名牌、村庄名牌、小地图都用这一份计数。
 import type { Approval } from '../types'
+import { attentionManaged } from '../workManagement'
 import { onReviewDesk } from './TownScene'
 import type { BuildingView } from './townModel'
 
@@ -23,7 +24,7 @@ export function statusOf(b: BuildingView, pending: readonly Approval[]): StatusC
     working: b.characters.filter((c) => c.status === 'working').length,
     waiting: waiting.size,
     review: b.parcels.filter(onReviewDesk).length,
-    blocked: b.items.filter((w) => w.status === 'blocked').length,
+    blocked: b.items.filter((w) => !attentionManaged(w) && w.status === 'blocked').length,
   }
 }
 

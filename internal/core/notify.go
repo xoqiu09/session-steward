@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/url"
@@ -130,7 +131,8 @@ func (n *Notifier) Pending(ctx context.Context) ([]Alert, error) {
 	rows.Close()
 
 	// 与面板一致：早于最新重开边界的交接属于上一轮，迟到写入也不推送。
-	rows, err = db.QueryContext(ctx, `SELECT b.id,b.work_item_id,w.status,b.source FROM brief_entries b JOIN work_items w ON w.id=b.work_item_id
+	rows, err = db.QueryContext(ctx, `SELECT b.id,b.work_item_id,w.status,b.source,
+	 COALESCE((SELECT v FROM meta WHERE k='work_management:'||w.id),'') FROM brief_entries b JOIN work_items w ON w.id=b.work_item_id
 		WHERE b.field='next_owner' AND b.text='user' AND b.kind='agent' AND b.flagged='' AND b.created_at>?
 		AND w.status NOT IN ('done','abandoned')
 		AND NOT EXISTS (SELECT 1 FROM brief_entries newer WHERE newer.work_item_id=b.work_item_id
@@ -144,10 +146,14 @@ func (n *Notifier) Pending(ctx context.Context) ([]Alert, error) {
 	}
 	for rows.Next() {
 		var id int64
-		var item, status, source string
-		if err := rows.Scan(&id, &item, &status, &source); err != nil {
+		var item, status, source, management string
+		if err := rows.Scan(&id, &item, &status, &source, &management); err != nil {
 			rows.Close()
 			return nil, err
+		}
+		var m WorkManagement
+		if json.Unmarshal([]byte(management), &m) == nil && (m.State == "paused" || m.State == "delegated") {
+			continue
 		}
 		if w, ok := automatic[item]; ok && (w.AutomaticHistory || source == "deliver" || source == "ask" || w.AutomaticIssueKind != "reported_decision") {
 			continue
@@ -209,7 +215,7 @@ func (n *Notifier) Pending(ctx context.Context) ([]Alert, error) {
 		}
 		add(Alert{Key: "routine:" + w.ID + ":" + w.AutomaticIssueKind + ":" + w.AutomaticIssueAt, Title: "自动任务需要检查", Body: w.ID + " 出现卡点、验证失败或长时间无新活动", Link: n.link("item=" + url.QueryEscape(w.ID))})
 	}
-	return out, nil
+	return n.C.visibleProjectAlerts(ctx, out)
 }
 
 // Check 推送新的条目。先记为已发送再推送：宁可漏一条（面板队列仍在），不重复轰炸。

@@ -1,5 +1,6 @@
 import type { Approval, BriefField, Snapshot, WorkItem } from '../types'
 import { field } from '../brief'
+import { attentionManaged } from '../workManagement'
 import { itemSignal, scopedAttention, sessionBuckets, type ReportedHandoff } from '../model'
 import { periodicView, queueLanes, repoLabel, type MergeGroup } from '../workbench'
 
@@ -34,6 +35,7 @@ export interface Today {
   review: ReviewRow[]
   stuck: StuckRow[]
   running: WorkItem[]
+  managed: WorkItem[]
   acceptedSince: WorkItem[]
   unregistered: number
 }
@@ -50,7 +52,7 @@ export function evidenceOf(snap: Snapshot, w: WorkItem): { evidence: Evidence[];
     else if (mine.validation === 'failed') evidence.push({ label: `${f.title}：验证失败`, tone: 'bad', detail: mine.evidence || mine.blocker })
     else if (mine.evidence) evidence.push({ label: `${f.title}：有验证说明`, tone: 'info', detail: mine.evidence })
   }
-  if (w.merge_state === 'merged') evidence.push({ label: '已合并（Git 确认）', tone: 'ok' })
+  if (w.merge_state === 'merged') evidence.push({ label: w.merge_evidence?.method === 'github_pr' ? '已合并（GitHub PR 确认）' : '已合并（Git 确认）', tone: 'ok' })
   else if (w.merge_state === 'approved') evidence.push({ label: '合并已批准，未执行', tone: 'info' })
   if (w.branch) evidence.push({ label: `分支 ${w.branch}`, tone: 'info' })
   const grade: Grade = evidence.some((e) => e.tone === 'bad') ? 'failed' : evidence.some((e) => e.tone === 'ok') ? 'ok' : 'missing'
@@ -97,7 +99,7 @@ export function buildToday(snap: Snapshot, lastSeen: string): Today {
   const { current } = periodicView(snap)
   const stuck: StuckRow[] = []
   for (const w of current) {
-    if (taken.has(w.id) || ['done', 'abandoned', 'review'].includes(w.status)) continue
+    if (attentionManaged(w) || taken.has(w.id) || ['done', 'abandoned', 'review'].includes(w.status)) continue
     const blocker = field(w, 'blocker')
     const next = field(w, 'next')?.text
     const base = { item: w, repo: repoOf(w.id), next }
@@ -111,10 +113,11 @@ export function buildToday(snap: Snapshot, lastSeen: string): Today {
     else if (w.status === 'in_progress' && w.brief?.stale) stuck.push({ ...base, label: '很久没回报进展', tone: 'muted', reason: 'Agent 一直在动，但好一阵没有回报进展；可能卡住，也可能只是忘了回报。', at: field(w, 'progress')?.at || w.updated_at })
   }
   const stuckIds = new Set(stuck.map((s) => s.item.id))
-  const running = current.filter((w) => w.status === 'in_progress' && !taken.has(w.id) && !stuckIds.has(w.id))
+  const running = current.filter((w) => !attentionManaged(w) && w.status === 'in_progress' && !taken.has(w.id) && !stuckIds.has(w.id))
+  const managed = items.filter((w) => attentionManaged(w) && !['done', 'abandoned'].includes(w.status))
   const since = lastSeen || new Date(Date.parse(snap.now) - 86_400_000).toISOString()
   const acceptedSince = items.filter((w) => w.status === 'done' && w.updated_at > since)
   const { recent, quiet } = sessionBuckets(snap)
   const unregistered = [...recent, ...quiet].filter((s) => !s.work_item_id).length
-  return { decide, review, stuck, running, acceptedSince, unregistered }
+  return { decide, review, stuck, running, managed, acceptedSince, unregistered }
 }

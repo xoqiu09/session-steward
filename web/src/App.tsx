@@ -19,6 +19,7 @@ import { useHub, remoteDeviceOf } from './hub/hub'
 import { HubSwitch } from './hub/HubSwitch'
 import { TownView } from './town/TownView'
 import { TodayView } from './today/TodayView'
+import { ProjectsPanel } from './ProjectsPanel'
 import { buildToday } from './today/todayModel'
 import { fullPanelHref, kioskHref, parseTownRoute } from './town/route'
 
@@ -51,6 +52,7 @@ export default function App() {
   const [expandAll, setExpandAll] = useState(false)
   const [sessionScope, setSessionScope] = useState<SessionScope>('recent')
   const [attributionOpen, setAttributionOpen] = useState(false)
+  const [projectsOpen, setProjectsOpen] = useState(false)
   // 每日十分钟已经列出了关注队列的内容：侧栏默认只留详情位置，需要时再展开原来的标签页。
   const [todaySideTabs, setTodaySideTabs] = useState(false)
 
@@ -59,7 +61,9 @@ export default function App() {
     const on = () => {
       setDeep(parseDeepLink(window.location.hash))
       const r = parseTownRoute(window.location.search, window.location.hash)
-      if (r.town) setView('town')
+      // Daily-page anchors only scroll within the selected page. The native
+      // App may still have its initial ?view=town URL after a toolbar switch.
+      if (r.town && !window.location.hash.startsWith('#today-')) setView('town')
       if (r.kiosk) setRoute(r)
     }
     window.addEventListener('hashchange', on)
@@ -96,7 +100,7 @@ export default function App() {
   const openQueue = (lane: 'action' | 'review') => { setSel(null); setAttributionOpen(false); setTab('queue'); setQueueFocus(lane); setKioskQueue(true) }
   const detail = sel ? (
     sel.kind === 'item' ? (
-      <ItemDetail key={sel.id} snap={snap} id={sel.id} onClose={() => setSel(null)} onSelectSession={selectSession} />
+      <ItemDetail key={sel.id} snap={snap} id={sel.id} onClose={() => setSel(null)} onSelectSession={selectSession} onSelectItem={selectItem} />
     ) : (
       <SessionDetail key={sel.id} snap={snap} id={sel.id} onClose={() => setSel(null)} onSelectItem={selectItem} foldEvents={route.kiosk} />
     )
@@ -145,6 +149,7 @@ export default function App() {
             <strong>Session Steward</strong>
             <span className={`conn conn-${conn}`}>{conn === 'live' ? '实时' : conn === 'offline' ? '已断开，重连中' : '连接中'}</span>
           </div>
+          <button className="btn small" onClick={() => setProjectsOpen(true)}>管理项目</button>
           <select value={repoId} onChange={(e) => setRepoId(e.target.value === 'all' ? 'all' : Number(e.target.value))} aria-label="项目">
             <option value="all">全部项目</option>
             {(snap.repos ?? []).map((r) => <option key={r.id} value={r.id}>{repoLabel(snap, r.id)}</option>)}
@@ -225,6 +230,7 @@ export default function App() {
           </>
         ))}
       </aside>
+      {projectsOpen && <ProjectsPanel onClose={() => { setProjectsOpen(false); setRepoId('all'); setSel(null) }} />}
     </div>
   )
 }

@@ -111,7 +111,7 @@ export function PermissionCard({ a, snap }: { a: Approval; snap: Snapshot }) {
   )
 }
 
-function DecisionCard({ a, snap }: { a: Approval; snap: Snapshot }) {
+export function DecisionCard({ a, snap }: { a: Approval; snap: Snapshot }) {
   const s = sessionOf(snap, a.session_id)
   const act = useAction()
   const low = a.kind === 'attention'
@@ -136,31 +136,32 @@ function DecisionCard({ a, snap }: { a: Approval; snap: Snapshot }) {
   )
 }
 
-export function MergeCard({ group, snap, onSelectItem, advice }: { group: MergeGroup; snap: Snapshot; onSelectItem: (id: string) => void; advice: AdviceGroup[] }) {
+export function MergeCard({ group, snap, onSelectItem, advice, compact = false }: { group: MergeGroup; snap: Snapshot; onSelectItem: (id: string) => void; advice: AdviceGroup[]; compact?: boolean }) {
   const a = group.primary
   const p = a.payload as unknown as MergePayload
   const item = (snap.work_items ?? []).find((w) => w.id === a.work_item_id)
   const act = useAction()
   return (
     <div className="q-card">
-      <div className="q-meta">
+      {!compact && <div className="q-meta">
         <span className="pill">{a.work_item_id}</span>
         <strong className="ellipsis">{item?.title}</strong>
         <span className="muted right">{ago(a.created_at, snap.now)}</span>
-      </div>
-      <Context a={a} snap={snap} />
-      <div className="merge-members"><strong>本次合并涉及 {group.workItemIds.length} 个工作项</strong>{group.workItemIds.map(id => {
+      </div>}
+      {!compact && <Context a={a} snap={snap} />}
+      {compact && <p>请核对本次代码改动，再决定是否合入项目主分支{p.target_ref ? `（${p.target_ref}）` : ''}。</p>}
+      {(!compact || group.workItemIds.length > 1) && <div className="merge-members"><strong>本次合并涉及 {group.workItemIds.length} 个工作项</strong>{group.workItemIds.map(id => {
         const w = snap.work_items?.find(w => w.id === id)
         return <button className="btn small" key={id} onClick={() => onSelectItem(id)}>{id} · {w?.title || '工作项'} · {w ? itemStatusLabel[w.status] : '状态待核实'}</button>
-      })}<p className="hint">批准只针对下方同一源/目标提交；工作项分别验收。退回会将尚未验收的工作项退回执行中，已验收状态保留。</p></div>
+      })}<p className="hint">批准只针对下方同一源/目标提交；工作项分别验收。退回会将尚未验收的工作项退回执行中，已验收状态保留。</p></div>}
       {advice.length > 0 && <details><summary>相关进展与需你处理的回报 · {advice.reduce((n,g) => n+g.features.length+g.reported.length,0)} 条</summary>{advice.map(g => <AdvisoryCard key={g.id} group={g} snap={snap} onSelectItem={onSelectItem} />)}</details>}
-      <div className="mono small">
+      <details open={!compact} className="merge-candidate-details"><summary>{compact ? `查看合并信息${typeof p.ahead === 'number' ? ` · ${p.ahead} 个提交` : ''}` : '分支与提交信息'}</summary><div className="mono small">
         {p.source_ref} → {p.target_ref}
         <br />
         {p.ahead} 个提交 · {p.diffstat || '无改动统计'}
         <br />
         源 {p.source_head_sha?.slice(0, 10)} · 目标 {p.target_base_sha?.slice(0, 10)}
-      </div>
+      </div></details>
       {group.stale && <p className="warn-line">这组候选已失效，需要先核对最新 {p.target_ref} 并重建候选再审批。</p>}
       {!group.valid && <p className="warn-line">候选信息不完整，等待执行方更新。</p>}
       {!isRemote() && <div className="row">
@@ -180,6 +181,7 @@ export function MergeCard({ group, snap, onSelectItem, advice }: { group: MergeG
       </div>}
       {isRemote() && <p className="hint">{a.status === 'decided' ? '已批准。' : '待审批。'}{remoteReadOnlyMessage}</p>}
       {a.status === 'decided' && <MergeGate snap={snap} a={a} />}
+      {compact && <p className="hint">这里只处理代码合并，工作验收单独记录。</p>}
       <ErrorLine msg={act.error} />
     </div>
   )

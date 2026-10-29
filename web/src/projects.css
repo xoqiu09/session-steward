@@ -1,0 +1,22 @@
+.project-manager { color: #262626; background: #fafaf8; border: 1px solid #d8d6ce; border-radius: 18px; width: min(1000px, calc(100vw - 32px)); max-height: calc(100vh - 40px); padding: 24px; box-shadow: 0 24px 90px #0003; }
+.project-manager::backdrop { background: #18182066; }
+.pm-heading, .pm-tools, .pm-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.pm-heading h1 { margin: 0 0 6px; font-size: 24px; }
+.pm-heading p, .pm-explanation { color: #62635f; line-height: 1.7; }
+.pm-tools { flex-wrap: wrap; margin-top: 20px; }
+.pm-tools input { flex: 1; min-width: 180px; padding: 10px; border: 1px solid #d8d6ce; border-radius: 8px; }
+.pm-list { max-height: min(48vh, 500px); overflow: auto; border: 1px solid #dddcd6; border-radius: 10px; background: #fff; }
+.pm-project, .pm-select-all { display: flex; align-items: flex-start; gap: 12px; padding: 14px; cursor: pointer; }
+.pm-project { border-top: 1px solid #eee; }
+.pm-project.is-selected { background: #f0f0ff; }
+.pm-project input, .pm-select-all input { margin-top: 4px; flex: 0 0 auto; }
+.pm-project span { min-width: 0; }
+.pm-project small { display: block; color: #666963; margin-top: 5px; line-height: 1.5; }
+.pm-project .pm-path { overflow-wrap: anywhere; }
+.pm-project .pm-sync-error { color: #a33d24; }
+.pm-footer { position: sticky; bottom: -24px; background: #fafaf8; border-top: 1px solid #ddd; padding: 16px 0 0; margin-top: 16px; }
+.pm-confirm { max-width: 75%; text-align: right; }
+.pm-confirm p { text-align: left; line-height: 1.5; }
+.pm-confirm button { margin-left: 8px; }
+.pm-empty { padding: 24px; text-align: center; color: #74756f; }
+@media (max-width: 600px) { .project-manager { padding: 16px; } .pm-tools > button { width: 100%; } .pm-footer { bottom: -16px; flex-wrap: wrap; } .pm-confirm { max-width: 100%; } }
