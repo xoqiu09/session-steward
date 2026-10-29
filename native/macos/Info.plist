@@ -5,6 +5,7 @@
   <key>CFBundleName</key><string>Session Steward</string>
   <key>CFBundleDisplayName</key><string>Session Steward</string>
   <key>CFBundleExecutable</key><string>StewardNotifications</string>
+  <key>StewardHostBundleIdentifier</key><string>io.github.xoqiu09.session-steward.app</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleVersion</key><string>1</string>
   <key>CFBundleShortVersionString</key><string>1.0</string>

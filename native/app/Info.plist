@@ -11,6 +11,11 @@
   <key>CFBundleIconFile</key><string>Steward.icns</string>
   <key>LSMinimumSystemVersion</key><string>13.0</string>
   <key>NSHighResolutionCapable</key><true/>
+  <key>CFBundleURLTypes</key><array><dict>
+    <key>CFBundleURLName</key><string>io.github.xoqiu09.session-steward.record</string>
+    <key>CFBundleURLSchemes</key><array><string>session-steward</string></array>
+    <key>CFBundleTypeRole</key><string>Viewer</string>
+  </dict></array>
   <!-- 只连本机 127.0.0.1 上的面板（http）；不联网 -->
   <key>NSAppTransportSecurity</key><dict><key>NSAllowsLocalNetworking</key><true/></dict>
 </dict></plist>
