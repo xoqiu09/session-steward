@@ -95,7 +95,7 @@ export function ProjectManager({ projects, statuses, readOnly = false, initialSc
     <div className="pm-scopes" role="group" aria-label="项目范围">
       {(['active', 'archived', 'trash'] as const).map(scope => <button key={scope} aria-pressed={mode === scope} disabled={locked} className={mode === scope ? 'on' : ''} onClick={() => { setMode(scope); clear() }}><span>{scopeNames[scope]} {counts[scope]}</span><small>{scope === 'active' ? '显示在小镇与待办中' : scope === 'archived' ? '暂时收起，随时继续' : '已移除，可恢复到原分类'}</small></button>)}
     </div>
-    <div className="pm-tools"><input type="search" aria-label="搜索项目" placeholder={`在${scopeNames[mode]}中搜索项目名或目录`} value={query} disabled={locked} onChange={e => { setQuery(e.target.value); clear() }} /><span className="muted">{query ? `找到 ${visible.length} 个项目` : `${visible.length} 个项目`}</span></div>
+    <div className="pm-tools"><input type="search" aria-label="搜索项目" placeholder="搜索项目名或目录" value={query} disabled={locked} onChange={e => { setQuery(e.target.value); clear() }} /><span className="muted">{query ? `找到 ${visible.length} 个项目` : `${visible.length} 个项目`}</span></div>
     <p className="pm-explanation">{mode === 'trash' ? '回收站中的项目已从小镇和待办移除。恢复后回到删除前的分类，保留时间不设自动清理。' : mode === 'archived' ? '归档项目已从小镇和待办收起。在这里恢复，也可以选中后移入回收站。' : '勾选一个或多个项目，就能一起归档或删除。每一行右侧也可以单独操作。'}</p>
     <div className="pm-list" aria-label={`${scopeNames[mode]}项目`}>
       {visible.length > 0 && <label className="pm-select-all"><input type="checkbox" disabled={readOnly || locked} checked={chosen.length === visible.length} ref={el => { if (el) el.indeterminate = chosen.length > 0 && chosen.length < visible.length }} onChange={e => setSelected(new Set(e.target.checked ? visible.map(p => p.id) : []))} />全选当前显示的 {visible.length} 个项目</label>}
