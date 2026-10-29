@@ -65,7 +65,7 @@ func copyTree(src, dst string) error {
 			return errors.New("不复制符号链接")
 		}
 		if d.IsDir() {
-			return os.MkdirAll(to, 0700)
+			return os.MkdirAll(to, info.Mode().Perm()&0755)
 		}
 		info, e := d.Info()
 		if e != nil {
@@ -247,6 +247,25 @@ func prepare(app, home, mode, work string, parent int, m Manifest, servicePlist 
 		}
 		if e = copyTree(pair[0], r.Staged); e != nil {
 			return nil, e
+		}
+		if r.Existed {
+			// Retain an existing quarantine attribute; never clear system
+			// provenance to make an update launch. Apple may still reject it.
+			attrs, e := command("/usr/bin/xattr", r.Target)
+			if e != nil {
+				return nil, e
+			}
+			for _, attr := range strings.Fields(string(attrs)) {
+				if attr == "com.apple.quarantine" {
+					value, e := command("/usr/bin/xattr", "-p", attr, r.Target)
+					if e != nil {
+						return nil, e
+					}
+					if _, e = command("/usr/bin/xattr", "-w", attr, strings.TrimSpace(string(value)), r.Staged); e != nil {
+						return nil, e
+					}
+				}
+			}
 		}
 		if r.Existed {
 			r.OldDigest, e = DigestTree(r.Target)

@@ -94,12 +94,12 @@ func Extract(archive, dest string) error {
 		}
 		path := filepath.Join(dest, clean)
 		if f.FileInfo().IsDir() {
-			if e = os.MkdirAll(path, 0700); e != nil {
+			if e = os.MkdirAll(path, 0755); e != nil {
 				return e
 			}
 			continue
 		}
-		if e = os.MkdirAll(filepath.Dir(path), 0700); e != nil {
+		if e = os.MkdirAll(filepath.Dir(path), 0755); e != nil {
 			return e
 		}
 		if e = extractFile(f, path); e != nil {

@@ -31,7 +31,7 @@ App 菜单或菜单栏 → **检查更新**，看到当前版本/构建序号、
 
 **SHA256SUMS 是同源完整性校验，不是独立的发布者签名。** 固定公钥的 Ed25519 签名才是本协议的发布者真实性边界。公钥为空、错误或签名不匹配时关闭安装能力。首个启用升级的 App 必须由发布者通过现有安装流程分发并让用户确认它的公钥来源；不能靠从未签名网络响应中下载一个公钥建立信任。本地交付候选未配置生产公钥，因此不能直接进行生产内置安装。
 
-当前是 ad-hoc 代码签名、未 Apple 公证。`codesign --verify` 只能检查包内签名完整性，不代表 Apple 验证开发者或 Gatekeeper 接受新版本。独立 Ed25519 签名也不能代替 Developer ID/公证。不同 macOS/Gatekeeper 情况可能拒绝启动新版；助手会尝试恢复旧版并记录失败。代码不清除 quarantine，不使用 `spctl` 绕过、修改信任或降低系统保护。正式面向常规用户承诺无手动干预的升级前，应完成 Developer ID 签名/公证、保留嵌套组件签名，并在目标系统真实验收。
+当前是 ad-hoc 代码签名、未 Apple 公证。`codesign --verify` 只能检查包内签名完整性，不代表 Apple 验证开发者或 Gatekeeper 接受新版本。独立 Ed25519 签名也不能代替 Developer ID/公证。不同 macOS/Gatekeeper 情况可能拒绝启动新版；助手会尝试恢复旧版并记录失败。代码保留原安装已有的 quarantine 属性，不清除 quarantine，不使用 `spctl` 绕过、修改信任或降低系统保护。正式面向常规用户承诺无手动干预的升级前，应完成 Developer ID 签名/公证、保留嵌套组件签名，并在目标系统真实验收。
 
 调研过 [Sparkle 官方集成/签名要求](https://sparkle-project.org/documentation/) 与 [安全更新记录](https://sparkle-project.org/documentation/security-and-reliability/)：它是成熟方案，但新增依赖且不能单独解决本项目外部 bin、共用 launchd 与数据库恢复。当前用现有 Go 标准库与 AppKit 实现，未新增第三方依赖。Apple 分发条件参见 [Apple 官方说明](https://developer.apple.com/macos/distribution/)。本实现不是完整替代 Sparkle 的通用更新框架，后续仍需维护协议与恢复测试。
 
@@ -64,8 +64,8 @@ App 菜单或菜单栏 → **检查更新**，看到当前版本/构建序号、
 
 `internal/updater` 用随机临时测试密钥、合成清单和本地 HTTP 服务测试篡改、错误签名、重放、版本/芯片/schema、下载中断和重试、zip 越界、替换中断、写入/启动/健康检查失败、整组恢复与数据保留。随机测试密钥只存在测试进程，不是生产私钥。
 
-macOS 的真实程序/隔离服务验证需显式设置 `SS_UPDATE_TEST_BUNDLE` 指向刚构建的测试 App。用外置 Scratch 设置 TMPDIR。只有这项 opt-in 测试会临时创建独立标签的 LaunchAgent plist，结束后卸载并删除；不使用真实服务标签、不读取真实数据。测试服务的 plist 必须临时位于系统 LaunchAgents 目录（这是系统运行夹具，非报告或产物）；独立标签测试完成后卸载并删除。数据、App、程序和测试日志保留在指定外置 Scratch，合成库随测试目录清理。真实 launchd 参与，App 由测试父进程直接启动以继承已授予的外置卷访问，不弹出/批准新磁盘权限。正式 LaunchServices 重启受目标机器磁盘权限/Gatekeeper 影响，仍列为人工验收边界，不能把直接启动测试说成已通过该边界。
+macOS 的真实程序/隔离服务验证需显式设置 `SS_UPDATE_TEST_BUNDLE` 指向刚构建的测试 App，`SS_UPDATE_TEST_NATIVE=1` 启用真实 App，`SS_UPDATE_TEST_LAUNCHSERVICES=1` 使用真实系统打开/重启链路。`SS_UPDATE_TEST_INTERNAL_HOME=1` 将**合成运行数据**临时置于系统标准 Application Support 下的独立随机目录，模拟正式安装，结束后删除；这不是用户 `.steward`，也不是交付产物。新签名测试 App 直接读取外置数据可能等待系统磁盘权限提示；测试不会批准或修改此权限。配置读取超过 2 秒会显示原因并停止启动后台，不再无限等待。Swift 单独测试会模拟阻塞读取并验证超时。
 
-可复现命令：`sh scripts/test-app-update.sh /完整外置Scratch路径`。该脚本构建无生产公钥的隔离 App，运行两种模式的成功和失败恢复以及 Swift 配置读取超时测试。Swift 外壳读取配置超过 2 秒会显示问题并停止启动后台，避免权限/磁盘等待造成无响应。详细运行结果和局限见本轮交付报告。
+可复现命令：`sh scripts/test-app-update.sh /完整外置Scratch路径`。脚本构建无生产公钥的隔离 App，运行两种模式的安装成功/健康失败恢复及 Swift 配置超时。只有 opt-in 测试会临时创建独立标签的 LaunchAgent plist，结束后卸载并删除，不使用真实服务标签。测试 plist 位于系统 LaunchAgents，临时运行数据位于系统 Application Support；App、程序、构建缓存及日志位于指定外置 Scratch。所有测试数据为合成数据；双模式真实 LaunchServices 在本机通过，Intel、其他 macOS/Gatekeeper 和正式签名下载仍需发布验收。详细结果见本轮交付报告。
 
-只看窗口可设置隔离的 STEWARD_HOME 和 `STEWARD_UPDATE_UI_ONLY=1` 后运行候选的 `Contents/MacOS/SessionSteward`，此模式不启动后台和引导安装。不要直接运行普通候选去连接真实 `.steward` 做验收。完成首次生产 bootstrap、签名发布以及真实双芯片/Gatekeeper 验收之前，不能把本地自测写成用户已验收或线上升级成功。
+只看窗口可设置隔离的 STEWARD_HOME 和 `STEWARD_UPDATE_UI_ONLY=1` 后运行候选的 `Contents/MacOS/SessionSteward`，此模式不启动后台和引导安装。预览须复制到单独目录，修改为独立测试 bundle identifier 并重新 ad-hoc 签名后再运行，避免占用正式 App 标识。不要直接运行普通候选去连接真实 `.steward` 做验收。完成首次生产 bootstrap、签名发布以及真实双芯片/Gatekeeper 验收之前，不能把本地自测写成用户已验收或线上升级成功。
