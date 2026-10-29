@@ -66,6 +66,30 @@ struct PanelLinkTests {
         let standalone = root.appendingPathComponent("bin/Helper.app")
         check(notificationHost(helper: standalone, identifier: hostID, installed: [oldApp, installed])?.standardizedFileURL.path == installed.standardizedFileURL.path, "legacy App without URL receiver must be skipped")
         check(notificationHost(helper: standalone, identifier: "unrelated.application", installed: [installed]) == nil, "wrong App identity is not opened")
-        print("\(count) panel link and cold/warm navigation checks passed")
+        var version = SnapshotVersion()
+        check(version.accept(["cursor": 20]), "first snapshot")
+        check(!version.accept(["cursor": 19]), "stale snapshot cannot resurrect reminders")
+        check(!version.accept(["cursor": true]), "boolean is not a cursor")
+        check(!version.accept(["cursor": -1]), "negative cursor rejected")
+        check(!version.accept(["cursor": 20.5]), "fractional cursor rejected")
+        check(version.accept(["cursor": 1, "reset": true]), "explicit reset permits server restore")
+        let resolved = resolvedPanelTargets([
+            "approvals": [["id": "syn-pending", "status": "pending"], ["id": "syn-decided", "status": "decided"]],
+            "work_items": [
+                ["id": "SYN-REVIEW", "status": "review"], ["id": "SYN-DONE", "status": "done"],
+                ["id": "SYN-DELEGATED", "status": "blocked", "management": ["state": "delegated"]],
+                ["id": "SYN-AUTO", "status": "review", "automatic_history": true],
+                ["id": "SYN-RESUMED", "status": "in_progress", "brief": ["fields": ["next_owner": ["text": "agent", "at": "2026-10-29T00:00:00Z"]]]],
+                ["id": "SYN-WAITING", "status": "in_progress", "brief": ["fields": ["next_owner": ["text": "user", "at": "2026-10-29T00:00:00Z"]]]]
+            ],
+            "sessions": [["id": 42, "state": "running"], ["id": 43, "state": "ended"]]
+        ])
+        func has(_ kind: String, _ id: String) -> Bool { resolved.contains(PanelTarget(kind: kind, id: id)!) }
+        check(has("approval", "syn-decided") && !has("approval", "syn-pending"), "only answered approvals resolve")
+        check(has("item", "SYN-DONE") && has("item", "SYN-DELEGATED") && has("item", "SYN-AUTO"), "explicit management and quiet history resolve notices")
+        check(has("item", "SYN-RESUMED") && !has("item", "SYN-WAITING"), "actual hand-back clears input reminder")
+        check(!has("item", "SYN-REVIEW"), "continuing an agent does not accept a review")
+        check(has("session", "42") && !has("session", "43"), "session ended is not acceptance")
+        print("\(count) panel navigation, snapshot ordering and reminder lifecycle checks passed")
     }
 }

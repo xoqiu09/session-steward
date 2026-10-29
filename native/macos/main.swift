@@ -64,7 +64,15 @@ final class Notifications: NSObject, NSApplicationDelegate, UNUserNotificationCe
               let attrs = try? FileManager.default.attributesOfItem(atPath: file.path),
               attrs[.type] as? FileAttributeType == .typeRegular,
               ((attrs[.size] as? NSNumber)?.intValue ?? 65537) <= 65536,
-              let data = try? Data(contentsOf: file), let notice = try? JSONDecoder().decode(Notice.self, from: data),
+              let data = try? Data(contentsOf: file) else { return }
+        if let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any], object["action"] as? String == "reconcile" {
+            guard let entries = object["targets"] as? [[String: String]], entries.count <= 256 else { return }
+            let targets = entries.compactMap { PanelTarget(kind: $0["kind"] ?? "", id: $0["id"] ?? "") }
+            guard targets.count == entries.count else { return }
+            reconcile(Set(targets), file: file)
+            return
+        }
+        guard let notice = try? JSONDecoder().decode(Notice.self, from: data),
               !notice.id.isEmpty, notice.id.count <= 128, notice.title.count <= 256,
               notice.body.count <= 2048, panelURL(notice.link) != nil else { return }
         record("received", notice.id)
@@ -81,6 +89,22 @@ final class Notifications: NSObject, NSApplicationDelegate, UNUserNotificationCe
                 self.result(file, "permission_denied")
                 self.record("permission_denied", notice.id)
             }
+        }
+    }
+
+    func reconcile(_ resolved: Set<PanelTarget>, file: URL) {
+        center.getDeliveredNotifications { notifications in
+            let ids = notifications.compactMap { notification -> String? in
+                let request = notification.request
+                // User-invoked tests must remain available even when their sample record is complete.
+                guard !request.identifier.hasPrefix("navigation-test-"),
+                      let link = request.content.userInfo["link"] as? String,
+                      let url = panelURL(link), let target = PanelTarget.fromPanelURL(url), resolved.contains(target) else { return nil }
+                return request.identifier
+            }
+            if !ids.isEmpty { self.center.removeDeliveredNotifications(withIdentifiers: ids) }
+            self.result(file, "reconciled")
+            self.record("reconciled", String(ids.count))
         }
     }
 

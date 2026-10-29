@@ -21,6 +21,7 @@ import { SessionUsagePanel } from './ui/SessionUsagePanel'
 import { BriefReadOnly } from './ui/BriefReadOnly'
 import { WorkStatusActions } from './ui/WorkStatusActions'
 import { requestsForItem } from './ui/WorkOverview'
+import { ConversationReturn } from './ui/ConversationReturn'
 import {
   ago, freshnessLabel, itemSignal, itemStatusLabel, mergeStateLabel, nextItemId, providerLabel, repoPrefix, sessionBuckets, sessionName, sessionRepo, sessionSignal, sessionStateLabel, sessionsFor, type SessionScope,
 } from './model'
@@ -28,7 +29,7 @@ import {
 export const outcomeLabel: Record<string, string> = { delivered: '交付', failed: '失败', abandoned: '放弃', handed_off: '转交', historical: '历史关联', attribution_reverted: '已撤销归属', '': '结果待定' }
 export const bindingLabel: Record<string, string> = { manual: '人工绑定', tag: '显式标识', inherited: '继承', branch_guess: '分支推断', auto: '自动关联' }
 
-export function ItemDetail({ snap, id, onClose, onSelectSession, onSelectItem = () => {} }: { snap: Snapshot; id: string; onClose: () => void; onSelectSession: (id: number) => void; onSelectItem?: (id: string) => void }) {
+export function ItemDetail({ snap, id, onClose, onSelectSession, onSelectItem = () => {}, preferredSession }: { snap: Snapshot; id: string; onClose: () => void; onSelectSession: (id: number) => void; onSelectItem?: (id: string) => void; preferredSession?: number }) {
   const item = (snap.work_items ?? []).find((w) => w.id === id)
   const act = useAction()
   const [dep, setDep] = useState('')
@@ -45,7 +46,7 @@ export function ItemDetail({ snap, id, onClose, onSelectSession, onSelectItem = 
   const repo = (snap.repos ?? []).find((r) => r.id === item.repo_id)
 
   return (
-    <RunDesk snap={snap} item={item} remote={remote} onClose={onClose} onSelectSession={onSelectSession} actions={<WorkStatusActions key={item.id} item={item} />} attention={(() => {
+    <RunDesk snap={snap} item={item} remote={remote} onClose={onClose} onSelectSession={onSelectSession} conversation={<ConversationReturn key={item.id} snap={snap} item={item} preferred={preferredSession} />} actions={<WorkStatusActions key={item.id} item={item} />} attention={(() => {
         const requests = requestsForItem(snap, item)
         const perms = requests.filter(a => a.kind === 'permission')
         const decisions = requests.filter(a => a.kind === 'decision')
@@ -157,6 +158,7 @@ export function SessionDetail({ snap, id, onClose, onSelectItem, foldEvents = fa
         <button className="btn small right" onClick={onClose} aria-label="关闭">✕</button>
       </div>
       <h2>{name.title}</h2>
+      <ConversationReturn key={s.id} snap={snap} session={s} />
       <p className="hint">会话 #{s.id} · {name.source}{s.title && s.work_item_id ? ` · 原会话标题：${s.title}` : ''}</p>
       <p className={`work-signal signal-${signal.tone}`}><strong>{signal.label}</strong><br />{signal.reason}</p>
       {(() => {

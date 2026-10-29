@@ -26,37 +26,14 @@ extension AppDelegate {
     }
 
     private func enqueueTestNotification(_ target: PanelTarget) {
-        let directory = paths.home.appendingPathComponent("notifications")
-        let file = directory.appendingPathComponent("test-\(UUID().uuidString).stewardnotice")
-        let helper = Bundle.main.bundleURL.appendingPathComponent("Contents/MacOS/Session Steward.app")
         var link = URLComponents(url: paths.base, resolvingAgainstBaseURL: false)!
         link.path = "/"
         link.fragment = "\(target.kind.rawValue)=\(target.id)"
         let notice = ["id": "navigation-test-\(UUID().uuidString)", "title": "通知跳转测试", "body": "点击打开 \(target.id)。只查看，不会批准或验收。", "link": link.url!.absoluteString]
-        do {
-            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
-            let data = try JSONSerialization.data(withJSONObject: notice)
-            try data.write(to: file, options: .atomic)
-            try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: file.path)
-        } catch { notificationError("没能创建测试提醒：\(error.localizedDescription)"); return }
-        let configuration = NSWorkspace.OpenConfiguration()
-        configuration.activates = false
-        NSWorkspace.shared.open([file], withApplicationAt: helper, configuration: configuration) { [weak self] _, error in
-            if error != nil { DispatchQueue.main.async { self?.notificationError("没能启动通知助手。") } }
-        }
-        DispatchQueue.global(qos: .utility).async { [weak self] in
-            let result = file.appendingPathExtension("result")
-            defer { try? FileManager.default.removeItem(at: file); try? FileManager.default.removeItem(at: result) }
-            for _ in 0..<100 {
-                if let data = try? Data(contentsOf: result), let object = try? JSONSerialization.jsonObject(with: data) as? [String: String] {
-                    if object["status"] != "queued" {
-                        DispatchQueue.main.async { self?.notificationError("系统没有接受测试提醒。请在“系统设置 → 通知”中检查 Session Steward 的通知权限。") }
-                    }
-                    return
-                }
-                Thread.sleep(forTimeInterval: 0.1)
+        noticeChannel.send(notice) { [weak self] result in
+            if result?["status"] as? String != "queued" {
+                self?.notificationError("系统没有接受测试提醒。请在“系统设置 → 通知”中检查 Session Steward 的通知权限。")
             }
-            DispatchQueue.main.async { self?.notificationError("通知助手没有确认收到测试提醒。") }
         }
     }
 

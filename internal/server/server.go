@@ -52,7 +52,7 @@ func hostOnly(h string) string {
 
 // remoteBlocked：远程全局只读。新增 API 默认不能从远程写入；终端画面也仅本机可见。
 func remoteBlocked(method, path string) bool {
-	if strings.HasPrefix(path, "/api/managed") {
+	if strings.HasPrefix(path, "/api/managed") || strings.HasSuffix(path, "/conversation") {
 		return true // 包括只读终端画面：终端可能显示敏感内容
 	}
 	return method != http.MethodGet && method != http.MethodHead
@@ -184,6 +184,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/stream", s.panel(s.handleStream))
 	mux.HandleFunc("GET /api/sessions/{id}/events", s.panel(s.handleSessionEvents))
 	mux.HandleFunc("GET /api/sessions/{id}/usage", s.panel(s.handleSessionUsage))
+	mux.HandleFunc("GET /api/sessions/{id}/conversation", s.panel(s.handleConversation))
 	mux.HandleFunc("GET /api/history", s.panel(s.handleHistory))
 	// 多设备：推送和取回只认共享密钥（中心机经 Tailscale 被其他设备访问）；面板用的两个接口仍要面板登录。
 	mux.HandleFunc("POST /api/hub/push", s.handleHubPush)

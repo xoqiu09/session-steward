@@ -1,0 +1,13 @@
+.conversation-return { padding: 16px; margin: 16px 0; border: 1px solid #d9ded5; border-radius: 12px; background: #f4f7f1; }
+.conversation-return-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.conversation-return-head h3 { margin: 0 0 6px; font-size: 16px; color: #263b2d; }
+.conversation-return p { margin: 0; line-height: 1.7; font-size: 13px; color: #58665a; }
+.conversation-return-head .btn { text-decoration: none; white-space: nowrap; }
+.conversation-return-head .btn.primary { background: #263b2d; border-color: #263b2d; color: #fff; min-height: 40px; display: inline-flex; align-items: center; justify-content: center; }
+.conversation-return-head .btn.primary:hover { background: #354f3c; }
+.conversation-return-head .btn:focus-visible { outline: 2px solid #527d60; outline-offset: 3px; }
+.conversation-return-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 9px; margin-top: 12px; font-size: 12px; color: #5b655c; }
+.conversation-return-meta label { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.conversation-return-meta select { max-width: 100%; font: inherit; padding: 4px; }
+.conversation-return > .hint, .conversation-return > .error { margin-top: 10px; }
+@media (max-width: 520px) { .conversation-return-head { align-items: flex-start; gap: 12px; } .conversation-return-head .btn { width: 100%; text-align: center; } }

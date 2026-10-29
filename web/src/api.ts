@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { isRemote, remoteReadOnlyMessage } from './access'
 import type { AISummary, AttributionDecision, BriefEdit, DayDetail, Handoff, HistoryResp, HubStatus, ManagedSession, MergeJob, MergeSyncStatus, ProjectInfo, Review, SessionUsageDetail, Snapshot } from './types'
+import { snapshotRefresher } from './snapshotRefresh'
+import { publishNativeSnapshot } from './nativeBridge'
 
 export class ApiError extends Error {
   status: number
@@ -36,6 +38,7 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<T>
     const obj = data !== null && typeof data === 'object' ? (data as Record<string, unknown>) : {}
     throw new ApiError(res.status, typeof obj.error === 'string' && obj.error ? obj.error : res.statusText || `HTTP ${res.status}`, obj)
   }
+  if (method !== 'GET' && method !== 'HEAD' && typeof window !== 'undefined') window.dispatchEvent(new Event('steward:changed'))
   return data as T
 }
 
@@ -53,6 +56,7 @@ export const api = {
   hubSnapshot: () => call<Snapshot>('GET', '/api/hub/snapshot'),
   sessionEvents: (id: number) => call<Record<string, unknown>[]>('GET', `/api/sessions/${id}/events`),
   sessionUsage: (id: number) => call<SessionUsageDetail>('GET', `/api/sessions/${id}/usage`),
+  conversation: (id: number) => call<{ mode: 'app' | 'manual'; provider: string; url?: string; reason?: string }>('GET', `/api/sessions/${id}/conversation`),
   history: (days = 370) => call<HistoryResp>('GET', `/api/history?days=${days}`),
   historyDay: (date: string) => call<DayDetail>('GET', `/api/history/day?date=${encodeURIComponent(date)}`),
   bind: (sid: number, workItemId: string) => call('POST', `/api/sessions/${sid}/bind`, { work_item_id: workItemId }),
@@ -93,43 +97,56 @@ export function useSnapshot() {
   const [conn, setConn] = useState<Conn>('connecting')
   const pending = useRef(false)
   const timer = useRef<number | undefined>(undefined)
+  const reader = useRef<ReturnType<typeof snapshotRefresher> | null>(null)
 
   useEffect(() => {
-    let closed = false
-    const load = async () => {
-      try {
-        const s = await api.snapshot()
-        if (!closed) setSnap(s)
-      } catch (e) {
-        if (e instanceof ApiError && e.status === 401) setConn('unauthorized')
-      }
-    }
+    pending.current = false
+    let streamUp = false
+    const load = snapshotRefresher(api.snapshot, (s, reset) => {
+      setSnap(s)
+      publishNativeSnapshot(s, reset)
+      if (streamUp) setConn('live')
+    }, (e) => setConn(e instanceof ApiError && e.status === 401 ? 'unauthorized' : 'offline'))
+    reader.current = load
     const schedule = () => {
       if (pending.current) return
       pending.current = true
       timer.current = window.setTimeout(async () => {
         pending.current = false
-        await load()
+        await load.request()
       }, 150)
     }
-    load()
+    const refresh = () => { window.clearTimeout(timer.current); pending.current = false; void load.request() }
+    const visible = () => { if (document.visibilityState === 'visible') refresh() }
+    void load.request()
     const es = new EventSource('/api/stream')
     es.onopen = () => {
       setConn('live')
+      streamUp = true
       schedule()
     }
-    es.onerror = () => setConn((c) => (c === 'unauthorized' ? c : 'offline'))
+    es.onerror = () => { streamUp = false; setConn((c) => (c === 'unauthorized' ? c : 'offline')) }
     es.addEventListener('changes', schedule)
-    es.addEventListener('reset', schedule)
+    es.addEventListener('reset', () => { void load.reset() })
+    window.addEventListener('focus', refresh)
+    window.addEventListener('steward:foreground', refresh)
+    window.addEventListener('steward:changed', refresh)
+    document.addEventListener('visibilitychange', visible)
     // 本地时间推进（例如“长时间无活动”判断）需要定期刷新
     const tick = window.setInterval(schedule, 30_000)
     return () => {
-      closed = true
+      load.dispose()
+      reader.current = null
       es.close()
       window.clearInterval(tick)
       window.clearTimeout(timer.current)
+      pending.current = false
+      window.removeEventListener('focus', refresh)
+      window.removeEventListener('steward:foreground', refresh)
+      window.removeEventListener('steward:changed', refresh)
+      document.removeEventListener('visibilitychange', visible)
     }
   }, [])
 
-  return { snap, conn, reload: () => api.snapshot().then(setSnap) }
+  return { snap, conn, reload: () => reader.current?.request() ?? Promise.resolve() }
 }

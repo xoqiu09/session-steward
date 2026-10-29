@@ -128,19 +128,30 @@ extension Notification.Name {
 
 // MARK: - 窗口
 
+private final class SnapshotReceiver: NSObject, WKScriptMessageHandler {
+    weak var owner: TownWindow?
+    func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+        owner?.receiveSnapshot(message)
+    }
+}
+
 final class TownWindow: NSObject, WKNavigationDelegate, NSWindowDelegate {
     let window: NSWindow
     let web: WKWebView
     let paths: Paths
+    var onSnapshot: (([String: Any]) -> Void)?
+    private let receiver = SnapshotReceiver()
 
     init(paths: Paths) {
         self.paths = paths
         let config = WKWebViewConfiguration()
         config.websiteDataStore = .default()
+        config.userContentController.add(receiver, name: "stewardSnapshot")
         web = WKWebView(frame: .zero, configuration: config)
         window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1280, height: 820),
                           styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
         super.init()
+        receiver.owner = self
         window.title = "Session Steward"
         window.contentView = web
         window.setFrameAutosaveName("SessionStewardMain")
@@ -167,6 +178,20 @@ final class TownWindow: NSObject, WKNavigationDelegate, NSWindowDelegate {
     func show() {
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    fileprivate func receiveSnapshot(_ message: WKScriptMessage) {
+        guard message.frameInfo.isMainFrame, let url = message.frameInfo.request.url,
+              url.scheme == "http", url.host == paths.base.host, url.port == paths.base.port,
+              let snapshot = message.body as? [String: Any], snapshot["cursor"] is NSNumber,
+              snapshot["work_items"] is [[String: Any]], snapshot["approvals"] is [[String: Any]],
+              JSONSerialization.isValidJSONObject(snapshot),
+              let data = try? JSONSerialization.data(withJSONObject: snapshot), data.count <= 2_000_000 else { return }
+        onSnapshot?(snapshot)
+    }
+
+    func refreshWhenActive() {
+        web.evaluateJavaScript("window.dispatchEvent(new Event('steward:foreground'))", completionHandler: nil)
     }
 
     func showMessage(_ text: String) {
@@ -302,6 +327,10 @@ final class StatusMenu: NSObject {
     private let hooksItem = NSMenuItem(title: "安装 hooks…", action: nil, keyEquivalent: "")
     private let reminderItem = NSMenuItem(title: "显示顶部提醒（刘海 / 浮层）", action: nil, keyEquivalent: "")
     private var polling = false
+    private var pollAgain = false
+    private var version = SnapshotVersion()
+    private var generation = 0
+    private var lastWebSnapshot = Date.distantPast
     weak var app: AppDelegate?
     private(set) var pending = -1
 
@@ -389,27 +418,42 @@ final class StatusMenu: NSObject {
     }
 
     /// 读快照里待处理的审批数。拿不到（服务没起来、没登录信息）时显示“—”。
-    func poll() {
-        guard !polling else { return }
+    func consumeSnapshot(_ snapshot: [String: Any], fromWeb: Bool = false) {
+        guard version.accept(snapshot) else { return }
+        if fromWeb {
+            lastWebSnapshot = Date()
+            if snapshot["reset"] as? Bool == true { generation += 1 }
+        }
+        let approvals = snapshot["approvals"] as? [[String: Any]] ?? []
+        show(approvals.filter { $0["status"] as? String == "pending" }.count)
+        app?.updateAttention(AttentionState.snapshot(snapshot))
+        app?.noticeReconciler.update(snapshot)
+    }
+
+    func poll(force: Bool = false) {
+        if polling { if force { pollAgain = true }; return }
+        if !force && Date().timeIntervalSince(lastWebSnapshot) < 8 { return }
         guard let token = paths.token() else { app?.updateAttention(AttentionState()); return show(nil) }
         polling = true
-        let includeAttention = app?.topReminderEnabled ?? false
+        let started = generation
+        let requestedAt = Date()
         var req = URLRequest(url: paths.base.appendingPathComponent("api/snapshot"))
         req.timeoutInterval = 5
         req.setValue("steward_panel=\(token)", forHTTPHeaderField: "Cookie")
         URLSession.shared.dataTask(with: req) { [weak self] data, resp, _ in
-            var n: Int? = nil
-            var attention = AttentionState()
+            var snapshot: [String: Any]?
             if (resp as? HTTPURLResponse)?.statusCode == 200, let data,
                let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-                let approvals = obj["approvals"] as? [[String: Any]] ?? []
-                n = approvals.filter { ($0["status"] as? String) == "pending" }.count
-                if includeAttention { attention = AttentionState.snapshot(obj) }
+                snapshot = obj
             }
             DispatchQueue.main.async {
-                self?.polling = false
-                self?.show(n)
-                if includeAttention { self?.app?.updateAttention(attention) }
+                guard let self else { return }
+                self.polling = false
+                if started == self.generation, let snapshot { self.consumeSnapshot(snapshot) }
+                else if snapshot == nil && self.lastWebSnapshot < requestedAt {
+                    self.show(nil); self.app?.updateAttention(AttentionState())
+                }
+                if self.pollAgain { self.pollAgain = false; self.poll(force: true) }
             }
         }.resume()
     }
@@ -440,6 +484,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let paths = Paths.load()
     lazy var backend = Backend(paths: paths)
     lazy var town = TownWindow(paths: paths)
+    lazy var noticeChannel = NativeNoticeChannel(home: paths.home, helper: Bundle.main.bundleURL.appendingPathComponent("Contents/MacOS/Session Steward.app"))
+    lazy var noticeReconciler = NativeNoticeReconciler(channel: noticeChannel)
     var status: StatusMenu?
     var mode: Mode = .own
     private var navigation = PanelNavigation()
@@ -485,6 +531,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         buildMainMenu()
         status = StatusMenu(paths: paths) { [weak self] path in self?.town.open(path: path) }
         status?.app = self
+        town.onSnapshot = { [weak self] snapshot in self?.status?.consumeSnapshot(snapshot, fromWeb: true) }
         configureAttention()
         NotificationCenter.default.addObserver(forName: .backendStopped, object: nil, queue: .main) { [weak self] _ in self?.backendStopped() }
         startBackend()
@@ -584,6 +631,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         if !flag { town.show() }
         return true
+    }
+
+    func applicationDidBecomeActive(_ notification: Notification) {
+        status?.poll(force: true)
+        town.refreshWhenActive()
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }

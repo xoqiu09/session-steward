@@ -63,6 +63,7 @@ export default function App() {
   const [todaySideTabs, setTodaySideTabs] = useState(false)
 
   const [deep, setDeep] = useState<Deep>(() => parseDeepLink(window.location.hash))
+  const [notificationSession, setNotificationSession] = useState<number | undefined>(undefined)
   useEffect(() => {
     const on = () => {
       setDeep(parseDeepLink(window.location.hash))
@@ -79,6 +80,7 @@ export default function App() {
   useEffect(() => {
     if (!snap || !deep) return
     const target = resolveDeepLink(snap, deep)
+    setNotificationSession(deep.kind === 'approval' ? (snap.approvals ?? []).find(a => a.id === deep.id)?.session_id ?? undefined : undefined)
     if (target) { setAttributionOpen(false); setSel(target) } else if (deep.kind === 'approval') { setSel(null); setTab('queue') }
     setDeep(null)
     history.replaceState(null, '', window.location.pathname + window.location.search)
@@ -101,12 +103,12 @@ export default function App() {
   const attributionRecords = scopedAttributions(snap, repoId, provider)
   const attributionPending = attributionRecords.filter((a) => a.status === 'pending' && !a.plan.historical).length
   const openAttributions = () => { setSel(null); setAttributionOpen(true) }
-  const selectItem = (id: string) => { setAttributionOpen(false); setSel({ kind: 'item', id }) }
+  const selectItem = (id: string) => { setAttributionOpen(false); setNotificationSession(undefined); setSel({ kind: 'item', id }) }
   const selectSession = (id: number) => { setAttributionOpen(false); setSel({ kind: 'session', id }) }
   const openQueue = (lane: 'action' | 'review') => { setSel(null); setAttributionOpen(false); setTab('queue'); setQueueFocus(lane); setKioskQueue(true) }
   const detail = sel ? (
     sel.kind === 'item' ? (
-      <ItemDetail key={sel.id} snap={snap} id={sel.id} onClose={() => setSel(null)} onSelectSession={selectSession} onSelectItem={selectItem} />
+      <ItemDetail key={sel.id} snap={snap} id={sel.id} onClose={() => setSel(null)} onSelectSession={selectSession} onSelectItem={selectItem} preferredSession={notificationSession} />
     ) : (
       <SessionDetail key={sel.id} snap={snap} id={sel.id} onClose={() => setSel(null)} onSelectItem={selectItem} foldEvents={route.kiosk} />
     )

@@ -1,8 +1,8 @@
 import Foundation
 
 /// A notification can select a record. It cannot contain credentials or perform an action.
-struct PanelTarget: Equatable {
-    enum Kind: String { case item, approval, session }
+struct PanelTarget: Hashable {
+    enum Kind: String, Hashable { case item, approval, session }
     let kind: Kind
     let id: String
 
