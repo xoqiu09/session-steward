@@ -234,12 +234,18 @@ func githubRepository(raw string) string {
 	if strings.HasPrefix(raw, "git@github.com:") {
 		host = "github.com"
 		path = strings.TrimPrefix(raw, "git@github.com:")
+	} else if strings.HasPrefix(raw, "git@ssh.github.com:") {
+		host = "github.com"
+		path = strings.TrimPrefix(raw, "git@ssh.github.com:")
 	} else {
 		u, err := url.Parse(raw)
 		if err != nil {
 			return ""
 		}
 		host, path = u.Hostname(), strings.TrimPrefix(u.Path, "/")
+		if host == "ssh.github.com" && u.Scheme == "ssh" {
+			host = "github.com"
+		}
 	}
 	if host != "github.com" {
 		return ""
@@ -275,7 +281,7 @@ func resolvedGithubRepository(ctx context.Context, raw string) string {
 	}
 	for _, line := range strings.Split(string(b), "\n") {
 		f := strings.Fields(line)
-		if len(f) == 2 && f[0] == "hostname" && f[1] == "github.com" {
+		if len(f) == 2 && f[0] == "hostname" && (f[1] == "github.com" || f[1] == "ssh.github.com") {
 			return githubRepository("git@github.com:" + raw[colon+1:])
 		}
 	}
