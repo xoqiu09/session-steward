@@ -45,6 +45,7 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<T>
 export const api = {
   projects: () => call<ProjectInfo[]>('GET', '/api/projects'),
   archiveProjects: (ids: number[], archived: boolean) => call('POST', '/api/projects/archive', { ids, archived }),
+  trashProjects: (ids: number[], trashed: boolean) => call('POST', '/api/projects/trash', { ids, trashed }),
   mergeSync: () => call<MergeSyncStatus[]>('GET', '/api/merge-sync'),
   confirmFeatureScope: (repo: number, id: string, revision: string) => call('POST', `/api/features/${repo}/${encodeURIComponent(id)}/confirm-scope`, { revision }),
   acceptFeature: (repo: number, id: string, candidate: string, revision: string, decision: 'accepted' | 'changes_requested') => call('POST', `/api/features/${repo}/${encodeURIComponent(id)}/accept`, { candidate, revision, decision }),

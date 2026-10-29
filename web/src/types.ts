@@ -12,6 +12,8 @@ export interface Repo {
 
 export interface ProjectInfo extends Repo {
   archived_at: string
+  trashed_at?: string
+  trashed_from_archive?: boolean
   open_items: number
   sessions: number
   running: number
@@ -187,6 +189,8 @@ export interface Approval {
 }
 
 export interface Snapshot {
+  archived_projects?: number
+  trashed_projects?: number
   /** 只在前端的小镇切片里有：最近一天里，工作在不同 Agent 之间的交接和接力（小推车）。 */
   relays?: import('./town/relays').Relay[]
   /** 只在“全部设备”合并视图里有。 */

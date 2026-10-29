@@ -19,7 +19,7 @@ import { useHub, remoteDeviceOf } from './hub/hub'
 import { HubSwitch } from './hub/HubSwitch'
 import { TownView } from './town/TownView'
 import { TodayView } from './today/TodayView'
-import { ProjectsPanel } from './ProjectsPanel'
+import { ProjectsPanel, type ProjectScope } from './ProjectsPanel'
 import { buildToday } from './today/todayModel'
 import { fullPanelHref, kioskHref, parseTownRoute, worldTownRoute } from './town/route'
 import { shownNo } from './hub/ids'
@@ -58,7 +58,7 @@ export default function App() {
   const [expandAll, setExpandAll] = useState(false)
   const [sessionScope, setSessionScope] = useState<SessionScope>('recent')
   const [attributionOpen, setAttributionOpen] = useState(false)
-  const [projectsOpen, setProjectsOpen] = useState(false)
+  const [projectsOpen, setProjectsOpen] = useState<ProjectScope | null>(null)
   // 每日十分钟已经列出了关注队列的内容：侧栏默认只留详情位置，需要时再展开原来的标签页。
   const [todaySideTabs, setTodaySideTabs] = useState(false)
 
@@ -115,6 +115,13 @@ export default function App() {
   ) : null
   const queuePanel = <Queue snap={snap} onSelectItem={selectItem} repoId={repoId} provider={provider} reviewOpen={queueFocus === 'review'} onReviewOpenChange={open => setQueueFocus(open ? 'review' : 'action')} />
 
+  const projectShortcuts = <span className="pm-shortcuts" role="group" aria-label="项目管理入口">
+    <button className="btn small" onClick={() => setProjectsOpen('active')}>项目管理</button>
+    <button className="btn small pm-counter" title="查看和恢复本机已归档的项目" onClick={() => setProjectsOpen('archived')}>已归档 {snap.archived_projects ?? 0}</button>
+    <button className="btn small pm-counter" title="查看和恢复本机已删除的项目" onClick={() => setProjectsOpen('trash')}>回收站 {snap.trashed_projects ?? 0}</button>
+  </span>
+  const projectManager = projectsOpen && <ProjectsPanel initialScope={projectsOpen} device={hub.status?.device} onClose={() => { setProjectsOpen(null); setRepoId('all'); setSel(null) }} />
+
   if (route.kiosk) {
     const drawer = sel != null || kioskQueue
     const closeDrawer = () => { setSel(null); setKioskQueue(false) }
@@ -127,12 +134,14 @@ export default function App() {
             onSelectRepo={(id) => setRepoId(id)} onAllRepos={() => setRepoId('all')} onQueue={openQueue} kiosk rotateMs={route.rotateMs} paused={drawer} noReplay={hub.scope === 'all'}
             bar={<span className="kiosk-tools">
               {hubSwitch}
+              {projectShortcuts}
               {todayEntry}
               <span className={`conn conn-${conn}`}>{conn === 'live' ? '实时' : conn === 'offline' ? '已断开，重连中' : '连接中'}</span>
               {isRemote() && <span className="remote-tag" title={remoteReadOnlyMessage}>远程只读</span>}
               <a className="btn small" href={fullPanelHref(path, null)} title="回到 Session Steward 完整面板">退出桌面模式</a>
             </span>} />
         </main>
+        {projectManager}
         {drawer && <div className="kiosk-scrim" onClick={closeDrawer} aria-hidden />}
         {drawer && (
           <aside className="side kiosk-drawer" role="dialog" aria-modal="true" aria-label={sel ? '详情' : '关注队列'}>
@@ -157,7 +166,7 @@ export default function App() {
             <strong>Session Steward</strong>
             <span className={`conn conn-${conn}`}>{conn === 'live' ? '实时' : conn === 'offline' ? '已断开，重连中' : '连接中'}</span>
           </div>
-          <button className="btn small" onClick={() => setProjectsOpen(true)}>管理项目</button>
+          {projectShortcuts}
           <select value={repoId} onChange={(e) => setRepoId(e.target.value === 'all' ? 'all' : Number(e.target.value))} aria-label="项目">
             <option value="all">全部项目</option>
             {(snap.repos ?? []).map((r) => <option key={r.id} value={r.id}>{repoLabel(snap, r.id)}</option>)}
@@ -238,7 +247,7 @@ export default function App() {
           </>
         ))}
       </aside>
-      {projectsOpen && <ProjectsPanel onClose={() => { setProjectsOpen(false); setRepoId('all'); setSel(null) }} />}
+      {projectManager}
     </div>
   )
 }
