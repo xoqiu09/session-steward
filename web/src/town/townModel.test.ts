@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest'
 import { MAX_SEATS, buildTown, changedKeys, characterStatus, clip, mergeSnapshot, runPhase, townSignature } from './townModel'
 import { demoSnapshot, fakeSession } from './fixtures'
 import type { Run, Session, Snapshot } from '../types'
+import { HUB_STRIDE } from '../hub/ids'
 
 const chars = (snap: Snapshot) => buildTown(snap).buildings.flatMap((b) => b.characters)
 const parcels = (snap: Snapshot) => buildTown(snap).buildings.flatMap((b) => b.parcels)
@@ -10,6 +11,14 @@ describe('buildTown（合成快照）', () => {
   test('同 provider 的多个会话是不同角色', () => {
     const codex = chars(demoSnapshot).filter((c) => c.session.provider === 'codex')
     expect(codex.map((c) => c.key)).toEqual(['session-21', 'session-22'])
+  })
+
+  test('全部设备里其他电脑的会话，名牌写那台电脑上的编号，不露出合并时加的偏移', () => {
+    const remote = fakeSession({ id: 2 * HUB_STRIDE + 76, provider: 'claude', state: 'running' })
+    const snap = { ...demoSnapshot, sessions: [...(demoSnapshot.sessions ?? []), remote] }
+    const c = chars(snap).find((x) => x.session.id === remote.id)!
+    expect(c.name).toMatch(/ #76$/)
+    expect(c.key).toBe(`session-${remote.id}`)
   })
 
   test('重复的 Run 记录只产生一个包裹，并保留已结束的那条', () => {

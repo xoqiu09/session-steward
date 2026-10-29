@@ -10,6 +10,7 @@
 import type { Approval, Dep, Repo, Run, Session, Snapshot, WorkItem } from '../types'
 import type { Relay } from './relays'
 import { attentionManaged } from '../workManagement'
+import { shownNo } from '../hub/ids'
 
 export type ConnectionState = 'demo' | 'connecting' | 'live' | 'offline' | 'unauthorized'
 
@@ -177,7 +178,7 @@ export function buildTown(snap: Snapshot, clientNow?: string): TownModel {
   const characters: CharacterView[] = currentSessions.map((s) => {
     const pending = pendingApprovals.filter((a) => a.session_id === s.id)
     return {
-      key: `session-${s.id}`, session: s, status: characterStatus(s, pending, now), name: `${providerLabel(s)} #${s.id}`,
+      key: `session-${s.id}`, session: s, status: characterStatus(s, pending, now), name: `${providerLabel(s)} #${shownNo(s.id)}`,
       item: itemById.get(s.work_item_id) ?? null, pendingApprovals: pending, runs: parcels.filter((p) => p.run.session_id === s.id),
     }
   })

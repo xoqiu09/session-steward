@@ -22,6 +22,7 @@ import { TodayView } from './today/TodayView'
 import { ProjectsPanel } from './ProjectsPanel'
 import { buildToday } from './today/todayModel'
 import { fullPanelHref, kioskHref, parseTownRoute } from './town/route'
+import { shownNo } from './hub/ids'
 
 type Tab = 'queue' | 'items' | 'sessions' | 'launch' | 'review'
 type Sel = { kind: 'item'; id: string } | { kind: 'session'; id: number } | null
@@ -129,7 +130,7 @@ export default function App() {
         {drawer && (
           <aside className="side kiosk-drawer" role="dialog" aria-modal="true" aria-label={sel ? '详情' : '关注队列'}>
             <div className="kiosk-drawer-head">
-              <strong>{sel ? (sel.kind === 'item' ? `工作项 ${sel.id}` : `会话 #${sel.id}`) : '关注队列'}</strong>
+              <strong>{sel ? (sel.kind === 'item' ? `工作项 ${sel.id}` : `会话 #${shownNo(Number(sel.id))}`) : '关注队列'}</strong>
               <a className="btn small" href={fullPanelHref(path, sel)}>在完整面板打开</a>
               <button className="btn small" onClick={closeDrawer} autoFocus>关闭</button>
             </div>

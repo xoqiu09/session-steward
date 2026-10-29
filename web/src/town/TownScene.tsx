@@ -4,6 +4,7 @@ import { HipRoof, IsoBox, IsoTile, iso, pts, type Pt } from './iso'
 import { MAX_SEATS, characterStatusLabel, clip, itemStatusLabel, parcelPhaseLabel, type BuildingView, type CharacterView, type Highlight, type ParcelView, type TownModel } from './townModel'
 import type { WorkItem } from '../types'
 import { attentionManaged } from '../workManagement'
+import { shownNo } from '../hub/ids'
 
 export type Selection =
   | { kind: 'building'; key: string }
@@ -573,7 +574,7 @@ export function Parcel({ at, p, stale, moving, selected, dimClass, onSelect, lab
   return (
     <g style={{ transform: `translate(${at[0]}px,${at[1]}px)` }}
       className={`town-obj town-move town-parcel${moving ? ' is-moving' : ''}${selected ? ' is-selected' : ''}${dimClass}`}
-      aria-label={`包裹：运行 #${p.run.id} 第 ${p.run.attempt} 次，${state}`} {...activate(onSelect)}>
+      aria-label={`包裹：运行 #${shownNo(p.run.id)} 第 ${p.run.attempt} 次，${state}`} {...activate(onSelect)}>
       <g className="town-pop">
         <g className={moving ? 'town-slide' : undefined}>
           <ellipse className="town-pulse" rx="15" ry="7" fill="none" stroke="#ff9f1a" strokeWidth="2.5" />
@@ -662,7 +663,7 @@ export function DecisionBoard({ place, model, isSel, dimClass, onSelect }: { pla
       {cards.map((a, i) => {
         const cy = top + 36 + i * 34
         const sel = isSel(a.id)
-        const sess = a.session_id != null ? `#${a.session_id}` : ''
+        const sess = a.session_id != null ? `#${shownNo(a.session_id)}` : ''
         return (
           <g key={a.id} className={`town-obj town-card${sel ? ' is-selected' : ''}`} aria-label={`待决定 ${a.id}：${a.preview}`} {...activate(() => onSelect({ kind: 'approval', key: a.id }))}>
             <rect x={x - 62} y={cy} width="124" height="28" rx="3" fill="#fffbe6" stroke={sel ? '#2d6cdf' : '#c9a227'} strokeWidth={sel ? 2.5 : 1} transform={`rotate(${i % 2 ? 1.5 : -1.5} ${x} ${cy + 14})`} />
