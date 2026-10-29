@@ -138,7 +138,7 @@ App 打开就是小镇的世界地图。
 
 ## 更新与卸载
 
-- **App**：下载新版本替换“应用程序”里的旧版；从源码打包的，`git pull --ff-only` 后重新运行 `sh scripts/build-app.sh` 再替换。
+- **App**：菜单“检查更新…”可查看、下载并由你点击安装重启；发布者需先接入固定公钥和签名清单。未接入签名的本地候选/旧版仍使用手动替换。服务同步、失败恢复、当前 ad-hoc 签名限制和发布接入见 [内置升级说明](docs/in-app-update.zh-CN.md)。
 - **命令行版**：`git pull --ff-only`，重新构建，再运行 `bin/steward install` 和 `bin/steward service restart`。`install` 会把新的 `steward-hook` 复制到 `~/.steward/bin/`，不重新运行的话 hooks 还在用旧版本。
 - **卸载 App**：菜单栏选“卸载 hooks…”，Claude Code / Codex 的配置会恢复原样；再“退出并停止采集”，把 App 拖进废纸篓。
 - **卸载命令行版**：`bin/steward service uninstall && bin/steward uninstall`。

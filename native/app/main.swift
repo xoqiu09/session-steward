@@ -5,41 +5,6 @@ import AppKit
 import ServiceManagement
 import WebKit
 
-// MARK: - 路径与配置
-
-struct Paths {
-    /// 数据目录：和命令行版本一样，STEWARD_HOME 优先，否则 ~/.steward。
-    let home: URL
-    /// App 里带的 steward 程序。
-    let steward: URL
-    /// 面板地址（来自 config.json 的 listen，缺省 127.0.0.1:7788）。
-    let listen: String
-
-    static func load() -> Paths {
-        let env = ProcessInfo.processInfo.environment
-        let home = env["STEWARD_HOME"].map { URL(fileURLWithPath: $0) }
-            ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".steward")
-        var listen = "127.0.0.1:7788"
-        if let data = try? Data(contentsOf: home.appendingPathComponent("config.json")),
-           let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-           let l = obj["listen"] as? String, !l.isEmpty {
-            listen = l
-        }
-        let steward = Bundle.main.bundleURL.appendingPathComponent("Contents/MacOS/steward")
-        return Paths(home: home, steward: steward, listen: listen)
-    }
-
-    var base: URL { URL(string: "http://\(listen)")! }
-    var tokenFile: URL { home.appendingPathComponent("panel.token") }
-    func token() -> String? {
-        (try? String(contentsOf: tokenFile, encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
-    }
-}
-
-extension String {
-    var nilIfEmpty: String? { isEmpty ? nil : self }
-}
-
 // MARK: - 后台服务
 
 /// 管理 steward serve。App 自己启动的才归它管（退出时停掉）；已经有别的在跑时只共用，不另起一个。
@@ -77,6 +42,7 @@ final class Backend {
         let p = Process()
         p.executableURL = paths.steward
         p.arguments = ["serve"]
+        p.environment = ProcessInfo.processInfo.environment.merging(["STEWARD_HOME": paths.home.path]) { _, new in new }
         p.standardOutput = log
         p.standardError = log
         p.terminationHandler = { [weak self] proc in
@@ -112,6 +78,7 @@ final class Backend {
         let p = Process()
         p.executableURL = paths.steward
         p.arguments = args
+        p.environment = ProcessInfo.processInfo.environment.merging(["STEWARD_HOME": paths.home.path]) { _, new in new }
         let pipe = Pipe()
         p.standardOutput = pipe
         p.standardError = pipe
@@ -224,6 +191,8 @@ enum Hooks {
 extension AppDelegate {
     /// 首次打开：说明要改哪些文件，同意才装；然后问要不要开机启动，并提示 tmux。
     func onboardIfNeeded() {
+        if (ProcessInfo.processInfo.environment["STEWARD_UPDATE_NO_ONBOARD"] == "1" || ProcessInfo.processInfo.arguments.contains("--update-no-onboard")),
+           paths.home.standardizedFileURL.path != FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".steward").path { return }
         let key = pref("onboarded")
         guard !UserDefaults.standard.bool(forKey: key) else { return }
         UserDefaults.standard.set(true, forKey: key)
@@ -321,6 +290,7 @@ final class StatusMenu: NSObject {
         menu.addItem(.separator())
         loginItem.action = #selector(toggleLogin)
         loginItem.target = self
+        menu.addItem(withTitle: "检查更新…", action: #selector(AppDelegate.checkUpdates), keyEquivalent: "").target = NSApp.delegate
         menu.addItem(loginItem)
         hooksItem.target = self
         hooksItem.action = #selector(hooksAction)
@@ -418,8 +388,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     lazy var town = TownWindow(paths: paths)
     var status: StatusMenu?
     var mode: Mode = .own
+    var installingUpdate = false
+    lazy var updates = UpdateWindow(app: self)
+    @objc func checkUpdates() { updates.show() }
 
     func applicationDidFinishLaunching(_ note: Notification) {
+        // Isolated UI validation never touches onboarding, hooks or a backend.
+        if ProcessInfo.processInfo.environment["STEWARD_UPDATE_UI_ONLY"] == "1",
+           paths.home.standardizedFileURL.path != FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".steward").path {
+            buildMainMenu(); updates.show(); return
+        }
+        if let error = paths.configurationError {
+            buildMainMenu(); town.showMessage(error); return
+        }
         // 已经开着一个 App：把它叫到前面，自己退出，避免两个 App 抢着管后台服务
         let mine = NSRunningApplication.runningApplications(withBundleIdentifier: Bundle.main.bundleIdentifier ?? "")
         if let other = mine.first(where: { $0 != NSRunningApplication.current }) {
@@ -431,6 +412,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         status = StatusMenu(paths: paths) { [weak self] path in self?.town.open(path: path) }
         status?.app = self
         NotificationCenter.default.addObserver(forName: .backendStopped, object: nil, queue: .main) { [weak self] _ in self?.backendStopped() }
+        updates.inspectRecovery()
+        if updates.recovery { updates.show(); return }
+        updates.observeInstallation()
         startBackend()
     }
 
@@ -511,6 +495,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func backendStopped() {
+        if installingUpdate { return }
         // App 自己的服务意外退出：提示，不自动无限重启。
         town.showMessage("后台服务已停止。可以从菜单“文件 → 重新启动服务”再试，日志在 \(paths.home.path)/logs/app-serve.log。")
     }
@@ -532,6 +517,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 
     func applicationWillTerminate(_ note: Notification) {
+        updates.cancelDownload()
         backend.stop() // 只停 App 自己启动的服务
     }
 
@@ -540,6 +526,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let appItem = NSMenuItem()
         let appMenu = NSMenu()
         appMenu.addItem(withTitle: "关于 Session Steward", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
+        appMenu.addItem(withTitle: "检查更新…", action: #selector(checkUpdates), keyEquivalent: "").target = self
         appMenu.addItem(.separator())
         appMenu.addItem(withTitle: "隐藏", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
         appMenu.addItem(.separator())
