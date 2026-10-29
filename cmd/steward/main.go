@@ -230,8 +230,8 @@ func serve() error {
 	if cfg.NotifyMacOS && runtime.GOOS == "darwin" {
 		mac := &notify.MacOS{Dialog: cfg.NotifyDialog}
 		if exe, err := os.Executable(); err == nil {
-			app := filepath.Join(filepath.Dir(exe), "Session Steward.app")
-			if info, err := os.Stat(app); err == nil && info.IsDir() {
+			home, _ := os.UserHomeDir()
+			if app := notify.NativeApp(exe, []string{"/Applications", filepath.Join(home, "Applications")}); app != "" {
 				mac.AppPath, mac.SpoolDir = app, config.Path("notifications")
 			}
 		}

@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strconv"
@@ -17,11 +18,13 @@ const archivePrefix = "repo_archive:"
 // work-item acceptance, or the event ledger; old binaries can still open the DB.
 type ProjectInfo struct {
 	Repo
-	ArchivedAt string `json:"archived_at"`
-	OpenItems  int    `json:"open_items"`
-	Sessions   int    `json:"sessions"`
-	Running    int    `json:"running"`
-	Pending    int    `json:"pending"`
+	ArchivedAt         string `json:"archived_at"`
+	TrashedAt          string `json:"trashed_at,omitempty"`
+	TrashedFromArchive bool   `json:"trashed_from_archive,omitempty"`
+	OpenItems          int    `json:"open_items"`
+	Sessions           int    `json:"sessions"`
+	Running            int    `json:"running"`
+	Pending            int    `json:"pending"`
 }
 
 func (c *Core) Projects(ctx context.Context) ([]ProjectInfo, error) {
@@ -29,8 +32,9 @@ func (c *Core) Projects(ctx context.Context) ([]ProjectInfo, error) {
 	 (SELECT COUNT(*) FROM work_items w WHERE w.repo_id=r.id AND w.status NOT IN ('done','abandoned')),
 	 (SELECT COUNT(*) FROM sessions s WHERE s.repo_id=r.id),
 	 (SELECT COUNT(*) FROM sessions s WHERE s.repo_id=r.id AND s.data_source='live' AND s.state IN ('running','waiting_permission')),
-	 (SELECT COUNT(*) FROM approvals a WHERE a.repo_id=r.id AND a.status='pending')
+	 (SELECT COUNT(*) FROM approvals a WHERE a.repo_id=r.id AND a.status='pending'), COALESCE(t.v,'')
 	 FROM repos r LEFT JOIN meta m ON m.k='repo_archive:'||r.id
+	 LEFT JOIN meta t ON t.k='repo_trash:'||r.id
 	 WHERE r.id NOT IN (SELECT repo_id FROM repo_aliases) ORDER BY r.name,r.id`)
 	if err != nil {
 		return nil, err
@@ -39,8 +43,17 @@ func (c *Core) Projects(ctx context.Context) ([]ProjectInfo, error) {
 	out := []ProjectInfo{}
 	for rows.Next() {
 		var p ProjectInfo
-		if err := rows.Scan(&p.ID, &p.Name, &p.CommonDir, &p.IsGit, &p.TargetRef, &p.ArchivedAt, &p.OpenItems, &p.Sessions, &p.Running, &p.Pending); err != nil {
+		var raw string
+		if err := rows.Scan(&p.ID, &p.Name, &p.CommonDir, &p.IsGit, &p.TargetRef, &p.ArchivedAt, &p.OpenItems, &p.Sessions, &p.Running, &p.Pending, &raw); err != nil {
 			return nil, err
+		}
+		if raw != "" {
+			var info projectTrash
+			if json.Unmarshal([]byte(raw), &info) == nil && info.At != "" {
+				p.TrashedAt, p.TrashedFromArchive = info.At, info.ArchivedAt != ""
+			} else {
+				p.TrashedAt = "unknown"
+			}
 		}
 		out = append(out, p)
 	}
@@ -69,6 +82,11 @@ func (c *Core) ArchiveProjects(ctx context.Context, ids []int64, archived bool) 
 				return err
 			}
 			canonical[id] = true
+			if raw, err := projectMeta(tx, trashPrefix+strconv.FormatInt(id, 10)); err != nil {
+				return err
+			} else if raw != "" {
+				return fmt.Errorf("%w: 项目在回收站，请先恢复", ErrConflict)
+			}
 		}
 		for id := range canonical {
 			key := archivePrefix + strconv.FormatInt(id, 10)
@@ -92,7 +110,7 @@ func (c *Core) ArchiveProjects(ctx context.Context, ids []int64, archived bool) 
 }
 
 func archivedProjects(tx *sql.Tx) (map[int64]bool, error) {
-	rows, err := tx.Query(`SELECT k FROM meta WHERE k LIKE 'repo_archive:%' AND v<>''`)
+	rows, err := tx.Query(`SELECT k FROM meta WHERE (k LIKE 'repo_archive:%' OR k LIKE 'repo_trash:%') AND v<>''`)
 	if err != nil {
 		return nil, err
 	}
@@ -103,7 +121,7 @@ func archivedProjects(tx *sql.Tx) (map[int64]bool, error) {
 		if err := rows.Scan(&key); err != nil {
 			return nil, err
 		}
-		id, err := strconv.ParseInt(strings.TrimPrefix(key, archivePrefix), 10, 64)
+		id, err := strconv.ParseInt(strings.TrimPrefix(strings.TrimPrefix(key, archivePrefix), trashPrefix), 10, 64)
 		if err == nil {
 			out[id] = true
 		}
@@ -129,6 +147,12 @@ func projectVisibility(tx *sql.Tx, s *Snapshot) error {
 		return err
 	}
 	s.ArchivedProjects = len(hidden)
+	trash, err := trashedProjectIDs(tx)
+	if err != nil {
+		return err
+	}
+	s.TrashedProjects = len(trash)
+	s.ArchivedProjects -= s.TrashedProjects
 	items, sessions := map[string]bool{}, map[int64]bool{}
 	repoHidden := func(id *int64) bool { return id != nil && hidden[*id] }
 	for _, w := range s.WorkItems {

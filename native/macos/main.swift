@@ -10,15 +10,8 @@ struct Notice: Codable {
 
 // Notifications only navigate. They never carry a token, execute a command or decide an approval.
 func panelURL(_ text: String) -> URL? {
-    guard let u = URLComponents(string: text), u.scheme == "http",
-          ["127.0.0.1", "localhost", "::1"].contains((u.host ?? "").trimmingCharacters(in: CharacterSet(charactersIn: "[]"))),
-          u.user == nil, u.password == nil, u.query == nil,
-          u.path == "/" || u.path == "", let fragment = u.percentEncodedFragment,
-          let fields = URLComponents(string: "?" + fragment)?.queryItems, fields.count == 1,
-          ["item", "approval", "session"].contains(fields[0].name),
-          let value = fields[0].value, !value.isEmpty
-    else { return nil }
-    return u.url
+    guard let url = URL(string: text), PanelTarget.fromPanelURL(url) != nil else { return nil }
+    return url
 }
 
 final class Notifications: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
@@ -29,6 +22,8 @@ final class Notifications: NSObject, NSApplicationDelegate, UNUserNotificationCe
     override init() {
         super.init()
         center.delegate = self
+        let view = UNNotificationAction(identifier: "OPEN_STEWARD", title: "查看详情", options: [.foreground])
+        center.setNotificationCategories([UNNotificationCategory(identifier: "STEWARD_RECORD", actions: [view], intentIdentifiers: [])])
     }
 
     func record(_ kind: String, _ id: String) {
@@ -58,6 +53,10 @@ final class Notifications: NSObject, NSApplicationDelegate, UNUserNotificationCe
         sender.reply(toOpenOrPrint: .success)
     }
 
+    func application(_ application: NSApplication, open urls: [URL]) {
+        for url in urls where url.isFileURL { receive(url) }
+    }
+
     func receive(_ file: URL) {
         // Only process private files in Steward's own spool, never arbitrary documents or URLs.
         guard file.deletingLastPathComponent().standardizedFileURL == directory.standardizedFileURL,
@@ -65,19 +64,47 @@ final class Notifications: NSObject, NSApplicationDelegate, UNUserNotificationCe
               let attrs = try? FileManager.default.attributesOfItem(atPath: file.path),
               attrs[.type] as? FileAttributeType == .typeRegular,
               ((attrs[.size] as? NSNumber)?.intValue ?? 65537) <= 65536,
-              let data = try? Data(contentsOf: file), let notice = try? JSONDecoder().decode(Notice.self, from: data),
+              let data = try? Data(contentsOf: file) else { return }
+        if let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any], object["action"] as? String == "reconcile" {
+            guard let entries = object["targets"] as? [[String: String]], entries.count <= 256 else { return }
+            let targets = entries.compactMap { PanelTarget(kind: $0["kind"] ?? "", id: $0["id"] ?? "") }
+            guard targets.count == entries.count else { return }
+            reconcile(Set(targets), file: file)
+            return
+        }
+        guard let notice = try? JSONDecoder().decode(Notice.self, from: data),
               !notice.id.isEmpty, notice.id.count <= 128, notice.title.count <= 256,
               notice.body.count <= 2048, panelURL(notice.link) != nil else { return }
+        record("received", notice.id)
         center.getNotificationSettings { settings in
+            self.record("authorization_\(settings.authorizationStatus.rawValue)", notice.id)
             if settings.authorizationStatus == .notDetermined {
                 self.center.requestAuthorization(options: [.alert, .sound]) { allowed, _ in
-                    if allowed { self.enqueue(notice, file) } else { self.result(file, "permission_denied") }
+                    if allowed { self.enqueue(notice, file) }
+                    else { self.result(file, "permission_denied"); self.record("permission_denied", notice.id) }
                 }
             } else if settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional {
                 self.enqueue(notice, file)
             } else {
                 self.result(file, "permission_denied")
+                self.record("permission_denied", notice.id)
             }
+        }
+    }
+
+    func reconcile(_ resolved: Set<PanelTarget>, file: URL) {
+        center.getDeliveredNotifications { notifications in
+            let ids = notifications.compactMap { notification -> String? in
+                let request = notification.request
+                // User-invoked tests must remain available even when their sample record is complete.
+                guard !request.identifier.hasPrefix("navigation-test-"),
+                      let link = request.content.userInfo["link"] as? String,
+                      let url = panelURL(link), let target = PanelTarget.fromPanelURL(url), resolved.contains(target) else { return nil }
+                return request.identifier
+            }
+            if !ids.isEmpty { self.center.removeDeliveredNotifications(withIdentifiers: ids) }
+            self.result(file, "reconciled")
+            self.record("reconciled", String(ids.count))
         }
     }
 
@@ -88,6 +115,7 @@ final class Notifications: NSObject, NSApplicationDelegate, UNUserNotificationCe
         content.body = notice.body
         content.sound = .default
         content.userInfo = ["link": notice.link]
+        content.categoryIdentifier = "STEWARD_RECORD"
         let request = UNNotificationRequest(identifier: notice.id, content: content, trigger: nil)
         center.add(request) { error in
             self.result(file, error == nil ? "queued" : "delivery_failed")
@@ -103,11 +131,30 @@ final class Notifications: NSObject, NSApplicationDelegate, UNUserNotificationCe
     func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse,
                                 withCompletionHandler completionHandler: @escaping () -> Void) {
         defer { completionHandler() }
-        guard response.actionIdentifier == UNNotificationDefaultActionIdentifier,
+        guard [UNNotificationDefaultActionIdentifier, "OPEN_STEWARD"].contains(response.actionIdentifier),
               let text = response.notification.request.content.userInfo["link"] as? String,
               let url = panelURL(text) else { return }
         DispatchQueue.main.async {
-            self.record(NSWorkspace.shared.open(url) ? "opened" : "open_failed", response.notification.request.identifier)
+            self.openRecord(url, id: response.notification.request.identifier)
+        }
+    }
+
+    func openRecord(_ url: URL, id: String) {
+        guard let target = PanelTarget.fromPanelURL(url) else { return }
+        let identifier = Bundle.main.object(forInfoDictionaryKey: "StewardHostBundleIdentifier") as? String
+            ?? "io.github.xoqiu09.session-steward.app"
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        var installed = [URL(fileURLWithPath: "/Applications/Session Steward.app"), home.appendingPathComponent("Applications/Session Steward.app")]
+        if let registered = NSWorkspace.shared.urlForApplication(withBundleIdentifier: identifier) { installed.append(registered) }
+        guard let app = notificationHost(helper: Bundle.main.bundleURL, identifier: identifier, installed: installed) else {
+            record(NSWorkspace.shared.open(url) ? "opened_browser" : "open_failed", id)
+            return
+        }
+        let config = NSWorkspace.OpenConfiguration()
+        config.activates = true
+        NSWorkspace.shared.open([target.appURL(port: url.port ?? 80)], withApplicationAt: app, configuration: config) { _, error in
+            if error == nil { self.record("opened_app", id) }
+            else { self.record("open_failed", id) }
         }
     }
 }

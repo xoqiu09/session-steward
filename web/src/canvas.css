@@ -1,0 +1,48 @@
+.work-canvas { display: flex; flex-direction: column; height: 100%; min-height: 440px; background: #f4f5f1; }
+.canvas-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 20px; padding: 15px 20px; background: #fcfcf9; border-bottom: 1px solid var(--line); }
+.canvas-heading { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 12px; }
+.canvas-heading h2 { font-size: 17px; margin: 0; font-weight: 650; letter-spacing: .01em; }
+.canvas-heading > span { font-size: 12px; color: var(--muted); }
+.canvas-tools { display: flex; flex-wrap: wrap; gap: 7px; align-items: center; }
+.canvas-tools select { border: 1px solid var(--line); border-radius: 7px; padding: 6px 8px; background: white; max-width: 200px; min-width: 0; }
+.canvas-tools .btn { padding: 6px 10px; }
+.canvas-surface { flex: 1; min-height: 300px; position: relative; }
+.canvas-project-box { height: 100%; width: 100%; border: 1px solid #dce1d7; border-radius: 14px; background: rgba(253,254,250,.8); }
+.canvas-project-head { width: 100%; height: 54px; display: flex; flex-direction: column; gap: 6px; pointer-events: auto; }
+.canvas-project-toggle { display: flex; gap: 8px; align-items: center; width: 100%; padding: 0; border: 0; background: transparent; text-align: left; cursor: pointer; min-width: 0; }
+.canvas-project-toggle > strong { font-size: 14px; font-weight: 650; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.canvas-project-toggle > span:first-child { color: #5e6e59; }
+.canvas-project-total { color: var(--muted); font-size: 11px; white-space: nowrap; }
+.canvas-project-meta { display: flex; align-items: center; gap: 7px; overflow: hidden; font-size: 11px; color: var(--muted); white-space: nowrap; }
+.canvas-project-meta > span { padding: 2px 5px; border-radius: 4px; }
+.canvas-run { color: #28633f; background: #e8f1e6; }
+.canvas-action { color: #83540d; background: #fff1d8; }
+.canvas-review { color: #63339a; background: #f1eafa; }
+.canvas-blocked { color: #a13332; background: #f9eae7; }
+.canvas-attribution { border: 0; padding: 2px 0; color: #315fa0; background: transparent; cursor: pointer; font-size: 11px; text-decoration: underline; text-underline-offset: 3px; }
+.work-canvas .card { width: 280px; height: 220px; padding: 12px 13px; gap: 7px; border-radius: 9px; box-shadow: 0 2px 5px rgba(30,40,25,.035); }
+.work-canvas .card-signal, .work-canvas .card-progress, .work-canvas .card-src, .work-canvas .card-foot { flex-shrink: 0; }
+.work-canvas .card:hover { border-color: #9aa994; box-shadow: 0 3px 12px rgba(30,40,25,.09); }
+.work-canvas .card-title { font-size: 14px; line-height: 1.5; min-height: 42px; }
+.work-canvas .card-signal { font-size: 11px; line-height: 1.6; }
+.work-canvas .card-progress { font-size: 12px; line-height: 1.6; }
+.work-canvas .card-foot { gap: 6px; min-height: 18px; }
+.work-canvas .card-time { font-size: 10px; }
+.canvas-bottom-tools { position: absolute; z-index: 10; bottom: 16px; left: 20px; right: 20px; display: flex; justify-content: space-between; gap: 10px; align-items: center; pointer-events: none; }
+.canvas-bottom-tools > * { pointer-events: auto; box-shadow: 0 2px 8px #2333190d; background: #fffffff2; border: 1px solid #dce1d7; border-radius: 9px; }
+.canvas-zoom { display: flex; align-items: center; padding: 2px; }
+.canvas-zoom button { width: 34px; height: 32px; border: 0; background: transparent; border-radius: 6px; cursor: pointer; font-size: 18px; }
+.canvas-zoom button:hover { background: #eef1e9; }
+.canvas-zoom output { min-width: 48px; text-align: center; font-size: 12px; font-variant-numeric: tabular-nums; }
+.canvas-dependencies { display: flex; align-items: center; gap: 6px; font-size: 12px; padding: 9px 11px; }
+.canvas-caption { margin: 0; padding: 9px 20px; background: #fcfcf9; border-top: 1px solid var(--line); color: var(--muted); font-size: 11px; line-height: 1.6; }
+.canvas-overview-hint { color: #83540d; background: #fff7e8; }
+@media (max-width: 899px) {
+  .app:has(.work-canvas) { grid-template-columns: minmax(0, 1fr); }
+  .work-canvas { min-height: 580px; }
+  .canvas-toolbar { padding: 12px; gap: 10px; }
+  .canvas-tools { width: 100%; }
+  .canvas-tools select { flex: 1; }
+  .canvas-caption { padding: 8px 12px; }
+  .canvas-bottom-tools { left: 12px; right: 12px; }
+}

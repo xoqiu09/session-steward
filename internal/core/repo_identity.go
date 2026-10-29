@@ -122,10 +122,7 @@ func (c *Core) ReconcileRepos(ctx context.Context) error {
 				if _, err = tx.Exec(`UPDATE repo_identities SET repo_id=? WHERE repo_id=?`, winner.id, e.id); err != nil {
 					return err
 				}
-				if _, err = tx.Exec(`INSERT INTO meta(k,v) SELECT 'repo_archive:'||?,v FROM meta WHERE k='repo_archive:'||? ON CONFLICT(k) DO NOTHING`, winner.id, e.id); err != nil {
-					return err
-				}
-				if _, err = tx.Exec(`DELETE FROM meta WHERE k='repo_archive:'||?`, e.id); err != nil {
+				if err = moveProjectVisibility(tx, e.id, winner.id); err != nil {
 					return err
 				}
 				if _, err = tx.Exec(`INSERT INTO repo_identities(identity,repo_id) VALUES(?,?) ON CONFLICT(identity) DO UPDATE SET repo_id=excluded.repo_id`, e.identity, winner.id); err != nil {

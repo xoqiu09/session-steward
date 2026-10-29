@@ -26,6 +26,11 @@ jobs:
           if [ "$RUNNER_OS" = macOS ]; then brew install tmux; else sudo apt-get update && sudo apt-get install -y tmux; fi
       - run: go vet ./...
       - run: go test -race ./...
+      - name: Native notification navigation and attention surface
+        if: runner.os == 'macOS'
+        run: |
+          sh scripts/test-native.sh
+          APP_OUT="$RUNNER_TEMP/steward-native-app" sh scripts/build-app.sh
       - name: Cross-compile
         run: |
           for os in darwin linux windows; do

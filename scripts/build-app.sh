@@ -17,8 +17,8 @@ CGO_ENABLED=0 GOOS=darwin GOARCH=$arch go build -trimpath -ldflags "-s -w -X mai
 # 通知助手：steward 在自己旁边找 “Session Steward.app”
 NOTIFIER_TARGET=$target sh scripts/build-notifier.sh "$app/Contents/MacOS/Session Steward.app" >/dev/null
 # App 外壳
-xcrun swiftc -swift-version 5 -target "$target-apple-macos13.0" -O -framework AppKit -framework WebKit -framework ServiceManagement \
-	native/app/*.swift -o "$app/Contents/MacOS/SessionSteward"
+xcrun swiftc -swift-version 5 -target "$target-apple-macos13.0" -O -framework AppKit -framework WebKit -framework ServiceManagement -framework SwiftUI -framework QuartzCore \
+	native/shared/*.swift native/app/*.swift -o "$app/Contents/MacOS/SessionSteward"
 sed "s#<string>0.0.0</string>#<string>${version#v}</string>#" native/app/Info.plist > "$app/Contents/Info.plist"
 cp native/macos/Resources/Steward.icns "$app/Contents/Resources/Steward.icns"
 # 由内到外 ad-hoc 签名（未公证；首次打开需要“右键 → 打开”）
