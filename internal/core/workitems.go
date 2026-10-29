@@ -100,15 +100,32 @@ func (c *Core) CreateWorkItem(ctx context.Context, in WorkItemInput) error {
 }
 
 type WorkItemPatch struct {
-	Title      *string `json:"title"`
-	Acceptance *string `json:"acceptance"`
-	Branch     *string `json:"branch"`
-	Status     *string `json:"status"`
-	RepoID     *int64  `json:"repo_id"`
+	Management *WorkManagement `json:"management"`
+	Title      *string         `json:"title"`
+	Acceptance *string         `json:"acceptance"`
+	Branch     *string         `json:"branch"`
+	Status     *string         `json:"status"`
+	RepoID     *int64          `json:"repo_id"`
 }
 
 // UpdateWorkItem 是人工操作，可以把工作项改为任意状态（包括待验收、已完成）。
 func (c *Core) UpdateWorkItem(ctx context.Context, id string, p WorkItemPatch) error {
+	if p.Management != nil && p.Status != nil {
+		return fmt.Errorf("%w: 管理操作和执行状态请分开提交", ErrBadRequest)
+	}
+	if err := validateManagement(p.Management); err != nil {
+		return err
+	}
+	if p.Management != nil {
+		switch p.Management.State {
+		case "accepted":
+			v := "done"
+			p.Status = &v
+		case "active", "delegated":
+			v := "in_progress"
+			p.Status = &v
+		}
+	}
 	if p.Status != nil && !itemStatuses[*p.Status] {
 		return fmt.Errorf("%w: 未知状态 %s", ErrBadRequest, *p.Status)
 	}
@@ -141,6 +158,9 @@ func (c *Core) UpdateWorkItem(ctx context.Context, id string, p WorkItemPatch) e
 		}
 		if p.Status != nil {
 			set, args = append(set, "status=?"), append(args, *p.Status)
+			if _, err := tx.Exec(`DELETE FROM meta WHERE k=?`, managementKey(id)); err != nil {
+				return err
+			}
 		}
 		args = append(args, id)
 		if _, err := tx.Exec(`UPDATE work_items SET `+strings.Join(set, ",")+` WHERE id=?`, args...); err != nil {
@@ -159,7 +179,12 @@ func (c *Core) UpdateWorkItem(ctx context.Context, id string, p WorkItemPatch) e
 			if *p.Status == "abandoned" {
 				outcome = "abandoned"
 			}
-			tx.Exec(`UPDATE runs SET ended_at=?, outcome=? WHERE work_item_id=? AND ended_at=''`, now, outcome, id)
+			if _, err := tx.Exec(`UPDATE runs SET ended_at=?, outcome=? WHERE work_item_id=? AND ended_at=''`, now, outcome, id); err != nil {
+				return err
+			}
+		}
+		if err := writeManagement(tx, id, now, p.Management); err != nil {
+			return err
 		}
 		return store.Touch(tx, now, "work_item", id)
 	})

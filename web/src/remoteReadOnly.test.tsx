@@ -34,7 +34,7 @@ describe('remote read-only controls', () => {
     expect(html).not.toContain('>验收通过<')
     expect(html).not.toContain('>修改标题 / 项目<')
     expect(html).not.toContain('aria-label="上游编号"')
-    expect(html).toMatch(/<button(?![^>]*disabled)[^>]*aria-label="关闭运行台"/)
+    expect(html).toMatch(/<button(?![^>]*disabled)[^>]*aria-label="关闭工作详情"/)
     const list = renderToStaticMarkup(<WorkItemsPanel snap={snap} items={[item]} repoId="all" onSelect={() => {}} />)
     expect(list).toMatch(/<button[^>]*disabled=""[^>]*>新建工作项<\/button>/)
     expect(list).toMatch(/<button(?![^>]*disabled)[^>]*class="session-entry"/)

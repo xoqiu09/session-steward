@@ -2,6 +2,7 @@
 import { iso, type Pt } from './iso'
 import type { BuildingView } from './townModel'
 import type { WorldPlan } from './clusters'
+import { attentionManaged } from '../workManagement'
 
 /** 一个街区占的格子（含右侧和前方的道路）。 */
 export const CELL_W = 11
@@ -82,7 +83,7 @@ export function spiralCells(n: number, around: Cell = { cx: 0, cy: 0 }, skip: Re
 /** 排序：等你处理的 > 有人在干活的 > 有待验收的 > 其余，组内保持原顺序。 */
 export function districtOrder(buildings: readonly BuildingView[], needsYou: (b: BuildingView) => boolean): BuildingView[] {
   const score = (b: BuildingView) =>
-    needsYou(b) ? 0 : b.characters.some((c) => c.status === 'working') ? 1 : b.items.some((w) => w.status === 'review') ? 2 : b.characters.length ? 3 : 4
+    needsYou(b) ? 0 : b.characters.some((c) => c.status === 'working') ? 1 : b.items.some((w) => !attentionManaged(w) && w.status === 'review') ? 2 : b.characters.length ? 3 : 4
   return buildings.map((b, i) => ({ b, i, s: score(b) })).sort((x, y) => x.s - y.s || x.i - y.i).map((x) => x.b)
 }
 

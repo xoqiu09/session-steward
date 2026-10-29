@@ -4,7 +4,7 @@ package gitx
 import (
 	"bytes"
 	"context"
-	"errors"
+	"fmt"
 	"os/exec"
 	"path/filepath"
 	"strconv"
@@ -23,14 +23,23 @@ type Location struct {
 
 // Run 执行只读 git 命令。
 func Run(ctx context.Context, dir string, args ...string) (string, error) {
+	return RunEnv(ctx, dir, nil, args...)
+}
+
+// RunEnv uses process-local overrides; credentials never enter arguments or Git config files.
+func RunEnv(ctx context.Context, dir string, env []string, args ...string) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "git", append([]string{"-C", dir}, args...)...)
-	cmd.Env = append(cmd.Environ(), "GIT_OPTIONAL_LOCKS=0", "GIT_TERMINAL_PROMPT=0")
+	cmd.Env = append(cmd.Environ(), env...)
+	cmd.Env = append(cmd.Env, "GIT_OPTIONAL_LOCKS=0", "GIT_TERMINAL_PROMPT=0")
 	var out, errb bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &errb
 	if err := cmd.Run(); err != nil {
-		return "", errors.New(strings.TrimSpace(errb.String()))
+		if message := strings.TrimSpace(errb.String()); message != "" {
+			return "", fmt.Errorf("%w: %s", err, message)
+		}
+		return "", err
 	}
 	return strings.TrimSpace(out.String()), nil
 }

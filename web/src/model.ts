@@ -1,5 +1,6 @@
 import type { Approval, BriefField, Dep, ItemStatus, Session, Snapshot, WorkItem } from './types'
 import { briefMatches } from './brief'
+import { attentionManaged, managementLabel } from './workManagement'
 import { attentionCount, mergeGroups, organizeAttention, periodicView, queueLanes, repoLabel } from './workbench'
 
 export const itemStatusLabel: Record<ItemStatus, string> = {
@@ -123,6 +124,7 @@ export function itemSignal(snap: Snapshot, w: WorkItem): Signal {
   const ids = new Set(sessions.map((s) => s.id))
   const approval = approvalSignal(openApprovals(snap).filter((a) => a.work_item_id === w.id || (a.session_id != null && ids.has(a.session_id))))
   if (approval) return approval
+  if (attentionManaged(w)) return { label: managementLabel(w), reason: w.management?.note || '由你手动收起日常提醒，可在管理状态中恢复', tone: 'muted' }
   if (w.automatic_issue) return { label: '自动任务需检查', reason: w.automatic_issue, tone: 'warn' }
   if (w.automatic_history) return { label: '已自动归档', reason: 'Agent 回报本轮完成；按已配置规则收进历史，无需逐轮验收', tone: 'muted' }
   const handoff = reportedHandoffs(snap, w)[0]
@@ -140,7 +142,7 @@ export interface ReportedHandoff { item: WorkItem; session?: Session; owner: Bri
 
 // Explicit next_owner=user is a reported handoff, never a tool permission grant.
 export function reportedHandoffs(snap: Snapshot, w: WorkItem): ReportedHandoff[] {
-  if (['done', 'abandoned'].includes(w.status)) return []
+  if (attentionManaged(w) || ['done', 'abandoned'].includes(w.status)) return []
   const live = (value?: BriefField) => value && !value.flagged && value.text ? value : undefined
   const sources = w.brief?.by_session ? Object.values(w.brief.by_session) : w.brief ? [w.brief] : []
   const out: ReportedHandoff[] = []
@@ -177,7 +179,7 @@ export function featureHandoffs(s: Snapshot) {
     const item = s.work_items?.find(w => w.id === p.work_item_id)
     // A generic input may be an integration reminder, not the requested decision.
     // Feature handoffs close on the Agent's new feature report, not unrelated chat activity.
-    return p.next_owner === 'user' && !['done', 'abandoned'].includes(item?.status || '') && (p.active || p.candidate === feature.candidate)
+    return p.next_owner === 'user' && !(item && attentionManaged(item)) && !['done', 'abandoned'].includes(item?.status || '') && (p.active || p.candidate === feature.candidate)
   }).map(contribution => ({ feature, contribution })))
 }
 
@@ -195,8 +197,8 @@ export function attention(s: Snapshot) {
     merge: by('merge'),
     attention: by('attention'),
     reported,
-    blocked: items.filter((w) => !!w.automatic_issue || w.status === 'blocked' || (!w.ready && !['done', 'abandoned'].includes(w.status))),
-    review: items.filter((w) => w.status === 'review' && w.completion_policy !== 'auto_history'),
+    blocked: items.filter((w) => !attentionManaged(w) && (!!w.automatic_issue || w.status === 'blocked' || (!w.ready && !['done', 'abandoned'].includes(w.status)))),
+    review: items.filter((w) => !attentionManaged(w) && w.status === 'review' && w.completion_policy !== 'auto_history'),
   }
 }
 

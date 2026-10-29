@@ -1,10 +1,11 @@
 import type { ReactNode } from 'react'
 import type { Session, Snapshot, WorkItem } from '../types'
 import { AgentBadge, CopyButton } from '../bits'
-import { ago, itemSignal, itemStatusLabel, providerLabel, sessionStateLabel } from '../model'
+import { ago, itemStatusLabel, providerLabel, sessionStateLabel } from '../model'
 import { attemptsOf } from '../brief'
 import { StatusChip } from './StatusChip'
 import { CommandBlock } from './CommandBlock'
+import { WorkOverview } from './WorkOverview'
 import { candidateOf, clock, commandsOf, currentRuns, runsBySession, shortSha, staleWriters, timelineOf, type RunState } from './runDeskModel'
 import { shownNo } from '../hub/ids'
 
@@ -28,11 +29,10 @@ function Section({ index, title, children, tone }: { index: string; title: strin
 }
 
 // 工作项运行台：当前 vs 候选 → 旧运行与交接 → 时间线 → 命令/结果。只读展示，写操作由调用方按权限放在 children 中。
-export function RunDesk({ snap, item, remote, onClose, onSelectSession, attention, children }: {
-  snap: Snapshot; item: WorkItem; remote: boolean; onClose: () => void; onSelectSession: (id: number) => void; attention?: ReactNode; children?: ReactNode
+export function RunDesk({ snap, item, remote, onClose, onSelectSession, attention, actions, children }: {
+  snap: Snapshot; item: WorkItem; remote: boolean; onClose: () => void; onSelectSession: (id: number) => void; attention?: ReactNode; actions?: ReactNode; children?: ReactNode
 }) {
   const repo = (snap.repos ?? []).find((r) => r.id === item.repo_id)
-  const signal = itemSignal(snap, item)
   const sessions = new Map((snap.sessions ?? []).map((s) => [s.id, s]))
   const attempts = attemptsOf(snap, item.id)
   const runs = currentRuns(snap, item)
@@ -47,25 +47,25 @@ export function RunDesk({ snap, item, remote, onClose, onSelectSession, attentio
     <div className="run-desk detail">
       <header className="rd-head">
         <div className="rd-head-top">
-          <p className="rd-kicker">工作项 · RUN DESK</p>
-          <button className="btn small rd-close" onClick={onClose} aria-label="关闭运行台">✕</button>
+          <p className="rd-kicker">工作详情</p>
+          <div className="rd-head-actions">{actions}<button className="btn small rd-close" onClick={onClose} aria-label="关闭工作详情">✕</button></div>
         </div>
         <h2>{item.title}</h2>
         <p className="rd-sub">
-          <code>{item.id}</code> · {repo?.name ?? '未关联项目'}{item.branch ? <> · <code>{item.branch}</code></> : null}
+          <code>{item.id}</code> · {repo?.name ?? '未关联项目'}
           <span className={`rd-pill st-${item.status}`}>{item.automatic_history ? '已自动归档' : itemStatusLabel[item.status]}</span>
           <span className="rd-muted">更新 {ago(item.updated_at, snap.now)}</span>
         </p>
-        <div className="rd-env" role="group" aria-label="访问与版本">
-          {remote ? <span className="rd-access rd-access-ro"><span aria-hidden="true">⛔</span> 远程 · 全局只读</span>
-            : <span className="rd-access"><span aria-hidden="true">●</span> 本机 · 可操作</span>}
-          <span className="rd-chip rd-unknown" title="快照未提供服务构建信息"><span aria-hidden="true">?</span>运行版本：待核实</span>
-        </div>
-        <p className={`rd-signal signal-${signal.tone}`}><strong>{signal.label}</strong> {signal.reason}</p>
       </header>
       {remote && <p className="rd-banner" role="note">远程只读：此页写入口已移除。启动、审批、交接、合并与简报纠错需在本机面板进行。</p>}
+      <WorkOverview snap={snap} item={item} />
       {attention}
-
+      {writers.length > 0 && <p className="rd-alert" role="note">交接后仍有 {writers.length} 个原会话可以继续写入。需要排查时展开下方“执行记录”。</p>}
+      <details className="rd-inspection"><summary>执行记录 <small>会话、分支、版本、时间线和命令</small></summary>
+      <p className="rd-note">这些资料用于核对执行过程；没有记录时不代表工作失败。</p>
+      <div className="rd-env" role="group" aria-label="访问权限">
+        {remote ? <span className="rd-access rd-access-ro">远程 · 全局只读</span> : <span className="rd-access">本机 · 可操作</span>}
+      </div>
       <div className="rd-grid">
         <nav className="rd-nav" aria-label="会话层级">
           <p className="rd-nav-title">运行层级</p>
@@ -117,7 +117,7 @@ export function RunDesk({ snap, item, remote, onClose, onSelectSession, attentio
                 <code className="rd-ref">{cand.target.ref}</code><Sha sha={cand.target.sha} />
                 {cand.target.moved && <StatusChip state="unknown" label="目标已前进，需重建候选" />}
               </dd></div>}
-              <div><dt>运行版本</dt><dd><span className="rd-missing">待核实：快照未提供面板服务的构建版本，不能据此判断当前运行的是哪个候选。</span></dd></div>
+              <div><dt>运行版本</dt><dd><span className="rd-missing">运行版本：待核实。快照未提供面板服务的构建版本，不能据此判断当前运行的是哪个候选。</span></dd></div>
             </dl>
           </Section>
 
@@ -159,7 +159,8 @@ export function RunDesk({ snap, item, remote, onClose, onSelectSession, attentio
           </Section>
         </div>
       </div>
-      {children && <div className="rd-more">{children}</div>}
+      </details>
+      {children && <details className="rd-more"><summary>更多资料与管理 <small>功能验收、完整简报、用量与交接</small></summary><div className="rd-more-body">{children}</div></details>}
     </div>
   )
 }

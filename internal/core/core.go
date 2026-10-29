@@ -49,6 +49,7 @@ type Core struct {
 	jobMu       sync.Mutex
 	jobsClosing bool
 	mergeMu     sync.Mutex // 批准/撤回、扫描与最终更新 Git 在服务内串行。
+	mergeSyncMu sync.Mutex // 网络核对不占用 mergeMu 或数据库事务。
 
 	mu      sync.Mutex
 	waiters map[string]chan Decision // 等待中的权限请求，key 为 approval id

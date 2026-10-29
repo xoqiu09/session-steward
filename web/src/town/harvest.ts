@@ -2,6 +2,7 @@
 // 待开始=种子，Agent 在干=发芽，等你决定=缺水，待验收=熟了，受阻=生虫。熟了的由你一棵一棵收（验收）。
 import type { Approval, WorkItem } from '../types'
 import type { BuildingView } from './townModel'
+import { attentionManaged } from '../workManagement'
 
 export type CropStage = 'seed' | 'sprout' | 'thirsty' | 'ripe' | 'bug'
 
@@ -36,7 +37,7 @@ export function cropStage(item: WorkItem, b: BuildingView, pending: readonly App
 }
 
 export function cropsOf(b: BuildingView, pending: readonly Approval[], now: number): { crops: Crop[]; more: number } {
-  const open = b.items.filter((w) => w.status !== 'done' && w.status !== 'abandoned')
+  const open = b.items.filter((w) => !attentionManaged(w) && w.status !== 'done' && w.status !== 'abandoned')
   const all = open.map((item) => {
     const stage = cropStage(item, b, pending)
     return { item, stage, overripe: stage === 'ripe' && now - Date.parse(item.updated_at) > OVERRIPE_MS }
@@ -46,7 +47,7 @@ export function cropsOf(b: BuildingView, pending: readonly Approval[], now: numb
 
 /** 收菜顺序：按给定的项目顺序（地图巡游的顺序），每块地里先收熟得最久的。 */
 export function ripeQueue(buildings: readonly BuildingView[]): { item: WorkItem; buildingKey: string }[] {
-  return buildings.flatMap((b) => b.items.filter((w) => w.status === 'review')
+  return buildings.flatMap((b) => b.items.filter((w) => !attentionManaged(w) && w.status === 'review')
     .sort((x, y) => x.updated_at.localeCompare(y.updated_at) || x.id.localeCompare(y.id))
     .map((item) => ({ item, buildingKey: b.key })))
 }

@@ -171,6 +171,22 @@ func serve() error {
 		}
 	}()
 
+	// 外部合并：每分钟只取待合并项目的远端证据，不更新工作分支。
+	go func() {
+		t := time.NewTicker(time.Minute)
+		defer t.Stop()
+		for {
+			if err := c.SyncMerges(ctx, false); err != nil && ctx.Err() == nil {
+				log.Printf("外部合并核对失败: %v", err)
+			}
+			select {
+			case <-ctx.Done():
+				return
+			case <-t.C:
+			}
+		}
+	}()
+
 	// 托管会话：按 tmux 实际状态同步（服务重启后重新接上仍在运行的会话）
 	go func() {
 		t := time.NewTicker(2 * time.Second)

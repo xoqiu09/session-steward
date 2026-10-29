@@ -69,28 +69,30 @@ type Dep struct {
 }
 
 type WorkItem struct {
-	StatusChangedAt       string   `json:"-"`
-	MergeChangedAt        string   `json:"-"`
-	DependenciesChangedAt string   `json:"-"`
-	ID                    string   `json:"id"`
-	RepoID                *int64   `json:"repo_id"`
-	Title                 string   `json:"title"`
-	Status                string   `json:"status"`
-	Acceptance            string   `json:"acceptance"`
-	Branch                string   `json:"branch"`
-	MergeState            string   `json:"merge_state"`
-	NeedsMerge            bool     `json:"needs_merge"`
-	CreatedAt             string   `json:"created_at"`
-	UpdatedAt             string   `json:"updated_at"`
-	Ready                 bool     `json:"ready"`   // 所有上游均满足
-	Waiting               []string `json:"waiting"` // 未满足的上游
-	Agents                []string `json:"agents"`  // 当前活跃 run 的 provider
-	Brief                 *Brief   `json:"brief"`   // 没有任何简报条目时为 null
-	CompletionPolicy      string   `json:"completion_policy,omitempty"`
-	AutomaticHistory      bool     `json:"automatic_history,omitempty"`
-	AutomaticIssue        string   `json:"automatic_issue,omitempty"`
-	AutomaticIssueKind    string   `json:"automatic_issue_kind,omitempty"`
-	AutomaticIssueAt      string   `json:"automatic_issue_at,omitempty"`
+	StatusChangedAt       string          `json:"-"`
+	MergeChangedAt        string          `json:"-"`
+	DependenciesChangedAt string          `json:"-"`
+	ID                    string          `json:"id"`
+	RepoID                *int64          `json:"repo_id"`
+	Title                 string          `json:"title"`
+	Status                string          `json:"status"`
+	Acceptance            string          `json:"acceptance"`
+	Branch                string          `json:"branch"`
+	MergeState            string          `json:"merge_state"`
+	MergeEvidence         *MergeEvidence  `json:"merge_evidence,omitempty"`
+	Management            *WorkManagement `json:"management,omitempty"`
+	NeedsMerge            bool            `json:"needs_merge"`
+	CreatedAt             string          `json:"created_at"`
+	UpdatedAt             string          `json:"updated_at"`
+	Ready                 bool            `json:"ready"`   // 所有上游均满足
+	Waiting               []string        `json:"waiting"` // 未满足的上游
+	Agents                []string        `json:"agents"`  // 当前活跃 run 的 provider
+	Brief                 *Brief          `json:"brief"`   // 没有任何简报条目时为 null
+	CompletionPolicy      string          `json:"completion_policy,omitempty"`
+	AutomaticHistory      bool            `json:"automatic_history,omitempty"`
+	AutomaticIssue        string          `json:"automatic_issue,omitempty"`
+	AutomaticIssueKind    string          `json:"automatic_issue_kind,omitempty"`
+	AutomaticIssueAt      string          `json:"automatic_issue_at,omitempty"`
 }
 
 type Approval struct {
@@ -138,7 +140,8 @@ type Snapshot struct {
 	// ReplayAt 非空表示这是回放快照（小镇时间条），只读。
 	ReplayAt string `json:"replay_at,omitempty"`
 	// Devices 只在“全部设备”合并视图里有。
-	Devices []HubDevice `json:"devices,omitempty"`
+	Devices          []HubDevice `json:"devices,omitempty"`
+	ArchivedProjects int         `json:"archived_projects,omitempty"`
 }
 
 // Snapshot 返回界面需要的完整状态。审批只包含未关闭的和最近 24 小时关闭的。
@@ -218,7 +221,9 @@ func (c *Core) Snapshot(ctx context.Context) (*Snapshot, error) {
 	type st struct{ status, merge string }
 	items := map[string]st{}
 	rows, err = tx.Query(`SELECT w.id, w.repo_id, w.title, w.status, w.acceptance, w.branch, w.merge_state, w.needs_merge, w.created_at, w.updated_at,
-	  COALESCE(k.status_at,w.created_at),COALESCE(k.merge_at,w.created_at),COALESCE(k.dependencies_at,w.created_at)
+	  COALESCE(k.status_at,w.created_at),COALESCE(k.merge_at,w.created_at),COALESCE(k.dependencies_at,w.created_at),
+	  COALESCE((SELECT v FROM meta WHERE k='merge_verified:'||w.id),''),
+	  COALESCE((SELECT v FROM meta WHERE k='work_management:'||w.id),'')
 	  FROM work_items w LEFT JOIN work_item_clocks k ON k.work_item_id=w.id ORDER BY w.id`)
 	if err != nil {
 		return nil, err
@@ -226,7 +231,17 @@ func (c *Core) Snapshot(ctx context.Context) (*Snapshot, error) {
 	for rows.Next() {
 		var w WorkItem
 		var repo sql.NullInt64
-		rows.Scan(&w.ID, &repo, &w.Title, &w.Status, &w.Acceptance, &w.Branch, &w.MergeState, &w.NeedsMerge, &w.CreatedAt, &w.UpdatedAt, &w.StatusChangedAt, &w.MergeChangedAt, &w.DependenciesChangedAt)
+		var evidence, management string
+		if err := rows.Scan(&w.ID, &repo, &w.Title, &w.Status, &w.Acceptance, &w.Branch, &w.MergeState, &w.NeedsMerge, &w.CreatedAt, &w.UpdatedAt, &w.StatusChangedAt, &w.MergeChangedAt, &w.DependenciesChangedAt, &evidence, &management); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		if w.MergeState == "merged" && evidence != "" {
+			_ = json.Unmarshal([]byte(evidence), &w.MergeEvidence)
+		}
+		if management != "" {
+			_ = json.Unmarshal([]byte(management), &w.Management)
+		}
 		if repo.Valid {
 			v := repo.Int64
 			w.RepoID = &v
@@ -352,6 +367,9 @@ func (c *Core) Snapshot(ctx context.Context) (*Snapshot, error) {
 		snap.Agents, snap.AgentInfo = c.AgentNames(), c.AgentInfos()
 	}
 	c.applyRoutinePolicies(snap)
+	if err := projectVisibility(tx, snap); err != nil {
+		return nil, err
+	}
 	return snap, nil
 }
 

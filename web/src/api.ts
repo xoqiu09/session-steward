@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { isRemote, remoteReadOnlyMessage } from './access'
-import type { AISummary, AttributionDecision, BriefEdit, DayDetail, Handoff, HistoryResp, HubStatus, ManagedSession, MergeJob, Review, SessionUsageDetail, Snapshot } from './types'
+import type { AISummary, AttributionDecision, BriefEdit, DayDetail, Handoff, HistoryResp, HubStatus, ManagedSession, MergeJob, MergeSyncStatus, ProjectInfo, Review, SessionUsageDetail, Snapshot } from './types'
 
 export class ApiError extends Error {
   status: number
@@ -40,6 +40,9 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<T>
 }
 
 export const api = {
+  projects: () => call<ProjectInfo[]>('GET', '/api/projects'),
+  archiveProjects: (ids: number[], archived: boolean) => call('POST', '/api/projects/archive', { ids, archived }),
+  mergeSync: () => call<MergeSyncStatus[]>('GET', '/api/merge-sync'),
   confirmFeatureScope: (repo: number, id: string, revision: string) => call('POST', `/api/features/${repo}/${encodeURIComponent(id)}/confirm-scope`, { revision }),
   acceptFeature: (repo: number, id: string, candidate: string, revision: string, decision: 'accepted' | 'changes_requested') => call('POST', `/api/features/${repo}/${encodeURIComponent(id)}/accept`, { candidate, revision, decision }),
   reconcileAttributions: () => call<{ changed: number }>('POST', '/api/attributions/reconcile'),

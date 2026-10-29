@@ -32,7 +32,8 @@ type repoRow struct {
 }
 
 func (c *Core) repos(ctx context.Context) ([]repoRow, error) {
-	rows, err := c.St.R().QueryContext(ctx, `SELECT id, common_dir, target_ref FROM repos WHERE is_git=1 AND id NOT IN (SELECT repo_id FROM repo_aliases)`)
+	rows, err := c.St.R().QueryContext(ctx, `SELECT id, common_dir, target_ref FROM repos WHERE is_git=1 AND id NOT IN (SELECT repo_id FROM repo_aliases)
+	 AND NOT EXISTS (SELECT 1 FROM meta WHERE k='repo_archive:'||repos.id AND v<>'')`)
 	if err != nil {
 		return nil, err
 	}
@@ -69,26 +70,50 @@ func (c *Core) ScanMerges(ctx context.Context) error {
 
 type itemRow struct {
 	id, branch, status, merge string
+	binding                   string
+}
+
+func (c *Core) mergeItems(ctx context.Context, repo int64) ([]itemRow, error) {
+	rows, err := c.St.R().QueryContext(ctx, `SELECT id, branch, status, merge_state,
+	 COALESCE((SELECT payload FROM approvals a WHERE a.work_item_id=w.id AND a.kind='merge' AND a.status IN ('pending','decided') ORDER BY a.created_at DESC,a.id DESC LIMIT 1),'')
+	 FROM work_items w WHERE repo_id=? AND needs_merge=1 AND branch<>'' AND merge_state<>'merged' AND status<>'abandoned'`, repo)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []itemRow
+	for rows.Next() {
+		var it itemRow
+		if err := rows.Scan(&it.id, &it.branch, &it.status, &it.merge, &it.binding); err != nil {
+			return nil, err
+		}
+		items = append(items, it)
+	}
+	return items, rows.Err()
+}
+
+func (c *Core) mergeSource(ctx context.Context, dir string, it itemRow) string {
+	if src := gitx.RevParse(ctx, dir, it.branch); src != "" {
+		return src
+	}
+	var b MergeBinding
+	if json.Unmarshal([]byte(it.binding), &b) == nil && b.SourceRef == it.branch && b.SourceHeadSHA != "" {
+		return gitx.RevParse(ctx, dir, b.SourceHeadSHA)
+	}
+	return ""
 }
 
 func (c *Core) scanRepo(ctx context.Context, r repoRow) error {
 	dir := r.commonDir
 	targetSHA := gitx.RevParse(ctx, dir, r.target)
-	if targetSHA == "" {
+	remoteTarget, remoteMethod := c.remoteMergeTarget(ctx, r)
+	if targetSHA == "" && remoteTarget == "" {
 		return fmt.Errorf("目标分支 %s 不存在", r.target)
 	}
-	rows, err := c.St.R().QueryContext(ctx, `SELECT id, branch, status, merge_state FROM work_items
-		WHERE repo_id=? AND needs_merge=1 AND branch<>'' AND merge_state<>'merged' AND status<>'abandoned'`, r.id)
+	items, err := c.mergeItems(ctx, r.id)
 	if err != nil {
 		return err
 	}
-	var items []itemRow
-	for rows.Next() {
-		var it itemRow
-		rows.Scan(&it.id, &it.branch, &it.status, &it.merge)
-		items = append(items, it)
-	}
-	rows.Close()
 
 	type plan struct {
 		it       itemRow
@@ -96,16 +121,26 @@ func (c *Core) scanRepo(ctx context.Context, r repoRow) error {
 		merged   bool
 		ahead    int
 		diffstat string
+		evidence *MergeEvidence
 	}
 	var plans []plan
 	for _, it := range items {
-		src := gitx.RevParse(ctx, dir, it.branch)
+		src := c.mergeSource(ctx, dir, it)
 		if src == "" {
 			continue
 		}
 		p := plan{it: it, srcSHA: src}
-		if gitx.IsAncestor(ctx, dir, src, targetSHA) {
+		if targetSHA != "" && gitx.IsAncestor(ctx, dir, src, targetSHA) {
 			p.merged = true
+			p.evidence = &MergeEvidence{SourceSHA: src, TargetRef: r.target, TargetSHA: targetSHA, Method: "local_git"}
+		} else if remoteTarget != "" && gitx.IsAncestor(ctx, dir, src, remoteTarget) {
+			p.merged = true
+			p.evidence = &MergeEvidence{SourceSHA: src, TargetRef: r.target, TargetSHA: remoteTarget, Method: remoteMethod}
+		} else if proof := c.prMergeEvidence(ctx, r, it.id, src, remoteTarget); proof != nil {
+			p.merged = true
+			p.evidence = proof
+		} else if targetSHA == "" {
+			continue // Can observe an external merge without creating an unexecutable local candidate.
 		} else {
 			p.ahead = gitx.Ahead(ctx, dir, targetSHA, src)
 			p.diffstat = gitx.DiffStat(ctx, dir, targetSHA, src)
@@ -125,11 +160,16 @@ func (c *Core) scanRepo(ctx context.Context, r repoRow) error {
 				return err
 			}
 			if p.merged {
+				p.evidence.CheckedAt = now
+				eb, _ := json.Marshal(p.evidence)
+				if _, err := tx.Exec(`INSERT INTO meta(k,v) VALUES(?,?) ON CONFLICT(k) DO UPDATE SET v=excluded.v`, "merge_verified:"+p.it.id, string(eb)); err != nil {
+					return err
+				}
 				if _, err := tx.Exec(`UPDATE work_items SET merge_state='merged', updated_at=? WHERE id=?`, now, p.it.id); err != nil {
 					return err
 				}
-				if hasOpen {
-					tx.Exec(`UPDATE approvals SET status='confirmed', confirmed_at=?, close_reason='merged_verified' WHERE id=?`, now, aid)
+				if _, err := tx.Exec(`UPDATE approvals SET status='confirmed', confirmed_at=?, close_reason='merged_verified' WHERE kind='merge' AND work_item_id=? AND status IN ('pending','decided')`, now, p.it.id); err != nil {
+					return err
 				}
 				store.Touch(tx, now, "work_item", p.it.id)
 				continue

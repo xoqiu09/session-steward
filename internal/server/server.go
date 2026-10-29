@@ -221,13 +221,22 @@ func (s *Server) Handler() http.Handler {
 		writeJSON(w, 200, j)
 	}))
 	mux.HandleFunc("POST /api/scan/merges", s.panel(func(w http.ResponseWriter, r *http.Request) {
-		if err := s.Core.ScanMerges(r.Context()); err != nil {
+		if err := s.Core.SyncMerges(r.Context(), true); err != nil {
 			writeErr(w, err)
 			return
 		}
 		writeJSON(w, 200, map[string]bool{"ok": true})
 	}))
+	mux.HandleFunc("GET /api/merge-sync", s.panel(func(w http.ResponseWriter, r *http.Request) {
+		statuses, err := s.Core.MergeSyncStatuses(r.Context())
+		if err != nil {
+			writeErr(w, err)
+			return
+		}
+		writeJSON(w, 200, statuses)
+	}))
 	s.managedRoutes(mux)
+	s.projectRoutes(mux)
 	mux.HandleFunc("GET /login", s.handleLogin)
 
 	if s.Static != nil {
