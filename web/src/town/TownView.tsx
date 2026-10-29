@@ -144,7 +144,7 @@ export function TownView({ snap, conn, repoId, provider, sel, onSelectItem, onSe
   layout?: LayoutName
   /** 状态条右侧的附加内容（桌面模式的连接状态、退出入口）。 */
   bar?: ReactNode
-  /** 预览：大地图世界，替代宽屏的分页（竖屏仍分页）。 */
+  /** 大地图世界；窄屏使用为菜地留位置的紧凑浮层。工作室仍按宽度分页。 */
   world?: boolean
   /** 从历史日历点“回放这一天”进来时的日期。 */
   replayDay?: string
@@ -186,7 +186,7 @@ export function TownView({ snap, conn, repoId, provider, sel, onSelectItem, onSe
 
   const narrow = useMedia(PORTRAIT_QUERY)
   const shape: LayoutName = layout ?? (narrow ? 'portrait' : 'wide')
-  const asWorld = world && shape === 'wide'
+  const asWorld = world
   const urgent = useCallback((b: BuildingView) => needsYou(b, model.pendingApprovals), [model])
   // 村庄与野外按完整快照里近 7 天的活动和关联来分；只在快照变化时重算，位置才稳定。
   const plan = useMemo(() => planWorld(model.buildings.filter((b) => b.repo).map((b) => b.repo!), shown, Date.parse(shown.now) || Date.now()), [model, shown])
@@ -282,7 +282,7 @@ export function TownView({ snap, conn, repoId, provider, sel, onSelectItem, onSe
         </div>}
         {asWorld
           ? <WorldStage model={model} needsYou={urgent} selected={selected} highlight={highlight} onSelect={onSelect} changed={changed} offline={offline}
-              kiosk={kiosk} rotateMs={rotateMs} paused={paused} focusKey={selKey} plan={plan} replaying={!!replay || noReplay} />
+              kiosk={kiosk} rotateMs={rotateMs} paused={paused || sel != null} focusKey={selKey} plan={plan} replaying={!!replay} snapshot={shown} />
           : <TownScene model={model} buildings={pages[page]} layout={shape} selected={selected} highlight={highlight} onSelect={onSelect} changed={changed} offline={offline} />}
         <ul className="town-legend" aria-label="图例">
           <li><i className="lg-building" />建筑 = 项目</li>

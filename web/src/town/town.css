@@ -113,8 +113,58 @@
 .town-view .town-svg.is-world.is-far .town-parcel { display: none; }
 .town-view .town-world-tools { position: absolute; z-index: 3; top: 12px; right: 12px; display: flex; gap: 6px; }
 .town-view .town-world-tools button {
-  min-width: 34px; padding: 5px 10px; border-radius: 9px; border: 1px solid var(--town-line, #e2d5bd);
+  min-width: 44px; min-height: 44px; padding: 5px 10px; border-radius: 9px; border: 1px solid var(--town-line, #e2d5bd);
   background: rgba(255, 250, 240, 0.92); font-size: 13px; cursor: pointer;
+}
+
+/* 新动态沿用小镇纸卡与泥土色；浮层文字不随 SVG 镜头缩放。 */
+.town-view .town-world-ui { cursor: default; touch-action: auto; }
+.town-view .town-world-ui button, .town-view button.town-world-ui, .town-view .town-follow-settings select {
+  min-height: 44px; padding: 8px 12px; border: 1px solid var(--town-line); border-radius: 9px;
+  background: var(--town-card); color: var(--town-ink); font: inherit; font-size: 13px; cursor: pointer;
+}
+.town-view .town-world-ui button:hover { background: #f4ecdc; }
+.town-view .town-world-ui button:focus-visible, .town-view .town-follow-settings :focus-visible { outline: 3px solid var(--town-blue); outline-offset: 2px; }
+.town-view .town-world-ui button:disabled { opacity: .5; cursor: default; }
+.town-view .town-moments { position: absolute; z-index: 5; top: 66px; right: 12px; max-width: min(370px, calc(100% - 24px)); }
+.town-view .town-moment-list { display: grid; gap: 6px; margin: 6px 0 0; padding: 8px; list-style: none; max-height: 42vh; overflow: auto; border: 1px solid var(--town-line); border-radius: 12px; background: var(--town-card); box-shadow: 0 8px 24px #3a2a1c24; }
+.town-view .town-moment-list button { width: 100%; text-align: left; line-height: 1.7; }
+.town-view .town-moment-list small { display: block; color: #6b5a44; }
+.town-view .town-moment-overlay { position: absolute; z-index: 4; right: 20px; top: 27%; width: min(350px, 42%); }
+.town-view .town-moment-card { padding: 16px; border: 1px solid #c9b896; border-radius: 14px; background: var(--town-card); box-shadow: 0 10px 28px #3a2a1c29; text-wrap: pretty; }
+.town-view .town-moment-kind { margin: 0 0 6px; color: #754515; font-size: 12px; font-weight: 700; }
+.town-view .town-moment-message { margin: 0 0 14px; font-size: 16px; font-weight: 650; line-height: 1.7; overflow-wrap: anywhere; }
+.town-view .town-moment-note { margin: 0 0 12px; font-size: 13px; line-height: 1.7; color: #6b5a44; }
+.town-view .town-moment-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.town-view .town-moment-actions .is-primary { background: #754515; color: #fffaf0; border-color: #754515; }
+.town-view .town-moment-actions .is-primary:hover { background: #61370e; }
+.town-view .town-moment-return { position: absolute; z-index: 4; left: 12px; bottom: 52px; }
+.town-view .town-away { position: absolute; z-index: 5; top: 66px; left: 12px; right: 12px; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 8px 12px; background: var(--town-card); border: 1px solid #c9b896; border-radius: 12px; font-size: 13px; }
+.town-view .town-away span { flex: 1 1 240px; }
+.town-view .town-follow-settings { display: grid; gap: 6px; margin: 12px 0; padding: 10px 12px; border: 1px solid var(--town-line); border-radius: 10px; }
+.town-view .town-follow-settings legend { font-weight: 700; color: #6b3d12; }
+.town-view .town-follow-settings label { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; min-height: 44px; }
+.town-view .town-follow-settings input { width: 20px; height: 20px; accent-color: #754515; }
+.town-view .town-follow-settings select { width: 100%; }
+.town-view .town-follow-settings p { margin: 0; color: #6b5a44; font-size: 12px; }
+.town-view .town-moment-ring { pointer-events: none; animation: town-moment-glow 1.1s ease-out 2 forwards; }
+.town-view .town-progress-spark { pointer-events: none; animation: town-progress-spark 2s ease-out forwards; }
+@keyframes town-moment-glow { from { opacity: 1; stroke-width: 6; } to { opacity: 0; stroke-width: 1; } }
+@keyframes town-progress-spark { from { opacity: 1; } to { opacity: 0; transform: translateY(-16px); } }
+@media (max-width: 760px) {
+  .town-view .town-world-tools { left: 8px; right: 8px; flex-wrap: wrap; gap: 4px; }
+  .town-view .town-world-tools button { padding: 5px 8px; }
+  .town-view .town-world-hint { display: none; }
+  .town-view .town-moments { top: 112px; right: 8px; }
+  .town-view .town-away { top: 112px; }
+  .town-view .town-moment-overlay { top: auto; left: 8px; right: 8px; bottom: 66px; width: auto; max-height: 38%; overflow: auto; }
+  .town-view .town-moment-card { padding: 12px; }
+  .town-view .town-moment-return { bottom: 12px; }
+  .town-view .town-moment-message { margin-bottom: 8px; font-size: 14px; }
+  .town-view .town-world.has-moment .town-minimap { visibility: hidden; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .town-view .town-moment-ring, .town-view .town-progress-spark { display: none; animation: none; }
 }
 .town-view .town-minimap {
   position: absolute; z-index: 3; right: 12px; bottom: 12px; width: 210px; height: 130px;
