@@ -6,7 +6,7 @@
 
 | 角色 | 负责 |
 | --- | --- |
-| 用户 | 决定设计里的“待决定”；合并 PR；验收；发布、签名密钥、替换正式安装 |
+| 用户 | 决定设计里的取舍；合并 PR；验收；发布、签名密钥、替换正式安装 |
 | Claude（MacBook Pro） | 写设计和任务书；审查每个 PR 是否符合任务书的验收标准；在这台电脑上验证 Claude Code 相关的采集（Claude Code 跑在这台）；写多设备联调步骤 |
 | Codex（Mac Studio） | 按任务书实现、测试、开草稿 PR，按固定格式回报 |
 
@@ -18,13 +18,30 @@
 | --- | --- | --- | --- |
 | [T0](tasks/T0-integrate-in-app-update.zh-CN.md) | 把 PR #33（内置升级）整合到最新 main，重新验证 | Codex | 待开始 |
 
+## 升级这条线
+
+现状和完整步骤见 [update-plan.zh-CN.md](update-plan.zh-CN.md)。
+
+| 任务 | 内容 | 执行 | 依赖 |
+| --- | --- | --- | --- |
+| U0 | 即 T0 | Codex | 无 |
+| U1 | 升级时可以迁移数据库，失败时连数据库一起回滚，并补回期间收到的事件 | Codex | U0 |
+| U2 | 每天自动检查一次，有新版本时提示；仍然由你点了才安装 | Codex | U0 |
+| U3～U5 | 生成生产密钥、发布 v0.2.0、两台电脑和朋友各手动装一次、真实升级演练 | 你，Claude 写步骤 | U0～U2 |
+
+## 体验这条线
+
+| 任务 | 内容 | 执行 | 依赖 |
+| --- | --- | --- | --- |
+| [V1](tasks/V1-town-follow-progress.zh-CN.md) | 小镇跟着进展走：菜熟了、要你决定时，镜头自动飞过去，弹出可以直接收菜或去处理的卡片 | Codex | 无 |
+
 ## 第 1 期：地基
 
 | 任务 | 内容 | 执行 | 依赖 |
 | --- | --- | --- | --- |
 | [P1](tasks/P1-signal-provenance.zh-CN.md) | 每个信号带来源和时间；快照给出“最近信号”和“信息缺口” | Codex | 无 |
 | [P2](tasks/P2-github-pr-awareness.zh-CN.md) | 工作项关联 PR；网页上合并后自动更新并收起提醒；显示 PR 检查结果 | Codex | P1 |
-| [P3](tasks/P3-claude-hooks-coverage.zh-CN.md) | 补装选定的 Claude hooks；不需要回应的改成异步 | Codex 实现，Claude 在 MacBook 上验证 | 设计“待决定”第 3 条 |
+| [P3](tasks/P3-claude-hooks-coverage.zh-CN.md) | 补装选定的 Claude hooks；不需要回应的改成异步 | Codex 实现，Claude 在 MacBook 上验证 | 无 |
 
 ## 第 2 期：补漏
 
@@ -37,7 +54,7 @@
 
 | 任务 | 内容 | 执行 | 依赖 |
 | --- | --- | --- | --- |
-| P6 | SS 侧：给小猫的只读事实接口、写入“解释”的接口、面板上的“小猫的看法”一栏 | Codex | P1、设计“待决定”第 1 条 |
+| P6 | SS 侧：给小猫的只读事实接口、写入“解释”的接口、面板上的“小猫的看法”一栏 | Codex | P1 |
 | P6b | 小猫侧：改用新接口，输出结构化的解释（在小猫仓库里做） | Codex | P6 |
 
 ## 第 4 期：交付链路
