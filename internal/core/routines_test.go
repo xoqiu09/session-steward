@@ -108,54 +108,120 @@ func TestAutomaticMemoryDeliveryHistoryAndNotifications(t *testing.T) {
 	}
 }
 
-func TestRoutineHistoryKeepsExceptionsAndRequiresDelivery(t *testing.T) {
-	for _, test := range []string{"success", "stop-only", "active", "error", "stalled", "formal", "validation", "unresolved-blocker", "new-work", "other-repo", "business-task"} {
-		t.Run(test, func(t *testing.T) {
+func TestMemoryMaintenanceNamesKeepScopedHistory(t *testing.T) {
+	for _, title := range []string{
+		"整合代理记忆", "整理本地 Agent 记忆", "整理记忆",
+		"Consolidate agent memory", "Consolidate memories",
+		"更新跨会话记忆摘要", "整理会话记忆摘要", "整理跨对话记忆摘要",
+		"Update cross-session memory summary", "UPDATE CROSS SESSION MEMORY SUMMARY",
+	} {
+		t.Run(title, func(t *testing.T) {
+			for _, scope := range []struct {
+				name, common string
+				allowed      []string
+				wantHistory  bool
+			}{
+				{"legacy-repo", "/approved/memories/.git", []string{"/approved/memories/.git"}, true},
+				{"second-repo", "/approved/memories-v2/.git", []string{"/approved/memories/.git", "/approved/memories-v2/.git"}, true},
+				{"not-enabled", "/approved/memories/.git", nil, false},
+				{"second-repo-not-approved", "/approved/memories-v2/.git", []string{"/approved/memories/.git"}, false},
+				{"different-repo", "/business/.git", []string{"/approved/memories/.git"}, false},
+			} {
+				t.Run(scope.name, func(t *testing.T) {
+					c := newCore(t, nil)
+					c.AutomaticMemoryProjects = scope.allowed
+					id, at := int64(1), "2026-10-24T00:00:00.000000000Z"
+					snap := Snapshot{
+						Now: at, Repos: []Repo{{ID: id, CommonDir: scope.common}},
+						WorkItems: []WorkItem{{ID: "MEM-1", RepoID: &id, Title: title, Status: "review", Ready: true,
+							Brief: &Brief{LastDeliveredAt: at}}},
+					}
+					c.applyRoutinePolicies(&snap)
+					got := snap.WorkItems[0]
+					if got.AutomaticHistory != scope.wantHistory {
+						t.Fatalf("history=%v want %v: %+v", got.AutomaticHistory, scope.wantHistory, got)
+					}
+					if got.Status != "review" || got.Management != nil {
+						t.Fatal("routine classification changed user acceptance")
+					}
+				})
+			}
+		})
+	}
+}
+
+func TestMemoryMaintenanceNamesDoNotHideBusinessWork(t *testing.T) {
+	for _, title := range []string{
+		"实现记忆搜索产品", "更新跨会话记忆摘要生成器", "整理会话记忆摘要的验收标准",
+		"Implement agent memory search", "Consolidate agent memory search results", "Consolidate company memories",
+	} {
+		t.Run(title, func(t *testing.T) {
 			c := newCore(t, nil)
 			c.AutomaticMemoryProjects = []string{"/approved/.git"}
 			id := int64(1)
-			at := "2026-10-24T00:00:00.000000000Z"
-			later := "2026-10-24T00:01:00.000000000Z"
-			w := WorkItem{ID: "MEM-1", RepoID: &id, Title: "整理本地 Agent 记忆", Status: "review", Ready: true, UpdatedAt: at, Brief: &Brief{LastDeliveredAt: at, Fields: map[string]*BriefField{"progress": {Text: "Synthetic result", At: at, Source: "deliver"}}}}
-			snap := Snapshot{Now: "2026-10-24T00:30:00.000000000Z", Repos: []Repo{{ID: 1, CommonDir: "/approved/.git"}}, WorkItems: []WorkItem{w}}
-			s := Session{ID: 1, WorkItemID: w.ID, DataSource: "live", State: "idle", Freshness: "live", LastActivityAt: later}
-			switch test {
-			case "stop-only":
-				snap.WorkItems[0].Brief.LastDeliveredAt = ""
-			case "active":
-				s.State = "running"
-				snap.Sessions = []Session{s}
-			case "error":
-				s.State = "error"
-				snap.Sessions = []Session{s}
-			case "stalled":
-				s.State = "running"
-				s.Freshness = "stale"
-				snap.Sessions = []Session{s}
-			case "formal":
-				work := w.ID
-				snap.Approvals = []Approval{{ID: "formal", Kind: "decision", Status: "pending", WorkItemID: &work, CreatedAt: later}}
-			case "validation":
-				snap.Features = []ProjectFeature{{Validation: "failed", Contributions: []FeatureContribution{{WorkItemID: w.ID, At: "2026-10-23T00:00:00.000000000Z"}}}}
-			case "unresolved-blocker":
-				snap.WorkItems[0].Brief.Fields["blocker"] = &BriefField{Text: "Needs repair", At: at, Source: "report"}
-			case "new-work":
-				snap.WorkItems[0].Brief.Fields["stage"] = &BriefField{Text: "implementing", At: later, Source: "report"}
-			case "other-repo":
-				snap.Repos[0].CommonDir = "/unapproved/.git"
-			case "business-task":
-				snap.WorkItems[0].Title = "实现记忆搜索产品"
-			}
+			snap := Snapshot{Repos: []Repo{{ID: id, CommonDir: "/approved/.git"}},
+				WorkItems: []WorkItem{{ID: "TASK-1", RepoID: &id, Title: title, Status: "review", Ready: true,
+					Brief: &Brief{LastDeliveredAt: "2026-10-24T00:00:00.000000000Z"}}}}
 			c.applyRoutinePolicies(&snap)
-			got := snap.WorkItems[0]
-			if got.AutomaticHistory != (test == "success") {
-				t.Fatalf("incorrect history: %+v", got)
+			if snap.WorkItems[0].AutomaticHistory || snap.WorkItems[0].CompletionPolicy != "" {
+				t.Fatal("business delivery was hidden as memory maintenance")
 			}
-			if (test == "error" || test == "stalled" || test == "formal" || test == "validation" || test == "unresolved-blocker") && got.AutomaticIssue == "" {
-				t.Fatal("missing exception")
-			}
-			if got.Status != "review" {
-				t.Fatal("policy rewrote acceptance")
+		})
+	}
+}
+
+func TestRoutineHistoryKeepsExceptionsAndRequiresDelivery(t *testing.T) {
+	for _, title := range []string{"整理本地 Agent 记忆", "Consolidate agent memory", "更新跨会话记忆摘要", "整理会话记忆摘要"} {
+		t.Run(title, func(t *testing.T) {
+			for _, test := range []string{"success", "stop-only", "active", "error", "stalled", "formal", "validation", "unresolved-blocker", "new-work", "other-repo", "business-task"} {
+				t.Run(test, func(t *testing.T) {
+					c := newCore(t, nil)
+					c.AutomaticMemoryProjects = []string{"/approved/.git"}
+					id := int64(1)
+					at := "2026-10-24T00:00:00.000000000Z"
+					later := "2026-10-24T00:01:00.000000000Z"
+					w := WorkItem{ID: "MEM-1", RepoID: &id, Title: title, Status: "review", Ready: true, UpdatedAt: at, Brief: &Brief{LastDeliveredAt: at, Fields: map[string]*BriefField{"progress": {Text: "Synthetic result", At: at, Source: "deliver"}}}}
+					snap := Snapshot{Now: "2026-10-24T00:30:00.000000000Z", Repos: []Repo{{ID: 1, CommonDir: "/approved/.git"}}, WorkItems: []WorkItem{w}}
+					s := Session{ID: 1, WorkItemID: w.ID, DataSource: "live", State: "idle", Freshness: "live", LastActivityAt: later}
+					switch test {
+					case "stop-only":
+						snap.WorkItems[0].Brief.LastDeliveredAt = ""
+					case "active":
+						s.State = "running"
+						snap.Sessions = []Session{s}
+					case "error":
+						s.State = "error"
+						snap.Sessions = []Session{s}
+					case "stalled":
+						s.State = "running"
+						s.Freshness = "stale"
+						snap.Sessions = []Session{s}
+					case "formal":
+						work := w.ID
+						snap.Approvals = []Approval{{ID: "formal", Kind: "decision", Status: "pending", WorkItemID: &work, CreatedAt: later}}
+					case "validation":
+						snap.Features = []ProjectFeature{{Validation: "failed", Contributions: []FeatureContribution{{WorkItemID: w.ID, At: "2026-10-23T00:00:00.000000000Z"}}}}
+					case "unresolved-blocker":
+						snap.WorkItems[0].Brief.Fields["blocker"] = &BriefField{Text: "Needs repair", At: at, Source: "report"}
+					case "new-work":
+						snap.WorkItems[0].Brief.Fields["stage"] = &BriefField{Text: "implementing", At: later, Source: "report"}
+					case "other-repo":
+						snap.Repos[0].CommonDir = "/unapproved/.git"
+					case "business-task":
+						snap.WorkItems[0].Title = "实现记忆搜索产品"
+					}
+					c.applyRoutinePolicies(&snap)
+					got := snap.WorkItems[0]
+					if got.AutomaticHistory != (test == "success") {
+						t.Fatalf("incorrect history: %+v", got)
+					}
+					if (test == "error" || test == "stalled" || test == "formal" || test == "validation" || test == "unresolved-blocker") && got.AutomaticIssue == "" {
+						t.Fatal("missing exception")
+					}
+					if got.Status != "review" {
+						t.Fatal("policy rewrote acceptance")
+					}
+				})
 			}
 		})
 	}

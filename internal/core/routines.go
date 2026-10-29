@@ -9,7 +9,14 @@ import (
 	"github.com/xoqiu09/session-steward/internal/store"
 )
 
-var memoryRoutineTitle = regexp.MustCompile(`^(整合|整理)(本地)?(代理|agent)?记忆$`)
+// Match whole maintenance titles, including summary passes and English names.
+// Repository opt-in remains mandatory; mentioning memory in a development task
+// must never make that task bypass normal review.
+var memoryRoutineTitle = regexp.MustCompile(
+	`^(?:(?:整合|整理)(?:本地)?(?:代理|agent)?记忆|` +
+		`(?:整合|整理|更新)(?:跨(?:会话|对话)|会话|本地|代理|agent)?记忆摘要|` +
+		`consolidate(?:local)?(?:agent)?memor(?:y|ies)|` +
+		`update(?:(?:cross-?)?(?:session|conversation)|local|agent)?memor(?:y|ies)summary)$`)
 
 // This policy is configured by repository identity and a narrow task family.
 // It never writes accepted/done, and never treats Stop as a successful delivery.
