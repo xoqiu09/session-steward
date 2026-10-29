@@ -32,7 +32,7 @@ extension AppDelegate {
         let notice = ["id": "navigation-test-\(UUID().uuidString)", "title": "通知跳转测试", "body": "点击打开 \(target.id)。只查看，不会批准或验收。", "link": link.url!.absoluteString]
         noticeChannel.send(notice) { [weak self] result in
             if result?["status"] as? String != "queued" {
-                self?.notificationError("系统没有接受测试提醒。请在“系统设置 → 通知”中检查 Session Steward 的通知权限。")
+                self?.notificationError(notificationFailureMessage(result?["status"] as? String))
             }
         }
     }

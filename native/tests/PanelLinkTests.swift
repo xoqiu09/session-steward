@@ -90,6 +90,10 @@ struct PanelLinkTests {
         check(has("item", "SYN-RESUMED") && !has("item", "SYN-WAITING"), "actual hand-back clears input reminder")
         check(!has("item", "SYN-REVIEW"), "continuing an agent does not accept a review")
         check(has("session", "42") && !has("session", "43"), "session ended is not acceptance")
+        check(notificationFailureMessage("permission_denied").contains("系统设置"), "only permission denial points to notification settings")
+        check(notificationFailureMessage("helper_timeout").contains("未及时回应"), "timeout explains helper response")
+        check(!notificationFailureMessage("helper_launch_failed").contains("权限"), "launch error is not misreported as permission")
+        check(!notificationFailureMessage(nil).contains("权限"), "unknown delivery result is not a permission claim")
         print("\(count) panel navigation, snapshot ordering and reminder lifecycle checks passed")
     }
 }

@@ -6,27 +6,30 @@ final class NativeNoticeChannel {
     init(home: URL, helper: URL) { directory = home.appendingPathComponent("notifications"); self.helper = helper }
 
     func send(_ payload: [String: Any], completion: @escaping ([String: Any]?) -> Void) {
+        guard let executable = Bundle(url: helper)?.executableURL, FileManager.default.isExecutableFile(atPath: executable.path) else {
+            completion(["status": "helper_unavailable"]); return
+        }
         let file = directory.appendingPathComponent("app-\(UUID().uuidString).stewardnotice")
         let result = file.appendingPathExtension("result")
         do {
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
             let data = try JSONSerialization.data(withJSONObject: payload)
-            guard data.count <= 65536 else { completion(nil); return }
+            guard data.count <= 65536 else { completion(["status": "spool_failed"]); return }
             try data.write(to: file, options: .atomic)
             try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: file.path)
-        } catch { completion(nil); return }
+        } catch { completion(["status": "spool_failed"]); return }
         let config = NSWorkspace.OpenConfiguration(); config.activates = false
         NSWorkspace.shared.open([file], withApplicationAt: helper, configuration: config) { _, error in
             DispatchQueue.global(qos: .utility).async {
                 defer { try? FileManager.default.removeItem(at: file); try? FileManager.default.removeItem(at: result) }
-                if error != nil { DispatchQueue.main.async { completion(nil) }; return }
+                if error != nil { DispatchQueue.main.async { completion(["status": "helper_launch_failed"]) }; return }
                 for _ in 0..<100 {
                     if let data = try? Data(contentsOf: result), let value = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
                         DispatchQueue.main.async { completion(value) }; return
                     }
                     Thread.sleep(forTimeInterval: 0.1)
                 }
-                DispatchQueue.main.async { completion(nil) }
+                DispatchQueue.main.async { completion(["status": "helper_timeout"]) }
             }
         }
     }
