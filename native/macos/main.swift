@@ -53,6 +53,10 @@ final class Notifications: NSObject, NSApplicationDelegate, UNUserNotificationCe
         sender.reply(toOpenOrPrint: .success)
     }
 
+    func application(_ application: NSApplication, open urls: [URL]) {
+        for url in urls where url.isFileURL { receive(url) }
+    }
+
     func receive(_ file: URL) {
         // Only process private files in Steward's own spool, never arbitrary documents or URLs.
         guard file.deletingLastPathComponent().standardizedFileURL == directory.standardizedFileURL,
@@ -63,15 +67,19 @@ final class Notifications: NSObject, NSApplicationDelegate, UNUserNotificationCe
               let data = try? Data(contentsOf: file), let notice = try? JSONDecoder().decode(Notice.self, from: data),
               !notice.id.isEmpty, notice.id.count <= 128, notice.title.count <= 256,
               notice.body.count <= 2048, panelURL(notice.link) != nil else { return }
+        record("received", notice.id)
         center.getNotificationSettings { settings in
+            self.record("authorization_\(settings.authorizationStatus.rawValue)", notice.id)
             if settings.authorizationStatus == .notDetermined {
                 self.center.requestAuthorization(options: [.alert, .sound]) { allowed, _ in
-                    if allowed { self.enqueue(notice, file) } else { self.result(file, "permission_denied") }
+                    if allowed { self.enqueue(notice, file) }
+                    else { self.result(file, "permission_denied"); self.record("permission_denied", notice.id) }
                 }
             } else if settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional {
                 self.enqueue(notice, file)
             } else {
                 self.result(file, "permission_denied")
+                self.record("permission_denied", notice.id)
             }
         }
     }
