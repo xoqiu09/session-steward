@@ -212,10 +212,19 @@ func TestMacIsolatedInstall(t *testing.T) {
 					// Keep the runtime fixture distinct from the user's App.
 					// Re-sign only our local staged test copy after production
 					// validation; downloads cannot use this test-only seam.
-					setTestIdentity(t, p.Items[0].Staged, label)
-					p.Items[0].NewDigest, e = DigestTree(p.Items[0].Staged)
-					if e != nil {
-						t.Fatal(e)
+					for i := range p.Items {
+						item := &p.Items[i]
+						if item.Target == app {
+							setTestIdentity(t, item.Staged, label)
+						} else if filepath.Base(item.Target) == "Session Steward.app" {
+							setTestHelperIdentity(t, item.Staged, label)
+						} else {
+							continue
+						}
+						item.NewDigest, e = DigestTree(item.Staged)
+						if e != nil {
+							t.Fatal(e)
+						}
 					}
 					if e = Save(p); e != nil {
 						t.Fatal(e)
@@ -313,21 +322,21 @@ func writeExclusive(path string, b []byte) error {
 
 func setTestIdentity(t *testing.T, app, label string) {
 	t.Helper()
-	if _, e := command("/usr/libexec/PlistBuddy", "-c", "Set :CFBundleIdentifier "+label, "-c", "Set :CFBundleURLTypes:0:CFBundleURLSchemes:0 "+label, filepath.Join(app, "Contents/Info.plist")); e != nil {
+	if _, e := command("/usr/libexec/PlistBuddy", "-c", "Set :CFBundleIdentifier "+label, "-c", "Set :CFBundleDisplayName SS 升级隔离验收", "-c", "Set :CFBundleURLTypes:0:CFBundleURLSchemes:0 "+label, filepath.Join(app, "Contents/Info.plist")); e != nil {
 		t.Fatal(e)
 	}
 	setTestHelperIdentity(t, filepath.Join(app, "Contents/MacOS/Session Steward.app"), label)
-	if _, e := command("/usr/bin/codesign", "--force", "--sign", "-", app); e != nil {
+	if _, e := command("/usr/bin/codesign", "--force", "--sign", "-", "--identifier", label, app); e != nil {
 		t.Fatal(e)
 	}
 }
 
 func setTestHelperIdentity(t *testing.T, app, hostLabel string) {
 	t.Helper()
-	if _, e := command("/usr/libexec/PlistBuddy", "-c", "Set :CFBundleIdentifier "+hostLabel+".notifications", "-c", "Set :StewardHostBundleIdentifier "+hostLabel, filepath.Join(app, "Contents/Info.plist")); e != nil {
+	if _, e := command("/usr/libexec/PlistBuddy", "-c", "Set :CFBundleIdentifier "+hostLabel+".notifications", "-c", "Set :CFBundleDisplayName SS 升级隔离验收", "-c", "Set :StewardHostBundleIdentifier "+hostLabel, filepath.Join(app, "Contents/Info.plist")); e != nil {
 		t.Fatal(e)
 	}
-	if _, e := command("/usr/bin/codesign", "--force", "--sign", "-", app); e != nil {
+	if _, e := command("/usr/bin/codesign", "--force", "--sign", "-", "--identifier", hostLabel+".notifications", app); e != nil {
 		t.Fatal(e)
 	}
 }

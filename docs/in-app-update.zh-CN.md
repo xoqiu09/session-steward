@@ -1,6 +1,6 @@
 # macOS App 内置升级
 
-状态：本分支为本地候选，尚未推送、合并或发布。现有安装不受构建和测试影响。第一版只做用户触发的正式版检查和安装，不定时检查、不静默安装。
+状态：内置升级候选已推送至 PR #33，保持草稿；本轮已把 main 的 `7c5bae4` 合并进升级分支，保留通知闭环、顶部提醒、可读画布和项目回收站。尚未合并或发布，没有替换正式安装。第一版只做用户触发的正式版检查和安装，不定时检查、不静默安装。
 
 ## 用户操作
 
@@ -16,7 +16,7 @@ App 菜单或菜单栏 → **检查更新**，看到当前版本/构建序号、
 
 - **App 自管后台**：App 正常退出会停止自己的子进程；安装后重新启动 App，由 App 使用原 `STEWARD_HOME` 启动后台。
 - **共用 launchd**：只有带 Steward 标识、使用同一数据目录、标准标签及受支持二进制路径的服务可以更新。停止后按原 plist 重新加载；不重写 PATH、环境变量、登录项、启动参数或服务模式。手动启动或自定义目录的共用后台会明确拒绝，避免更新 App 后后台仍停留在旧版。
-- 每次替换主 App，并同步已存在于数据目录 `bin/` 的 `steward`、`steward-hook` 和旧通知助手；它们与 App 内组件来自同一校验包。旧通知助手仅按精确安装路径停止。未安装的 hook 不擅自安装，不改 Claude/Codex hook 条目和信任状态。
+- 每次替换主 App，并同步已存在于数据目录 `bin/` 的 `steward`、`steward-hook` 和旧通知助手；它们与 App 内组件来自同一校验包。通知助手按主 App 内嵌路径及数据目录 `bin/` 的精确路径停止，并等待退出；重新发送时从校验后的新位置启动。替换与恢复后均向 LaunchServices 重新登记原安装路径，保留 `session-steward://` 跳转。未安装的 hook 不擅自安装，不改 Claude/Codex hook 条目和信任状态。
 - 不复制或替换数据库、token、hub 密钥、device ID、config、spool、Tailscale 设置或网络配置。hub/agent 角色继续从原配置读取。
 - 第一版要求发布端 schema 与当前程序相同，保证旧程序能打开升级期间收到的新事件。跨 schema 升级一律拒绝，发行说明必须安排备份、迁移和兼容性验证；不会用旧快照覆盖新 hook 数据。未来即使 schema 数字不变，发布者仍需验证新代码没有引入旧版无法理解的数据写法。
 - 下载先验签，再验证精确大小、SHA-256；解压限制为单一 App、普通文件/目录，拒绝路径穿越、符号链接、重复文件、设备文件和过量文件/解压大小。校验 App/nested code signatures、架构、版本、构建、提交与 schema，再把整组文件预先复制到各目标目录所在卷。准备期间磁盘不足不会停止后台。
@@ -56,7 +56,7 @@ App 菜单或菜单栏 → **检查更新**，看到当前版本/构建序号、
    ```
 
    签名工具检查私钥类型及其对应公钥，生成 `update-manifest.json`。`scripts/release.sh` 同时提供 UPDATE_SIGNING_KEY_FILE、UPDATE_NOTES_FILE 时也会在打包后执行此步骤；未提供签名身份时只生成手动下载包，明确不产生更新清单。公钥轮换暂不支持自动迁移，需要受信任的 bootstrap App，不允许清单自带替换公钥。
-6. 人工检查并上传两种 `.app.zip`、SHA256SUMS、签名清单到**同一个待发布 Release**，确认精确版本 URL 后才标为正式最新发布。现有 CI 继续只创建草稿；不默认把私钥接入 CI，也不自动发布。本任务没有推送、打标签、创建 Release 或配置任何生产签名材料。
+6. 人工检查并上传两种 `.app.zip`、SHA256SUMS、签名清单到**同一个待发布 Release**，确认精确版本 URL 后才标为正式最新发布。现有 CI 继续只创建草稿；不默认把私钥接入 CI，也不自动发布。候选已推送至草稿 PR；本任务没有打标签、创建 Release 或配置任何生产签名材料。
 
 ## 开发验证
 
@@ -66,6 +66,13 @@ App 菜单或菜单栏 → **检查更新**，看到当前版本/构建序号、
 
 macOS 的真实程序/隔离服务验证需显式设置 `SS_UPDATE_TEST_BUNDLE` 指向刚构建的测试 App，`SS_UPDATE_TEST_NATIVE=1` 启用真实 App，`SS_UPDATE_TEST_LAUNCHSERVICES=1` 使用真实系统打开/重启链路。`SS_UPDATE_TEST_INTERNAL_HOME=1` 将**合成运行数据**临时置于系统标准 Application Support 下的独立随机目录，模拟正式安装，结束后删除；这不是用户 `.steward`，也不是交付产物。新签名测试 App 直接读取外置数据可能等待系统磁盘权限提示；测试不会批准或修改此权限。配置读取超过 2 秒会显示原因并停止启动后台，不再无限等待。Swift 单独测试会模拟阻塞读取并验证超时。
 
-可复现命令：`sh scripts/test-app-update.sh /完整外置Scratch路径`。脚本构建无生产公钥的隔离 App，运行两种模式的安装成功/健康失败恢复及 Swift 配置超时。只有 opt-in 测试会临时创建独立标签的 LaunchAgent plist，结束后卸载并删除，不使用真实服务标签。测试 plist 位于系统 LaunchAgents，临时运行数据位于系统 Application Support；App、程序、构建缓存及日志位于指定外置 Scratch。所有测试数据为合成数据；双模式真实 LaunchServices 在本机通过，Intel、其他 macOS/Gatekeeper 和正式签名下载仍需发布验收。详细结果见本轮交付报告。
+可复现命令：`sh scripts/test-app-update.sh /完整外置Scratch路径`。脚本构建无生产公钥的隔离 App，运行两种模式的安装成功/健康失败恢复及 Swift 配置超时。只有 opt-in 测试会临时创建独立标签的 LaunchAgent plist，结束后卸载并删除，不使用真实服务标签。主 App 与通知助手均使用独立 bundle identifier；测试深链使用独立 scheme，结束后注销，避免成为正式深链的处理程序。通知目录由显式数据目录传给助手，不读取真实 `.steward/notifications`。测试 plist 位于系统 LaunchAgents，临时运行数据位于系统 Application Support；App、程序、构建缓存及日志位于指定外置 Scratch。所有测试数据为合成数据；双模式真实 LaunchServices 在本机通过，Intel、其他 macOS/Gatekeeper 和正式签名下载仍需发布验收。详细结果见本轮交付报告。
 
 只看窗口可设置隔离的 STEWARD_HOME 和 `STEWARD_UPDATE_UI_ONLY=1` 后运行候选的 `Contents/MacOS/SessionSteward`，此模式不启动后台和引导安装。预览须复制到单独目录，修改为独立测试 bundle identifier 并重新 ad-hoc 签名后再运行，避免占用正式 App 标识。不要直接运行普通候选去连接真实 `.steward` 做验收。完成首次生产 bootstrap、签名发布以及真实双芯片/Gatekeeper 验收之前，不能把本地自测写成用户已验收或线上升级成功。
+
+
+### T0 在 main 新基线上的通知验收
+
+`scripts/test-native.sh` 覆盖正式/隔离深链、冷启动保留目标、通知助手寻找宿主、显式数据目录和提醒清除；它不发送系统通知。两种芯片的构建均包含 `native/shared`、SwiftUI、QuartzCore，以及已签名的升级助手。
+
+真实横幅与点击需另外运行隔离交互验收：设置 `SS_UPDATE_TEST_INTERACTIVE_DIR=/外置Scratch/唯一目录`，配合上述三个 opt-in 环境变量执行 `go test -timeout 25m ./internal/updater -run TestMacIsolatedInstall -v -count=1`。该模式只运行自管后台的成功事务，用合成工作项在 `before.json`、`after.json` 两个检查点暂停；操作者在隔离 App 的“文件 → 发送测试提醒”中发送并点验后，分别写入 `before.continue`、`after.continue` 继续。检查点只用于推进测试，不记作用户验收。完整四场景矩阵仍须单独运行。若系统未允许这份独立身份的测试 App 通知，或无法观察真实横幅，则该项必须写成未验证，不能用单元测试或“系统已排队”代替。
