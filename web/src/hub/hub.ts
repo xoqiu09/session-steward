@@ -2,12 +2,12 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api'
 import type { HubStatus, Snapshot } from '../types'
+import { HUB_STRIDE } from './ids'
 
 export type HubScope = 'here' | 'all'
 const SCOPE_KEY = 'ss.hub.scope'
 
-/** 其他设备的编号：工作项带“设备名:”前缀，会话、运行编号加了 10 亿的倍数。 */
-export const HUB_STRIDE = 1_000_000_000
+export { HUB_STRIDE }
 export function remoteDeviceOf(snap: Snapshot, kind: 'item' | 'session', id: string | number): string | null {
   const devs = snap.devices
   if (!devs?.length) return null

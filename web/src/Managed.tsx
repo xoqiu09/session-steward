@@ -4,6 +4,7 @@ import { api, ApiError } from './api'
 import { AgentBadge, ErrorLine, useAction } from './bits'
 import { ago, providerLabel } from './model'
 import { managedStateLabel } from './live'
+import { shownNo } from './hub/ids'
 
 // 新建托管会话：只能选服务配置里的 Agent，不能提交命令。
 export function NewManaged({ snap, initialRepoId, onLaunched }: { snap: Snapshot; initialRepoId?: number; onLaunched: (m: ManagedSession) => void }) {
@@ -77,7 +78,7 @@ export function ManagedPanel({ snap, m, session }: { snap: Snapshot; m: ManagedS
     <dl className="kv">
       <dt>分支</dt><dd className="mono">{m.branch}</dd>
       <dt>目录</dt><dd className="mono">{m.worktree}</dd>
-      <dt>hooks</dt><dd>{session ? `已关联会话 #${session.id}` : m.session_id ? `会话 #${m.session_id}` : (snap.agent_info ?? []).find((a) => a.name === m.agent)?.hooks === false ? '该 Agent 不发 hooks 事件，只有终端画面；进展需看画面或手动更新简报' : '尚未收到该目录的 hooks 事件'}</dd>
+      <dt>hooks</dt><dd>{session ? `已关联会话 #${shownNo(session.id)}` : m.session_id ? `会话 #${shownNo(m.session_id)}` : (snap.agent_info ?? []).find((a) => a.name === m.agent)?.hooks === false ? '该 Agent 不发 hooks 事件，只有终端画面；进展需看画面或手动更新简报' : '尚未收到该目录的 hooks 事件'}</dd>
       {m.exit_code != null && <><dt>退出码</dt><dd>{m.exit_code}</dd></>}
     </dl>
     {m.error && <p className="warn-line">{m.error}</p>}

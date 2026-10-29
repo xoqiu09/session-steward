@@ -4,6 +4,7 @@ import { BriefStamp } from './BriefStamp'
 import { field, legacyBrief } from './brief'
 import { handoffAnswered, ownerLabel, reporterItem, shortText, stageView } from './stage'
 import { sessionSignal } from './model'
+import { shownNo } from './hub/ids'
 
 export function SessionBriefs({ snap, item, sessions, onSelect, historical = false }: { snap: Snapshot; item: WorkItem; sessions: Session[]; onSelect?: (id: number) => void; historical?: boolean }) {
   return <div className="session-briefs" aria-label="按会话分别回报">
@@ -21,7 +22,7 @@ function ReporterBrief({ snap, item, session, onSelect }: { snap: Snapshot; item
   const blocker = field(own, 'blocker')
   const next = field(own, 'next')
   const signal = sessionSignal(snap, session)
-  return <li className="session-brief" aria-label={`会话 #${session.id} 的独立简报`}>
+  return <li className="session-brief" aria-label={`会话 #${shownNo(session.id)} 的独立简报`}>
     <div className="session-brief-head"><AgentBadge provider={session.provider} /><button className="link" onClick={() => onSelect?.(session.id)} disabled={!onSelect} title={session.provider_session_id}>会话 #{session.id}</button><strong>{stage.label}</strong></div>
     {session.title && <small className="muted session-brief-title">{session.title}</small>}
     {(session.state === 'ended' || session.freshness === 'stale') && <small className="muted">{session.state === 'ended' ? '会话已结束，保留最后回报' : '长时间无活动，保留最后回报'}</small>}

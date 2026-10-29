@@ -8,6 +8,7 @@ import { MergeGate } from './P1'
 import { HistoryItems } from './HistoryItems'
 import { attentionCount, periodicView, queueLanes, repoLabel, type AdviceGroup, type MergeGroup, type ReviewGroup } from './workbench'
 import { ago, approvalRepo, approvalStatusLabel, itemSignal, itemStatusLabel, scopedAttention, sessionName } from './model'
+import { shownNo } from './hub/ids'
 
 function sessionOf(s: Snapshot, id: number | null) {
   return id == null ? undefined : (s.sessions ?? []).find((x) => x.id === id)
@@ -40,7 +41,7 @@ function Context({ a, snap }: { a: Approval; snap: Snapshot }) {
 function WorkName({ a, snap }: { a: Approval; snap: Snapshot }) {
   const s = sessionOf(snap, a.session_id)
   const item = (snap.work_items ?? []).find((w) => w.id === (a.work_item_id || s?.work_item_id))
-  return <div className="approval-work"><strong>{item?.title || (s ? sessionName(snap, s).title : '工作内容待登记')}</strong><small className="muted">{item ? item.id : '待关联工作项'}{s ? ` · 会话 #${s.id}` : ''}</small></div>
+  return <div className="approval-work"><strong>{item?.title || (s ? sessionName(snap, s).title : '工作内容待登记')}</strong><small className="muted">{item ? item.id : '待关联工作项'}{s ? ` · 会话 #${shownNo(s.id)}` : ''}</small></div>
 }
 
 function Section({ title, count, hint, children }: { title: string; count: number; hint?: string; children: React.ReactNode }) {

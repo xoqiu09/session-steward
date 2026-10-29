@@ -1,5 +1,6 @@
 import type { Approval, Handoff, ManagedSession, MergeJob, MergePayload, Run, Session, Snapshot, WorkItem } from '../types'
 import { providerLabel, sessionsFor, sessionSignal } from '../model'
+import { shownNo } from '../hub/ids'
 
 // 运行台只做展示映射：把快照里已有的字段归到六种执行状态，不新增判断规则。
 // 命令文本、已复制、已发送都不是执行证据；只有服务实际运行的检查才有成功/失败。
@@ -74,7 +75,7 @@ export interface CurrentRun { kind: 'session' | 'managed'; id: string; sessionId
 
 export function currentRuns(snap: Snapshot, item: WorkItem): CurrentRun[] {
   const out: CurrentRun[] = sessionsFor(snap, item.id).filter(activeSession).map((s) => ({
-    kind: 'session', id: `s${s.id}`, sessionId: s.id, provider: s.provider, label: `会话 #${s.id}`, since: s.last_activity_at || s.first_seen_at,
+    kind: 'session', id: `s${s.id}`, sessionId: s.id, provider: s.provider, label: `会话 #${shownNo(s.id)}`, since: s.last_activity_at || s.first_seen_at,
     state: s.freshness === 'stale' ? 'unknown' : sessionSignal(snap, s).tone === 'run' ? 'running' : 'requested',
     statusLabel: s.freshness === 'stale' ? '状态待核实' : sessionSignal(snap, s).label,
   }))
@@ -147,7 +148,7 @@ export function commandsOf(snap: Snapshot, item: WorkItem): CommandEntry[] {
     if (!(j.checks ?? []).length && (j.state === 'queued' || j.state === 'running')) out.push({ key: j.id, text: '检查命令（仓库配置）', state: jobRunState(j), evidence: '等待服务运行结果', copyable: false })
   }
   for (const s of sessionsFor(snap, item.id)) {
-    if (s.resume_command) out.push({ key: `resume-${s.id}`, text: s.resume_command, state: 'generated', evidence: `会话 #${s.id} 恢复命令 · 无执行证据`, copyable: true })
+    if (s.resume_command) out.push({ key: `resume-${s.id}`, text: s.resume_command, state: 'generated', evidence: `会话 #${shownNo(s.id)} 恢复命令 · 无执行证据`, copyable: true })
   }
   return out
 }

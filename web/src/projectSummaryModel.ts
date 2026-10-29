@@ -4,6 +4,7 @@ import { providerLabel, scopedAttention } from './model'
 import { currentReporters } from './stage'
 import { queueLanes } from './workbench'
 import { PROJECT_RECENT_MS } from './projectActivity'
+import { shownNo } from './hub/ids'
 
 // at is empty for current service state (dependencies, status), whose updated_at also moves on Git scans.
 // dated marks a source whose report is old or whose session has ended; it is never evidence of resolution.
@@ -59,7 +60,7 @@ export function projectSummary(snap: Snapshot, items: WorkItem[], repoId: number
       const source = (value: BriefField): FactSource => {
         const sessionId = value.session_id ?? (Number(sid) || null)
         const session = snap.sessions?.find(s => s.id === sessionId)
-        const label = value.kind === 'user' ? '你填写' : session ? `${providerLabel(session.provider)} #${session.id}` : sessionId != null ? `会话 #${sessionId}` : '工作项回报'
+        const label = value.kind === 'user' ? '你填写' : session ? `${providerLabel(session.provider)} #${shownNo(session.id)}` : sessionId != null ? `会话 #${shownNo(sessionId)}` : '工作项回报'
         // User-entered fields are the user's own statement, not an old agent report to re-check.
         return { itemId: w.id, sessionId, label, at: value.at, observed: false, dated: value.kind !== 'user' && dated(value.at, sessionId) }
       }
@@ -97,7 +98,7 @@ export function projectSummary(snap: Snapshot, items: WorkItem[], repoId: number
     for (const p of f.contributions) {
       if (!ids.has(p.work_item_id) || items.some(w => w.id === p.work_item_id && ['done','abandoned'].includes(w.status))) continue
       if (!p.active && p.candidate !== f.candidate && !f.conflict) continue
-      const source: FactSource = { itemId: p.work_item_id, sessionId: p.session_id, label: `${providerLabel(p.provider)} #${p.session_id}`, at: p.at, observed: false, feature: f.title, dated: !p.active || dated(p.at, p.session_id) }
+      const source: FactSource = { itemId: p.work_item_id, sessionId: p.session_id, label: `${providerLabel(p.provider)} #${shownNo(p.session_id)}`, at: p.at, observed: false, feature: f.title, dated: !p.active || dated(p.at, p.session_id) }
       if (p.blocker !== undefined) blockerReported = true
       if (p.blocker) add(blockers, p.blocker, source, undefined, p.active ? 60 : 30)
       if (p.next) add(next, p.next, { ...source, at: p.next_at || p.at, dated: !p.active || dated(p.next_at || p.at, p.session_id) }, owner(p.next_owner, source), p.active ? 55 : 25)
@@ -112,7 +113,7 @@ export function projectSummary(snap: Snapshot, items: WorkItem[], repoId: number
   for (const a of [...lanes.permission, ...lanes.decision]) {
     if (!belongs(a.work_item_id, a.session_id)) continue
     const session = snap.sessions?.find(s => s.id === a.session_id)
-    const source: FactSource = { itemId: a.work_item_id || session?.work_item_id || '', sessionId: a.session_id, label: session ? `${providerLabel(session.provider)} #${session.id}` : '正式请求', at: a.created_at, observed: true }
+    const source: FactSource = { itemId: a.work_item_id || session?.work_item_id || '', sessionId: a.session_id, label: session ? `${providerLabel(session.provider)} #${shownNo(session.id)}` : '正式请求', at: a.created_at, observed: true }
     add(blockers, `${a.kind === 'permission' ? '等待权限审批' : '等待你的决定'}：${a.preview || a.tool_name || '查看右侧请求'}`, source, undefined, 100)
     add(next, a.kind === 'permission' ? '处理右侧工具权限请求' : '回应右侧明确提问', source, '你', 100, 'formal')
   }
