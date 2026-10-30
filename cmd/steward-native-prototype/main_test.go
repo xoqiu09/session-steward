@@ -56,3 +56,12 @@ func TestProductionChildViaSymlinkIsRejectedBeforeWriting(t *testing.T) {
 		t.Fatal("wrote into production before rejecting")
 	}
 }
+
+func TestPrivateHostsOmitsUnconfiguredRemote(t *testing.T) {
+	if got := privateHosts(""); got != nil {
+		t.Fatalf("empty remote produced an allowlist: %#v", got)
+	}
+	if got := privateHosts("synthetic.ts.net"); len(got) != 1 || got[0] != "synthetic.ts.net" {
+		t.Fatalf("explicit remote lost: %#v", got)
+	}
+}

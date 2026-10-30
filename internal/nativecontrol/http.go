@@ -28,8 +28,9 @@ func (h *HTTP) Handler(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !strings.HasPrefix(r.URL.Path, "/native/") {
 			// Native approvals require the scoped controller lease and full transient details.
-			if r.Method == "POST" && strings.HasPrefix(r.URL.Path, "/api/approvals/") && strings.HasSuffix(r.URL.Path, "/decide") {
-				id := strings.TrimSuffix(strings.TrimPrefix(r.URL.Path, "/api/approvals/"), "/decide")
+			if r.Method == "POST" && strings.HasPrefix(r.URL.Path, "/api/approvals/") && (strings.HasSuffix(r.URL.Path, "/decide") || strings.HasSuffix(r.URL.Path, "/dismiss")) {
+				id := strings.TrimPrefix(r.URL.Path, "/api/approvals/")
+				id = strings.TrimSuffix(strings.TrimSuffix(id, "/decide"), "/dismiss")
 				if h.Manager.OwnsApproval(id) {
 					nativeJSON(w, 409, map[string]string{"error": "请在受限原生控制页查看操作内容并处理"})
 					return
@@ -44,7 +45,7 @@ func (h *HTTP) Handler(next http.Handler) http.Handler {
 		w.Header().Set("X-Frame-Options", "DENY")
 		allowed := loopback(host(r.Host))
 		for _, v := range h.Hosts {
-			if strings.EqualFold(host(r.Host), v) {
+			if v != "" && strings.EqualFold(host(r.Host), v) {
 				allowed = true
 			}
 		}

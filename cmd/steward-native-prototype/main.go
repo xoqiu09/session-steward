@@ -95,8 +95,9 @@ func run() error {
 		return err
 	}
 	assets, _ := fs.Sub(steward.WebDist, "web/dist")
-	base := &server.Server{Core: c, PanelToken: panel, Static: assets, Listen: *listen, BuildCommit: "native-prototype", RemoteHosts: []string{*remote}}
-	handler := (&nativecontrol.HTTP{Manager: m, Token: token, PanelToken: panel, Hosts: []string{*remote}}).Handler(base.Handler())
+	hosts := privateHosts(*remote)
+	base := &server.Server{Core: c, PanelToken: panel, Static: assets, Listen: *listen, BuildCommit: "native-prototype", RemoteHosts: hosts}
+	handler := (&nativecontrol.HTTP{Manager: m, Token: token, PanelToken: panel, Hosts: hosts}).Handler(base.Handler())
 	srv := &http.Server{Addr: *listen, Handler: handler, ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 60 * time.Second}
 	go func() {
 		<-ctx.Done()
@@ -114,6 +115,13 @@ func run() error {
 func newSecret(home, name string) (string, error) {
 	// config.Secret uses STEWARD_HOME; avoid changing process/global configuration.
 	return nativecontrol.WriteSecret(filepath.Join(home, name))
+}
+
+func privateHosts(remote string) []string {
+	if remote == "" {
+		return nil
+	}
+	return []string{remote}
 }
 
 func prepareHome(home, production string) error {

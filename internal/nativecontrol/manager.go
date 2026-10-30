@@ -57,6 +57,15 @@ type State struct {
 	Events          []Audit           `json:"events"`
 	Pending         []*Pending        `json:"pending"`
 }
+
+// Only one native request may be in flight. Its identity is checked again after
+// every unlocked RPC; a response from an older lease cannot update its successor.
+type nativeRequest struct {
+	client, operation, turn string
+	epoch                   int
+	startingTurn            bool
+	transport               Transport
+}
 type Manager struct {
 	mu             sync.Mutex // Serializes controller writes and ordered native observations.
 	ctx            context.Context
@@ -64,6 +73,7 @@ type Manager struct {
 	Core           *core.Core
 	Factory        Factory
 	transport      Transport
+	inflight       *nativeRequest
 	file           string
 	hostID         string
 	now            func() time.Time
@@ -203,6 +213,9 @@ func (m *Manager) Snapshot() State { m.mu.Lock(); defer m.mu.Unlock(); return m.
 func (m *Manager) Acquire(client string) (State, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	return m.acquireLocked(client)
+}
+func (m *Manager) acquireLocked(client string) (State, error) {
 	if !keyPattern.MatchString(client) || m.closed {
 		return State{}, ErrLease
 	}
@@ -214,6 +227,15 @@ func (m *Manager) Acquire(client string) (State, error) {
 	}
 	if m.s.Owner != client || !m.now().Before(m.s.LeaseUntil) {
 		m.s.Epoch++
+		for _, cancel := range m.approvals {
+			cancel()
+		}
+		m.s.Pending = nil
+		if m.inflight != nil {
+			m.s.Status = "uncertain"
+			m.s.LastError = "控制权已变化，原请求的执行结果待核对；不会自动重发"
+			m.audit("native_request_fenced", m.s.Turn)
+		}
 	}
 	m.s.Owner = client
 	m.s.LeaseUntil = m.now().Add(90 * time.Second)
@@ -242,26 +264,48 @@ func (m *Manager) ingest(kind event.Kind, id string, text string, toolIDs ...str
 	}
 	return m.Core.Ingest(m.ctx, e)
 }
-func (m *Manager) connect(resume bool) error {
+func (m *Manager) requestCurrent(r *nativeRequest) bool {
+	if m.closed || m.inflight != r || m.s.Epoch != r.epoch || m.s.Owner != r.client {
+		return false
+	}
+	if r.operation != "" {
+		_, ok := m.s.Operations[r.operation]
+		return ok
+	}
+	return true
+}
+
+// No native I/O is performed while mu is held. Start draining events as soon as
+// the transport exists, including during initialize and thread/start or resume.
+func (m *Manager) connect(r *nativeRequest, threadID, workspace string) (Transport, string, error) {
 	tr, err := m.Factory(m.ctx)
 	if err != nil {
-		return err
+		return nil, "", err
 	}
+	m.mu.Lock()
+	if !m.requestCurrent(r) {
+		m.mu.Unlock()
+		_ = tr.Close()
+		return nil, "", ErrLease
+	}
+	m.transport, r.transport = tr, tr
+	m.wg.Add(1)
+	go func() { defer m.wg.Done(); m.read(tr) }()
+	m.mu.Unlock()
+
 	ctx, cancel := context.WithTimeout(m.ctx, 30*time.Second)
 	defer cancel()
 	if err = tr.Call(ctx, "initialize", map[string]any{"clientInfo": map[string]string{"name": "session_steward_native_prototype", "version": "0.1.0"}, "capabilities": map[string]any{"experimentalApi": true}}, nil); err != nil {
-		tr.Close()
-		return err
+		return tr, "", err
 	}
 	if err = tr.Notify("initialized", map[string]any{}); err != nil {
-		tr.Close()
-		return err
+		return tr, "", err
 	}
-	params := map[string]any{"cwd": m.s.Workspace, "approvalPolicy": "on-request", "sandbox": "workspace-write"}
+	params := map[string]any{"cwd": workspace, "approvalPolicy": "on-request", "sandbox": "workspace-write"}
 	method := "thread/start"
-	if resume {
+	if threadID != "" {
 		method = "thread/resume"
-		params["threadId"] = m.s.ThreadID
+		params["threadId"] = threadID
 		params["excludeTurns"] = true
 	} else {
 		params["developerInstructions"] = "This is a local Session Steward prototype. Work only in the configured workspace. Do not use cloud workspaces. When you intentionally deliver your work, call ss_deliver with a concise summary; this records agent delivery for user review, never user acceptance. Do not call it when interrupted or merely waiting."
@@ -273,84 +317,154 @@ func (m *Manager) connect(resume bool) error {
 		} `json:"thread"`
 	}
 	if err = tr.Call(ctx, method, params, &result); err != nil {
-		tr.Close()
+		return tr, "", err
+	}
+	if result.Thread.ID == "" || (threadID != "" && result.Thread.ID != threadID) {
+		return tr, "", errors.New("native thread identity mismatch")
+	}
+	return tr, result.Thread.ID, nil
+}
+
+// Release only this request's transport. The public state of a newer lease is
+// left unchanged, even when an older RPC eventually returns successfully.
+func (m *Manager) failRequest(r *nativeRequest, tr Transport) (State, error) {
+	m.mu.Lock()
+	err := ErrLease
+	if m.requestCurrent(r) {
+		m.s.Status = "uncertain"
+		m.s.LastError = "请求是否已执行尚待核对；不会自动重发"
+		m.audit("native_request_uncertain", m.s.Turn)
+		_ = m.save()
+		err = errors.New(m.s.LastError)
+	}
+	if m.inflight == r {
+		m.inflight = nil
+	}
+	if m.transport == tr {
+		m.transport = nil
+	}
+	s := m.snapshot()
+	m.mu.Unlock()
+	if tr != nil {
+		_ = tr.Close()
+	}
+	return s, err
+}
+
+// A native event can precede the turn/start response. Bind it once so that the
+// reader and approval ready callback can make progress while that RPC waits.
+func (m *Manager) bindRequestedTurn(r *nativeRequest, turn string) error {
+	if r.turn != "" {
+		if r.turn != turn {
+			return errors.New("native turn identity mismatch")
+		}
+		return nil
+	}
+	r.turn, m.s.Turn = turn, turn
+	m.s.Operations[r.operation] = turn
+	m.s.Status = "running"
+	if _, err := m.ingest(event.KindPrompt, "prompt:"+turn, ""); err != nil {
 		return err
 	}
-	if result.Thread.ID == "" || (resume && result.Thread.ID != m.s.ThreadID) {
-		tr.Close()
-		return errors.New("native thread identity mismatch")
-	}
-	m.s.ThreadID = result.Thread.ID
-	m.transport = tr
-	m.wg.Add(1)
-	go func() { defer m.wg.Done(); m.read(tr) }()
-	return nil
+	return m.save()
 }
+
 func (m *Manager) Start(client string, epoch int, operation, title, prompt string) (State, error) {
 	m.mu.Lock()
-	defer m.mu.Unlock()
 	if err := m.lease(client, epoch); err != nil {
+		m.mu.Unlock()
 		return State{}, err
 	}
 	if !keyPattern.MatchString(operation) || len(prompt) == 0 || len(prompt) > 16000 {
+		m.mu.Unlock()
 		return State{}, errors.New("invalid operation or task")
 	}
 	if _, ok := m.s.Operations[operation]; ok {
-		return m.snapshot(), nil
+		s := m.snapshot()
+		m.mu.Unlock()
+		return s, nil
 	}
 	if m.s.WorkItem != "" {
 		var status string
 		if err := m.Core.St.R().QueryRow(`SELECT status FROM work_items WHERE id=?`, m.s.WorkItem).Scan(&status); err != nil {
+			m.mu.Unlock()
 			return State{}, err
 		}
 		if status == "done" || status == "abandoned" {
+			m.mu.Unlock()
 			return State{}, errors.New("此工作已处理或放弃；原型不会自动重新打开，请另建隔离任务")
 		}
 	}
-	if m.s.Status == "needs_reconcile" || m.s.Turn != "" || m.s.Status == "uncertain" {
+	if m.inflight != nil || m.s.Status == "needs_reconcile" || m.s.Turn != "" || m.s.Status == "uncertain" {
+		m.mu.Unlock()
 		return State{}, ErrState
 	}
 	if len(m.s.Operations) >= 100 {
+		m.mu.Unlock()
 		return State{}, errors.New("prototype operation limit reached")
 	}
-	if m.transport == nil {
-		if m.s.ThreadID == "" {
-			title = strings.TrimSpace(title)
-			if title == "" || len([]rune(title)) > 200 {
-				return State{}, errors.New("task title required")
-			}
-			m.s.Title = title
+	if m.s.ThreadID == "" {
+		title = strings.TrimSpace(title)
+		if title == "" || len([]rune(title)) > 200 {
+			m.mu.Unlock()
+			return State{}, errors.New("task title required")
 		}
-		if err := m.connect(m.s.ThreadID != ""); err != nil {
-			return State{}, err
-		}
-		if err := m.save(); err != nil {
-			return State{}, err
+		m.s.Title = title
+	}
+	r := &nativeRequest{client: client, epoch: epoch, operation: operation, transport: m.transport}
+	m.s.Operations[operation] = "requested"
+	m.s.Status, m.s.LastError = "starting", ""
+	m.audit("turn_requested", "")
+	if err := m.save(); err != nil {
+		m.mu.Unlock()
+		return State{}, err
+	}
+	m.inflight = r
+	m.wg.Add(1)
+	threadID, workspace := m.s.ThreadID, m.s.Workspace
+	tr := m.transport
+	m.mu.Unlock()
+	defer m.wg.Done()
+
+	if tr == nil {
+		var err error
+		tr, threadID, err = m.connect(r, threadID, workspace)
+		if err != nil {
+			return m.failRequest(r, tr)
 		}
 	}
+	m.mu.Lock()
+	if !m.requestCurrent(r) || m.transport != tr {
+		m.mu.Unlock()
+		return m.failRequest(r, tr)
+	}
+	m.s.ThreadID = threadID
 	if m.s.WorkItem == "" {
-		r, err := m.ingest(event.KindBegin, "begin", "")
+		bound, err := m.ingest(event.KindBegin, "begin", "")
 		if err != nil {
-			return State{}, err
+			m.mu.Unlock()
+			return m.failRequest(r, tr)
 		}
-		m.s.WorkItem = r.WorkItemID
-		m.s.SessionID = r.SessionID
+		m.s.WorkItem, m.s.SessionID = bound.WorkItemID, bound.SessionID
 		if m.s.WorkItem == "" {
-			item, err := m.Core.SessionItemAt(m.ctx, m.hostID, "codex", m.s.ThreadID, m.now())
+			item, err := m.Core.SessionItemAt(m.ctx, m.hostID, "codex", threadID, m.now())
 			if err != nil {
-				return State{}, err
+				m.mu.Unlock()
+				return m.failRequest(r, tr)
 			}
 			m.s.WorkItem = item
 		}
 	} else if _, err := m.ingest(event.KindClaim, "claim:"+operation, ""); err != nil {
-		return State{}, err
+		m.mu.Unlock()
+		return m.failRequest(r, tr)
 	}
-	m.s.Operations[operation] = "requested"
-	m.s.Status = "starting"
-	m.audit("turn_requested", "")
+	r.startingTurn = true
 	if err := m.save(); err != nil {
-		return State{}, err
+		m.mu.Unlock()
+		return m.failRequest(r, tr)
 	}
+	m.mu.Unlock()
+
 	ctx, cancel := context.WithTimeout(m.ctx, 30*time.Second)
 	defer cancel()
 	var result struct {
@@ -358,43 +472,68 @@ func (m *Manager) Start(client string, epoch int, operation, title, prompt strin
 			ID string `json:"id"`
 		} `json:"turn"`
 	}
-	err := m.transport.Call(ctx, "turn/start", map[string]any{"threadId": m.s.ThreadID, "clientUserMessageId": operation, "input": []any{map[string]any{"type": "text", "text": prompt}}, "approvalPolicy": "on-request", "sandboxPolicy": map[string]any{"type": "workspaceWrite", "writableRoots": []string{m.s.Workspace}, "networkAccess": false, "excludeSlashTmp": true, "excludeTmpdirEnvVar": true}}, &result)
+	err := tr.Call(ctx, "turn/start", map[string]any{"threadId": threadID, "clientUserMessageId": operation, "input": []any{map[string]any{"type": "text", "text": prompt}}, "approvalPolicy": "on-request", "sandboxPolicy": map[string]any{"type": "workspaceWrite", "writableRoots": []string{workspace}, "networkAccess": false, "excludeSlashTmp": true, "excludeTmpdirEnvVar": true}}, &result)
 	if err != nil || result.Turn.ID == "" {
-		m.s.Status = "uncertain"
-		m.s.LastError = "请求是否已执行尚待核对；不会自动重发"
-		_ = m.save()
-		return m.snapshot(), errors.New(m.s.LastError)
+		return m.failRequest(r, tr)
 	}
-	m.s.Turn = result.Turn.ID
-	m.s.Operations[operation] = result.Turn.ID
-	m.s.Status = "running"
-	_, err = m.ingest(event.KindPrompt, "prompt:"+result.Turn.ID, "")
-	if err == nil {
-		err = m.save()
+	m.mu.Lock()
+	if !m.requestCurrent(r) || m.transport != tr {
+		m.mu.Unlock()
+		return m.failRequest(r, tr)
 	}
-	if err != nil {
-		return State{}, err
+	// If completion was already observed, binding is idempotent and must not
+	// resurrect the finished turn when its start response finally arrives.
+	if err := m.bindRequestedTurn(r, result.Turn.ID); err != nil {
+		m.mu.Unlock()
+		return m.failRequest(r, tr)
 	}
-	return m.snapshot(), nil
+	m.inflight = nil
+	s := m.snapshot()
+	m.mu.Unlock()
+	return s, nil
 }
 func (m *Manager) Resume(client string, epoch int) (State, error) {
 	m.mu.Lock()
-	defer m.mu.Unlock()
 	if err := m.lease(client, epoch); err != nil {
+		m.mu.Unlock()
 		return State{}, err
 	}
-	if m.transport != nil || m.s.ThreadID == "" || m.s.Turn != "" {
+	if m.inflight != nil || m.transport != nil || m.s.ThreadID == "" || m.s.Turn != "" {
+		m.mu.Unlock()
 		return State{}, ErrState
 	}
-	if err := m.connect(true); err != nil {
+	r := &nativeRequest{client: client, epoch: epoch}
+	m.s.Status, m.s.LastError = "starting", ""
+	m.audit("native_thread_resume_requested", "")
+	if err := m.save(); err != nil {
+		m.mu.Unlock()
 		return State{}, err
+	}
+	m.inflight = r
+	m.wg.Add(1)
+	threadID, workspace := m.s.ThreadID, m.s.Workspace
+	m.mu.Unlock()
+	defer m.wg.Done()
+
+	tr, _, err := m.connect(r, threadID, workspace)
+	if err != nil {
+		return m.failRequest(r, tr)
+	}
+	m.mu.Lock()
+	if !m.requestCurrent(r) || m.transport != tr {
+		m.mu.Unlock()
+		return m.failRequest(r, tr)
 	}
 	m.s.Status = "idle"
 	m.audit("native_thread_resumed", "")
 	if err := m.save(); err != nil {
-		return State{}, err
+		m.mu.Unlock()
+		return m.failRequest(r, tr)
 	}
-	return m.snapshot(), nil
+	m.inflight = nil
+	s := m.snapshot()
+	m.mu.Unlock()
+	return s, nil
 }
 func (m *Manager) Interrupt(client string, epoch int) error {
 	m.mu.Lock()
@@ -419,7 +558,7 @@ func (m *Manager) Handoff(client string, epoch int) error {
 	if err := m.lease(client, epoch); err != nil {
 		return err
 	}
-	if m.s.ThreadID == "" || len(m.approvals) > 0 || (m.s.Turn != "" && m.s.Status != "needs_reconcile") || m.s.Status == "uncertain" {
+	if m.inflight != nil || m.s.ThreadID == "" || len(m.approvals) > 0 || (m.s.Turn != "" && m.s.Status != "needs_reconcile") || m.s.Status == "uncertain" {
 		return ErrState
 	}
 	m.s.DesktopHandoff = true
@@ -468,10 +607,13 @@ func (m *Manager) read(tr Transport) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.transport == tr && !m.closed {
-		m.s.Status = "needs_reconcile"
-		m.s.LastError = "原生连接已断开，请在电脑核对；未自动重新执行"
+		fenced := m.inflight != nil && !m.requestCurrent(m.inflight)
 		m.transport = nil
-		_ = m.save()
+		if !fenced {
+			m.s.Status = "needs_reconcile"
+			m.s.LastError = "原生连接已断开，请在电脑核对；未自动重新执行"
+			_ = m.save()
+		}
 	}
 }
 func (m *Manager) handle(tr Transport, msg Message) {
@@ -504,6 +646,22 @@ func (m *Manager) handle(tr Transport, msg Message) {
 	}
 	if p.TurnID == "" {
 		p.TurnID = p.Turn.ID
+	}
+	if r := m.inflight; r != nil && r.transport == tr {
+		if !m.requestCurrent(r) {
+			if len(msg.ID) > 0 {
+				_ = tr.Reply(msg.ID, map[string]any{"decision": "cancel", "contentItems": []any{}, "success": false})
+			}
+			return
+		}
+		if r.startingTurn && p.ThreadID == m.s.ThreadID && p.TurnID != "" && !m.s.Finished[p.TurnID] && m.s.Turn == "" {
+			if err := m.bindRequestedTurn(r, p.TurnID); err != nil {
+				m.s.Status = "uncertain"
+				m.s.LastError = "原生运行观察未能记录，请在电脑核对；不会自动重发"
+				_ = m.save()
+				return
+			}
+		}
 	}
 	valid := p.ThreadID == m.s.ThreadID && p.TurnID != "" && p.TurnID == m.s.Turn && !m.s.Finished[p.TurnID]
 	if len(msg.ID) > 0 {
@@ -588,6 +746,7 @@ func (m *Manager) approval(tr Transport, msg Message, turn, item, command, reaso
 		return
 	}
 	ctx, cancel := context.WithCancel(m.ctx)
+	epoch := m.s.Epoch
 	m.approvals[key] = cancel
 	fp := event.Fingerprint(msg.Method, msg.Params, m.s.Workspace)
 	e := &event.Event{EventID: "native:" + m.s.ThreadID + ":approval:" + key, SchemaVersion: 1, OccurredAt: m.now().UTC(), Source: event.Source{Provider: "codex", Client: "cli", HostID: m.hostID}, SessionID: m.s.ThreadID, Cwd: m.s.Workspace, Kind: event.KindPermission, RawName: "CodexAppServer", ToolName: "NativeCodexControl", Fingerprint: fp, ToolUseID: item, Preview: "原生 Codex 请求；请在受限控制页查看内容后处理"}
@@ -608,7 +767,7 @@ func (m *Manager) approval(tr Transport, msg Message, turn, item, command, reaso
 		id, d, ok, err := m.Core.RequestPermissionObserved(ctx, e, 3*time.Minute, func(id string) {
 			m.mu.Lock()
 			defer m.mu.Unlock()
-			if m.closed || m.s.Turn != turn || m.transport != tr {
+			if m.closed || m.s.Epoch != epoch || m.s.Turn != turn || m.transport != tr {
 				cancel()
 				return
 			}
@@ -624,6 +783,12 @@ func (m *Manager) approval(tr Transport, msg Message, turn, item, command, reaso
 		defer m.mu.Unlock()
 		defer cancel()
 		delete(m.approvals, key)
+		if m.s.Epoch != epoch {
+			// This request belonged to the previous controller. Its cancellation
+			// cannot publish pending UI or audit entries into the new lease.
+			_ = tr.Reply(msg.ID, map[string]string{"decision": "cancel"})
+			return
+		}
 		if m.s.Turn != turn || m.transport != tr {
 			decision = "cancel"
 		}
