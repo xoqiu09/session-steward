@@ -1,0 +1,26 @@
+.native-control { max-width: 1100px; margin: 0 auto; padding: 24px 28px 64px; font-size: 14px; line-height: 1.65; }
+.nc-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--line); padding-bottom: 16px; color: var(--muted); font-size: 12px; }
+.nc-header a { color: var(--text); text-decoration: none; }
+.nc-intro { padding: 32px 0 24px; }
+.nc-intro h1 { font-size: clamp(25px, 4vw, 36px); letter-spacing: -.035em; margin: 5px 0 10px; font-weight: 650; }
+.nc-intro > p:last-child { color: var(--muted); margin: 0; }
+.nc-eyebrow { font-size: 11px; letter-spacing: .09em; color: var(--muted); margin: 0 0 8px; }
+.nc-grid { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(270px, 1fr); gap: 20px; align-items: start; }
+.nc-card, .nc-result { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 22px; margin-bottom: 18px; min-width: 0; }
+.nc-result { border-top: 3px solid var(--codex); }
+.native-control h2 { font-size: 17px; line-height: 1.4; margin: 0 0 14px; }
+.nc-status { color: var(--codex); font-weight: 600; margin: 8px 0; }
+.nc-result dl { margin: 22px 0 0; }
+.nc-result dl > div { display: grid; grid-template-columns: 80px minmax(0, 1fr); gap: 12px; padding: 8px 0; border-top: 1px solid var(--line); }
+.nc-result dt { color: var(--muted); }.nc-result dd { margin: 0; overflow-wrap: anywhere; }
+.nc-card-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.native-control label { display: grid; gap: 7px; margin: 16px 0; font-weight: 500; }
+.native-control input, .native-control textarea { width: 100%; padding: 11px 12px; border: 1px solid var(--line); border-radius: 7px; background: var(--panel); resize: vertical; }
+.native-control .btn { min-height: 44px; padding: 9px 15px; }.nc-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+.native-control .muted { font-size: 12px; }.nc-approval { border-color: var(--warn); }
+.nc-approval pre { white-space: pre-wrap; overflow-wrap: anywhere; background: var(--bg); padding: 14px; border-radius: 6px; font-size: 12px; }
+.nc-command { display: block; overflow-wrap: anywhere; margin: 14px 0; background: var(--bg); padding: 10px; }
+.native-control details { margin-top: 20px; color: var(--muted); font-size: 12px; }.native-control summary { cursor: pointer; }
+.nc-events { list-style: none; padding: 0; margin: 0; }.nc-events li { display: flex; gap: 12px; justify-content: space-between; padding: 10px 0; border-top: 1px solid var(--line); font-size: 12px; }.nc-events time { color: var(--muted); white-space: nowrap; }
+.nc-error { border-left: 3px solid var(--danger); padding: 12px 16px; background: var(--panel); overflow-wrap: anywhere; }
+@media (max-width: 740px) { .native-control { padding: 16px 16px 40px; }.nc-grid { grid-template-columns: 1fr; gap: 0; }.nc-intro { padding-top: 24px; }.nc-card, .nc-result { padding: 18px; }.nc-actions .btn { flex: 1; } }
