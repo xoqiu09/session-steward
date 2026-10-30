@@ -9,6 +9,7 @@ import { openApprovals } from './model'
 import type { ItemStatus, MergeEvidence, Session, SessionUsageDetail, Snapshot } from './types'
 import { api } from './api'
 import { AgentBadge, CopyButton, ErrorLine, useAction } from './bits'
+import { shownNo } from './hub/ids'
 import { canUndoAttribution } from './attribution'
 import { BriefSection, RelayTimeline } from './BriefSection'
 import { FeatureProgress } from './FeatureProgress'
@@ -74,7 +75,7 @@ export function ItemDetail({ snap, id, onClose, onSelectSession, onSelectItem = 
       {!remote && <HandoffForm snap={snap} item={item} onLaunched={() => {}} />}
       <FeatureProgress snap={snap} repoId={item.repo_id} itemId={item.id} onSelectSession={onSelectSession} />
       <details className="project-work-details"><summary>完整工作简报与来源</summary>{remote ? <BriefReadOnly snap={snap} item={item} /> : <BriefSection snap={snap} item={item} />}</details>
-      <div className="assigned-runners">{sessions.map((s) => <button key={s.id} className="btn small" onClick={() => onSelectSession(s.id)}><AgentBadge provider={s.provider} client={s.client} /> #{s.id} · {sessionSignal(snap, s).label}</button>)}</div>
+      <div className="assigned-runners">{sessions.map((s) => <button key={s.id} className="btn small" onClick={() => onSelectSession(s.id)}><AgentBadge provider={s.provider} client={s.client} /> #{shownNo(s.id)} · {sessionSignal(snap, s).label}</button>)}</div>
       {!remote && <button className="btn small" onClick={() => { setEditing(!editing); setEditTitle(item.title); setEditRepo(item.repo_id ?? '') }}>修改标题 / 项目</button>}
       {!remote && editing && <form className="new-item compact" onSubmit={(e) => { e.preventDefault(); act.run(() => api.patchItem(id, { title: editTitle, repo_id: editRepo || 0 }).then(() => setEditing(false))) }}>
         <label>工作标题<input value={editTitle} onChange={(e) => setEditTitle(e.target.value)} required /></label>
@@ -159,7 +160,7 @@ export function SessionDetail({ snap, id, onClose, onSelectItem, foldEvents = fa
       </div>
       <h2>{name.title}</h2>
       <ConversationReturn key={s.id} snap={snap} session={s} />
-      <p className="hint">会话 #{s.id} · {name.source}{s.title && s.work_item_id ? ` · 原会话标题：${s.title}` : ''}</p>
+      <p className="hint">会话 #{shownNo(s.id)} · {name.source}{s.title && s.work_item_id ? ` · 原会话标题：${s.title}` : ''}</p>
       <p className={`work-signal signal-${signal.tone}`}><strong>{signal.label}</strong><br />{signal.reason}</p>
       {(() => {
         const perms = openApprovals(snap).filter((a) => a.kind === 'permission' && a.session_id === s.id)
@@ -301,7 +302,7 @@ export function SessionList({ snap, onSelect, provider, repoId, scope, onScopeCh
           const name = sessionName(snap, s)
           const signal = sessionSignal(snap, s)
           return <button key={s.id} className="session-entry" onClick={() => onSelect(s.id)}>
-            <div className="row"><span className="small muted">#{s.id} · {name.id || name.source}</span><span className={`pill right signal-${signal.tone}`}>{signal.label}</span></div>
+            <div className="row"><span className="small muted">#{shownNo(s.id)} · {name.id || name.source}</span><span className={`pill right signal-${signal.tone}`}>{signal.label}</span></div>
             <strong className="entry-title">{name.title}</strong>
             <div className="row"><AgentBadge provider={s.provider} client={s.client} /><span className="ellipsis muted" title={s.cwd}>{repoName(sessionRepo(snap, s))}</span><span className="small muted right">{ago(s.last_activity_at, snap.now)}</span></div>
             <p className="entry-reason" title={signal.reason}>{signal.reason}</p>

@@ -196,12 +196,12 @@ function AdvisoryCard({ group, snap, onSelectItem }: { group: AdviceGroup; snap:
     <strong>{w?.title || '工作回报'}</strong>
     <details open={count === 1}><summary>查看需要你处理的事项 · {count} 条</summary>
       {group.reported.map(h => <div className="advisory-entry" key={`report-${h.owner.entry_id}`}>
-        <p><b>{h.session && <AgentBadge provider={h.session.provider} />} 会话 #{h.owner.session_id}</b></p>
+        <p><b>{h.session && <AgentBadge provider={h.session.provider} />} 会话 #{h.owner.session_id != null && shownNo(h.owner.session_id)}</b></p>
         {h.summary && <p>{h.summary.text}</p>}{h.blocker && <p className="warn-line">卡点：{h.blocker.text}</p>}<p>需要你：{h.next?.text || '回应这个卡点'}</p>
         <BriefStamp snap={snap} value={h.owner} />{h.session?.resume_command && <CopyButton text={h.session.resume_command} label="复制恢复命令" />}
       </div>)}
       {group.features.map(({feature:f,contribution:p}) => <div className="advisory-entry" key={`${f.repo_id}/${f.id}/${p.run_id}`}>
-        <strong>{f.title}</strong><p><AgentBadge provider={p.provider} /> 会话 #{p.session_id}</p>{p.blocker && <p className="warn-line">卡点：{p.blocker}</p>}
+        <strong>{f.title}</strong><p><AgentBadge provider={p.provider} /> 会话 #{shownNo(p.session_id)}</p>{p.blocker && <p className="warn-line">卡点：{p.blocker}</p>}
         <p>需要你：{p.next || '回应此功能卡点'}</p><small className="muted">Agent 自述 · {ago(p.next_at || p.at,snap.now)}</small>
         {sessionOf(snap,p.session_id)?.resume_command && <CopyButton text={sessionOf(snap,p.session_id)!.resume_command} label="复制恢复命令" />}
       </div>)}
