@@ -1,3 +1,4 @@
+import { informationGap, recentSignal } from '../signals'
 import type { ReactNode } from 'react'
 import type { Session, Snapshot, WorkItem } from '../types'
 import { AgentBadge, CopyButton } from '../bits'
@@ -60,6 +61,10 @@ export function RunDesk({ snap, item, remote, onClose, onSelectSession, attentio
       </header>
       {remote && <p className="rd-banner" role="note">远程只读：此页写入口已移除。启动、审批、交接、合并与简报纠错需在本机面板进行。</p>}
       {conversation}
+      <section className="rd-signal" aria-label="最近信号">
+        <p className="rd-note">{recentSignal(item.signal, snap.now)}</p>
+        {informationGap(item, snap.now, snap.signal_gap_after_min) && <p className="rd-note">信息缺口：{informationGap(item, snap.now, snap.signal_gap_after_min)}。这只表示缺少新观察。</p>}
+      </section>
       <WorkOverview snap={snap} item={item} />
       {attention}
       {writers.length > 0 && <p className="rd-alert" role="note">交接后仍有 {writers.length} 个原会话可以继续写入。需要排查时展开下方“执行记录”。</p>}

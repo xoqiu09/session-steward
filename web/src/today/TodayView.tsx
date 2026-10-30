@@ -38,6 +38,7 @@ export function TodayView({ snap, onSelectItem, onOpenTown, device }: { snap: Sn
   const t = useMemo(() => buildToday(snap, seen), [snap, seen])
   const ok = t.review.filter((r) => r.grade === 'ok').length
   const userNext = t.stuck.filter((s) => s.tone === 'user').length
+  const stuckItems = new Set(t.stuck.map(row => row.item.id)).size
   const empty = !t.decide.length && !t.review.length && !t.stuck.length
   const markSeen = () => { writeSeen(snap.now); setSeen(snap.now) }
   return (
@@ -59,7 +60,7 @@ export function TodayView({ snap, onSelectItem, onOpenTown, device }: { snap: Sn
         <nav className="today-stats" aria-label="四件事">
           <a href="#today-decide"><span>要你决定</span><b className="is-decide">{t.decide.length}</b><small>{t.decide.length ? 'Agent 停着等你' : '没有'}</small></a>
           <a href="#today-review"><span>有交付，等你处理</span><b className="is-review">{t.review.length}</b><small>{t.review.length ? `有可核对证据的 ${ok} 件` : '没有'}</small></a>
-          <a href="#today-stuck"><span>卡住了</span><b className="is-stuck">{t.stuck.length}</b><small>{userNext ? `${userNext} 件下一步在你` : t.stuck.length ? '在等上游或外部' : '没有'}</small></a>
+          <a href="#today-stuck"><span>卡住了</span><b className="is-stuck">{stuckItems}</b><small>{userNext ? `${userNext} 件下一步在你` : t.stuck.length ? '在等上游或外部' : '没有'}</small></a>
           <a href="#today-quiet"><span>正在做</span><b className="is-run">{t.running.length}</b><small>不用管</small></a>
         </nav>
 
@@ -76,8 +77,8 @@ export function TodayView({ snap, onSelectItem, onOpenTown, device }: { snap: Sn
         </section>}
 
         {t.stuck.length > 0 && <section id="today-stuck" className="today-card">
-          <h2><i className="dot is-stuck" />卡住了 <small>{t.stuck.length} · 卡在哪、下一步是谁</small></h2>
-          {t.stuck.map((s) => <StuckLine key={s.item.id} s={s} snap={snap} onSelectItem={onSelectItem} />)}
+          <h2><i className="dot is-stuck" />卡住了 <small>{stuckItems} 项 · 卡点、信息缺口、下一步</small></h2>
+          {t.stuck.map((s) => <StuckLine key={`${s.item.id}:${s.label}`} s={s} snap={snap} onSelectItem={onSelectItem} />)}
         </section>}
 
         {t.managed.length > 0 && <details className="today-managed"><summary>已转交或暂停提醒 {t.managed.length} 件 · 展开管理 / 恢复</summary>
@@ -201,7 +202,7 @@ function StuckLine({ s, snap, onSelectItem }: { s: StuckRow; snap: Snapshot; onS
   return <div className="today-row">
     <div className="today-body">
       <Title id={s.item.id} title={s.item.title} onSelectItem={onSelectItem} tag={<span className={`tag is-${s.tone}`}>{s.label}</span>} />
-      <p><span className="muted">卡在：</span>{s.reason}{s.upstreamInReview && <> <a href="#today-review">{s.upstreamInReview} 就在上面等你处理</a></>}</p>
+      <p><span className="muted">{s.label === '没有信号' ? '信息缺口：' : '卡在：'}</span>{s.reason}{s.upstreamInReview && <> <a href="#today-review">{s.upstreamInReview} 就在上面等你处理</a></>}</p>
       {s.next && <p><span className="muted">下一步：</span>{s.next}</p>}
       <span className="today-meta">{s.repo} · {ago(s.at, snap.now)}</span>
     </div>

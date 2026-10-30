@@ -265,7 +265,7 @@ func (c *Client) AgentAction(ctx context.Context, kind event.Kind, arg, provider
 func (c *Client) AgentActionBrief(ctx context.Context, kind event.Kind, arg string, fields map[string]string, provider, sessionID, cwd string) error {
 	e := &event.Event{
 		EventID: NewID(), SchemaVersion: event.SchemaVersion, OccurredAt: time.Now().UTC(),
-		Source: event.Source{Provider: provider, HostID: c.HostID, Client: "unknown"},
+		Source: event.Source{Provider: provider, HostID: c.HostID, Client: "unknown", Channel: "hook"},
 		Kind:   kind, RawName: "steward-hook " + string(kind), SessionID: sessionID, Cwd: cwd,
 	}
 	switch kind {
@@ -303,7 +303,7 @@ func (c *Client) Report(ctx context.Context, fields map[string]string, provider,
 	}
 	e := &event.Event{
 		EventID: NewID(), SchemaVersion: event.SchemaVersion, OccurredAt: time.Now().UTC(),
-		Source: event.Source{Provider: provider, HostID: c.HostID, Client: "unknown"},
+		Source: event.Source{Provider: provider, HostID: c.HostID, Client: "unknown", Channel: "hook"},
 		Kind:   event.KindReport, RawName: "steward-hook report", SessionID: sessionID, Cwd: cwd, Brief: b,
 	}
 	var r ackResp
@@ -318,7 +318,7 @@ func (c *Client) Features(ctx context.Context, b *event.FeatureBatch, provider, 
 	if err := b.Validate(); err != nil {
 		return err
 	}
-	e := &event.Event{EventID: NewID(), SchemaVersion: event.SchemaVersion, OccurredAt: time.Now().UTC(), Source: event.Source{Provider: provider, HostID: c.HostID, Client: "unknown"}, Kind: event.KindFeatures, RawName: "steward-hook features", SessionID: sessionID, Cwd: cwd, Features: b}
+	e := &event.Event{EventID: NewID(), SchemaVersion: event.SchemaVersion, OccurredAt: time.Now().UTC(), Source: event.Source{Provider: provider, HostID: c.HostID, Client: "unknown", Channel: "hook"}, Kind: event.KindFeatures, RawName: "steward-hook features", SessionID: sessionID, Cwd: cwd, Features: b}
 	var r ackResp
 	if err := c.post(ctx, "/hook/agent-action", e, 3*time.Second, &r); err != nil {
 		return actionError(err)
@@ -339,7 +339,7 @@ func (c *Client) Begin(ctx context.Context, title, project string, fields map[st
 	for k, v := range fields {
 		b[k] = event.Redact(event.Truncate(v, 280))
 	}
-	e := &event.Event{EventID: NewID(), SchemaVersion: event.SchemaVersion, OccurredAt: time.Now().UTC(), Source: event.Source{Provider: provider, HostID: c.HostID, Client: "unknown"}, Kind: event.KindBegin, RawName: "steward-hook begin", SessionID: sessionID, Cwd: cwd, WorkTitle: event.Redact(title), ProjectPath: project, Brief: b}
+	e := &event.Event{EventID: NewID(), SchemaVersion: event.SchemaVersion, OccurredAt: time.Now().UTC(), Source: event.Source{Provider: provider, HostID: c.HostID, Client: "unknown", Channel: "hook"}, Kind: event.KindBegin, RawName: "steward-hook begin", SessionID: sessionID, Cwd: cwd, WorkTitle: event.Redact(title), ProjectPath: project, Brief: b}
 	var r ackResp
 	if err := c.post(ctx, "/hook/agent-action", e, 3*time.Second, &r); err != nil {
 		return "", actionError(err)

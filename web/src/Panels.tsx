@@ -1,3 +1,4 @@
+import { recentSignal } from './signals'
 import { isRemote } from './access'
 import { useEffect, useState } from 'react'
 import { ManagedPanel, Unmanaged } from './Managed'
@@ -174,6 +175,7 @@ export function SessionDetail({ snap, id, onClose, onSelectItem, foldEvents = fa
         <dt>目录</dt><dd className="mono">{s.cwd}</dd>
         <dt>分支</dt><dd className="mono">{s.branch || '—'}</dd>
         <dt>版本</dt><dd>{s.version || '—'}</dd>
+        <dt>最近信号</dt><dd>{recentSignal(s.signal, snap.now)}</dd>
         <dt>最近活动</dt><dd>{ago(s.last_activity_at, snap.now)}</dd>
         <dt>最近进展</dt><dd>{s.last_progress_at ? ago(s.last_progress_at, snap.now) : '—'}</dd>
         <dt>工作项</dt>

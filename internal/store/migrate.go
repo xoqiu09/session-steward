@@ -45,6 +45,8 @@ CREATE INDEX IF NOT EXISTS usage_daily_day ON usage_daily(day)`)},
  received_at TEXT NOT NULL,
  body TEXT NOT NULL
 )`)},
+	// 信号元数据；旧事件保持原样，仅补齐会话的最近来源与时间。
+	{5, addSignalColumns},
 }
 
 func execSQL(q string) func(*sql.Tx) error {

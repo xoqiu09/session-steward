@@ -1,3 +1,4 @@
+import { informationGap } from '../signals'
 import type { Approval, BriefField, Snapshot, WorkItem } from '../types'
 import { field } from '../brief'
 import { attentionManaged } from '../workManagement'
@@ -111,6 +112,8 @@ export function buildToday(snap: Snapshot, lastSeen: string): Today {
       stuck.push({ ...base, label: '等上游', tone: 'wait', reason: blocker?.text || `要等 ${w.waiting.join('、')} 完成`, at: blocker?.at || w.updated_at, upstreamInReview: up })
     } else if (w.status === 'blocked' || blocker) stuck.push({ ...base, label: '卡住了', tone: 'wait', reason: blocker?.text || itemSignal(snap, w).reason, at: blocker?.at || w.updated_at })
     else if (w.status === 'in_progress' && w.brief?.stale) stuck.push({ ...base, label: '很久没回报进展', tone: 'muted', reason: 'Agent 一直在动，但好一阵没有回报进展；可能卡住，也可能只是忘了回报。', at: field(w, 'progress')?.at || w.updated_at })
+    const gap = informationGap(w, snap.now, snap.signal_gap_after_min)
+    if (gap) stuck.push({ ...base, label: '没有信号', tone: 'muted', reason: gap, at: w.signal!.at, next: '暂时缺少新观察；请核对会话或等待下一条信号，不据此判断失败或完成。' })
   }
   const stuckIds = new Set(stuck.map((s) => s.item.id))
   const running = current.filter((w) => !attentionManaged(w) && w.status === 'in_progress' && !taken.has(w.id) && !stuckIds.has(w.id))
