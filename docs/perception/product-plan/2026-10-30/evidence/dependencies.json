@@ -1,0 +1,133 @@
+{
+  "status": "proposed",
+  "note": "depends governs implementation readiness; research/design may precede it. Real cross-schema deployment also requires U1. Model-backed M1 requires P6. F0 consumes current P1/P3 candidates, not their prior merge.",
+  "nodes": {
+    "T0": {
+      "status": "merged_code"
+    },
+    "V1": {
+      "status": "merged_code"
+    },
+    "P1": {
+      "status": "draft_candidate"
+    },
+    "P3": {
+      "status": "draft_candidate"
+    },
+    "D0": {
+      "depends": [],
+      "stage": "design"
+    },
+    "F0": {
+      "depends": [
+        "P1",
+        "P3"
+      ],
+      "stage": "unassigned_integration"
+    },
+    "U1": {
+      "depends": [
+        "T0",
+        "F0"
+      ],
+      "stage": "design_first"
+    },
+    "W1": {
+      "depends": [
+        "D0"
+      ],
+      "stage": "mock_allowed_after_contract"
+    },
+    "W2": {
+      "depends": [
+        "D0",
+        "V1"
+      ],
+      "stage": "mock_allowed_after_contract"
+    },
+    "A0": {
+      "depends": [
+        "D0",
+        "F0"
+      ],
+      "stage": "blocked_implementation"
+    },
+    "A1": {
+      "depends": [
+        "A0"
+      ],
+      "stage": "research_allowed"
+    },
+    "A2": {
+      "depends": [
+        "A0"
+      ],
+      "stage": "research_allowed"
+    },
+    "P2": {
+      "depends": [
+        "F0",
+        "D0"
+      ],
+      "stage": "existing_task_clarification"
+    },
+    "P4": {
+      "depends": [
+        "F0"
+      ],
+      "stage": "preliminary"
+    },
+    "P5": {
+      "depends": [
+        "F0"
+      ],
+      "stage": "preliminary"
+    },
+    "P6": {
+      "depends": [
+        "D0",
+        "F0"
+      ],
+      "stage": "preliminary"
+    },
+    "P6b": {
+      "depends": [
+        "P6"
+      ],
+      "stage": "mock_after_api_freeze"
+    },
+    "M1": {
+      "depends": [
+        "D0",
+        "F0"
+      ],
+      "stage": "design_first"
+    },
+    "P7": {
+      "depends": [
+        "T0",
+        "P2"
+      ],
+      "stage": "preliminary"
+    },
+    "I0": {
+      "depends": [
+        "F0",
+        "U1",
+        "W1",
+        "W2",
+        "A0",
+        "A1",
+        "A2",
+        "P2",
+        "P4",
+        "P5",
+        "P6",
+        "P6b",
+        "M1",
+        "P7"
+      ],
+      "stage": "incremental_acceptance"
+    }
+  }
+}

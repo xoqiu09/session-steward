@@ -1,0 +1,14 @@
+{
+  "checked_at": "2026-10-30T15:22:16.408784+08:00",
+  "scope": "documentation_only",
+  "taskbooks": 15,
+  "planned_scenarios": 21,
+  "executed_scenarios": 0,
+  "missing_local_links": [],
+  "dependency_cycles": 0,
+  "frozen_references_verified": 10,
+  "local_machine_paths": 0,
+  "credential_pattern_files": 0,
+  "product_tests_run_this_pr": false,
+  "result": "passed"
+}

@@ -1,0 +1,92 @@
+{
+  "checked_at": "2026-10-30T15:21:07.155069+08:00",
+  "scope": "documentation_only",
+  "source_main_commit": "ee4d590b7a767646ff887984f32fccc27a2d8d50",
+  "source_docs_commit": "6f621c29ff9b4a2c430ec96fd36f6500e90ef7d4",
+  "candidates": [
+    {
+      "pr": 37,
+      "head": "97e949a1ec1f5908df406f4e82d97cacdbe51084",
+      "state": "OPEN",
+      "draft": true
+    },
+    {
+      "pr": 38,
+      "head": "e7f03d9dcd19e9e85700ec1622482b43ce559108",
+      "state": "OPEN",
+      "draft": true
+    }
+  ],
+  "reference_files": [
+    {
+      "path": "reference/docs/perception/architecture.zh-CN.md",
+      "source_path": "docs/perception/architecture.zh-CN.md",
+      "source_commit": "6f621c29ff9b4a2c430ec96fd36f6500e90ef7d4",
+      "sha256": "8face409c4213bf3e4dbbc94b78276bbb92c5740c54ba2806b4cdff4b842e9be"
+    },
+    {
+      "path": "reference/docs/perception/roadmap.zh-CN.md",
+      "source_path": "docs/perception/roadmap.zh-CN.md",
+      "source_commit": "6f621c29ff9b4a2c430ec96fd36f6500e90ef7d4",
+      "sha256": "27ee7ce74b626adb4d4b46c144b9f31388e4f9a23712fbc0ad52cf698b2c462c"
+    },
+    {
+      "path": "reference/docs/perception/tasks/P1-signal-provenance.zh-CN.md",
+      "source_path": "docs/perception/tasks/P1-signal-provenance.zh-CN.md",
+      "source_commit": "6f621c29ff9b4a2c430ec96fd36f6500e90ef7d4",
+      "sha256": "7de755ca797172dbe8b7c48b0630e6d7281b420087cfa6f9447c8b067e926617"
+    },
+    {
+      "path": "reference/docs/perception/tasks/P2-github-pr-awareness.zh-CN.md",
+      "source_path": "docs/perception/tasks/P2-github-pr-awareness.zh-CN.md",
+      "source_commit": "6f621c29ff9b4a2c430ec96fd36f6500e90ef7d4",
+      "sha256": "fc4d5dd15986a8760391b360ad46abecfd140066f2b6b49d939749afd1baa3e8"
+    },
+    {
+      "path": "reference/docs/perception/tasks/P3-claude-hooks-coverage.zh-CN.md",
+      "source_path": "docs/perception/tasks/P3-claude-hooks-coverage.zh-CN.md",
+      "source_commit": "6f621c29ff9b4a2c430ec96fd36f6500e90ef7d4",
+      "sha256": "cd1ad6aaf3df1e1fb2a8138971811ec24d8ad2df88a8ae226da1c23e7d664554"
+    },
+    {
+      "path": "reference/docs/perception/tasks/README.zh-CN.md",
+      "source_path": "docs/perception/tasks/README.zh-CN.md",
+      "source_commit": "6f621c29ff9b4a2c430ec96fd36f6500e90ef7d4",
+      "sha256": "bfc6343bb33e943a554e863f8de48ff0692e822470863f876022e377da96bc97"
+    },
+    {
+      "path": "reference/docs/perception/tasks/T0-integrate-in-app-update.zh-CN.md",
+      "source_path": "docs/perception/tasks/T0-integrate-in-app-update.zh-CN.md",
+      "source_commit": "6f621c29ff9b4a2c430ec96fd36f6500e90ef7d4",
+      "sha256": "2cbd962f39be8e321d6926e95f11b30ad193ac59d33ecac816434f6b52e5564e"
+    },
+    {
+      "path": "reference/docs/perception/tasks/V1-town-follow-progress.zh-CN.md",
+      "source_path": "docs/perception/tasks/V1-town-follow-progress.zh-CN.md",
+      "source_commit": "6f621c29ff9b4a2c430ec96fd36f6500e90ef7d4",
+      "sha256": "7389e5d0fe1a3f50d2288f57020bf8ae792f0dc13542a27ad7d97e50c3e199a7"
+    },
+    {
+      "path": "reference/docs/perception/update-plan.zh-CN.md",
+      "source_path": "docs/perception/update-plan.zh-CN.md",
+      "source_commit": "6f621c29ff9b4a2c430ec96fd36f6500e90ef7d4",
+      "sha256": "d3d8836728a48b7e0f9099a2c1da237791c2a9644480321aa7188427c8a31e3d"
+    },
+    {
+      "path": "reference/AGENTS.snapshot.md",
+      "source_path": "AGENTS.md",
+      "source_commit": "6f621c29ff9b4a2c430ec96fd36f6500e90ef7d4",
+      "sha256": "988b59fd41c6c0b30b61d8beba3bbcde513901fbd532993e5e6c826d64709d54"
+    }
+  ],
+  "harness": {
+    "repository": "deepseek-ai/deepseek-harness",
+    "research_commit": "ce7073d51254c26cd63b22a60835b8f948deb447",
+    "architecture_blob": "e3f5cd24a39d1d6275a291c83f165e6839ce191b",
+    "runtime_verified": false
+  },
+  "reference_note": "Frozen documents are historical inputs, not current execution status; do not infer implementation or acceptance from them.",
+  "new_feature_implementation": false,
+  "real_tool_validation_this_pr": false,
+  "product_install_actions": 0
+}
