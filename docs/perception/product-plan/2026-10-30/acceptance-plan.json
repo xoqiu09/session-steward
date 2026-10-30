@@ -1,0 +1,378 @@
+{
+  "status": "planned_not_executed",
+  "synthetic_world": {
+    "local_projects": 36,
+    "all_devices_projects": 48,
+    "device_count": 2,
+    "navigation_fixture": {
+      "district_name": "LocalDevData一带",
+      "district_project_count": 7,
+      "same_name_projects_on_distinct_devices": true,
+      "status": "planned_not_created"
+    }
+  },
+  "scenarios": [
+    {
+      "id": "S01",
+      "owners": [
+        "W1",
+        "I0"
+      ],
+      "setup": "36 本机/48 全部设备合成项目，状态排名变化并加入新项目",
+      "expected": "已有房屋坐标不动，全部可检索定位，没有用假的正式项目凑数",
+      "result": "not_run"
+    },
+    {
+      "id": "S02",
+      "owners": [
+        "W1"
+      ],
+      "setup": "宽屏普通小镇入口、单设备、明确工作室入口及窄屏分页分别打开",
+      "expected": "宽屏普通入口为世界，工作室仍可用；窄屏沿用分页，深链不被无条件覆盖，不承诺窄屏世界",
+      "result": "not_run"
+    },
+    {
+      "id": "S03",
+      "owners": [
+        "W1",
+        "I0"
+      ],
+      "setup": "切设备范围、返回、刷新、目标归档和设备排序变化",
+      "expected": "按范围恢复相机；同一项目不串位，目标不存在有原因而非跳同名项",
+      "result": "not_run"
+    },
+    {
+      "id": "S04",
+      "owners": [
+        "W2",
+        "I0"
+      ],
+      "setup": "同三秒窗口内出现决定、交付、合并",
+      "expected": "W2 先验完整三秒窗口后只输出最高优先级定位意图，其余进原 V1 队列；I0 接线实际组件后验相同飞行行为",
+      "result": "not_run"
+    },
+    {
+      "id": "S05",
+      "owners": [
+        "W1",
+        "W2",
+        "I0"
+      ],
+      "setup": "拖动缩放后三十秒、详情/室内/收菜/回放/后台时新事件到达",
+      "expected": "W2 验保护/返回意图逻辑；I0 在真实宿主组件验30秒操作、详情/室内/收菜/回放/后台不抢相机，连续访问返回最初相机、拖缩清理返回，status播报、键盘、减少动画与窄屏分页可用",
+      "result": "not_run"
+    },
+    {
+      "id": "S06",
+      "owners": [
+        "W2",
+        "I0"
+      ],
+      "setup": "刷新、SSE 重连、设备短离线、应用重启和本地存储失败",
+      "expected": "W2 验持久去重与重连逻辑，I0 验实际组件旧交付不重飞；离开摘要与新交付区分，存储失败如实降级",
+      "result": "not_run"
+    },
+    {
+      "id": "S07",
+      "owners": [
+        "P2",
+        "I0"
+      ],
+      "setup": "假 gh：精确 current PR head/base、检查、外部 squash 合并、merge commit 与目标包含证据；本地还有更新候选",
+      "expected": "只更新精确合并候选；不清除未合并本地更新候选提醒，不改变用户已处理/符合要求/安装记录，原精确合并证据规则保持",
+      "result": "not_run"
+    },
+    {
+      "id": "S08",
+      "owners": [
+        "P2"
+      ],
+      "setup": "PR head 与本地相同、是本地祖先、互非祖先或提交图不足；PR 关闭未合并、旧 head 检查成功但本地前进",
+      "expected": "相同或可证明祖先才关联；祖先显示PR 落后本地 N 个提交，checks 只绑定精确PR head；互非祖先/证据不足不关联；关闭不算已处理，旧检查不转移给新候选",
+      "result": "not_run"
+    },
+    {
+      "id": "S09",
+      "owners": [
+        "P2"
+      ],
+      "setup": "30仓库批量 GraphQL/gh search，分钟轮询、变化PR精查、分页、查询拆分、网络超时、账号错误、重试",
+      "expected": "单次完整批量覆盖时基础约60实际请求/小时，变化精查/分页/拆分/重试全部计入共享300上限，公平排队与核对时间可见；一分钟是否承诺与覆盖范围等待用户U04，不预先取消或保证",
+      "result": "not_run"
+    },
+    {
+      "id": "S10",
+      "owners": [
+        "D0",
+        "A0",
+        "A1",
+        "A2"
+      ],
+      "setup": "两设备×workbuddy/deepseek_harness同原生ID，分别走ResolveSession原生ID查询与目录候选分支；旧other兼容；模型切换且U03未授权/已授权",
+      "expected": "provider使用明确工具ID，execution_tool仅文档语义不新增列/改键；两处other分支不跨新工具猜测，旧兼容保留；模型不进会话键，未获U03不新增记录",
+      "result": "not_run"
+    },
+    {
+      "id": "S11",
+      "owners": [
+        "F0",
+        "A0",
+        "P4"
+      ],
+      "setup": "迟到、重复事件，用户把会话从工作A换绑到B",
+      "expected": "旧信号不改较新状态，不污染B；明确归属保留，无法归属不猜测",
+      "result": "not_run"
+    },
+    {
+      "id": "S12",
+      "owners": [
+        "A0",
+        "A1",
+        "A2"
+      ],
+      "setup": "桥接在线但自动生命周期/返回会话能力未知，随后离线",
+      "expected": "连接健康与能力分开；真实验证绑定版本与证据，未知不冒称已支持",
+      "result": "not_run"
+    },
+    {
+      "id": "S13",
+      "owners": [
+        "F0",
+        "A0"
+      ],
+      "setup": "真实合成HTTP hook的hook/transcript/process与伪造user/git/github，合法panelTx/核实器；MCP越权项目/来源/事实等级",
+      "expected": "hook只收前三类，伪造渠道拒绝且LastSignal/LastSignalAt不变；user仅panelTx、git/github仅核实器；Agent自述可辨认，越权/伪装/批准/已处理/安装写入拒绝",
+      "result": "not_run"
+    },
+    {
+      "id": "S14",
+      "owners": [
+        "U1"
+      ],
+      "setup": "旧v4升级器拒绝v5、U05路线门槛、合成4→5全事务故障点；hook503屏障、WAL备份、提交前后退出、spool2000溢出/超时/未知格式/PermissionRequest",
+      "expected": "过渡v4全目标安装或获准手动路线后才发布schema5；提交前无新ACK故可回一致v4，提交后不覆盖v5已ACK；队列幂等/未知种类持久待重放，丢弃计数与120秒拟议超时/恢复失败可见；权限退Claude原生，真实安装未改",
+      "result": "not_run"
+    },
+    {
+      "id": "S15",
+      "owners": [
+        "P6",
+        "P6b",
+        "M1"
+      ],
+      "setup": "模型解释引用过期/错误/远端摘要依据，用户纠正",
+      "expected": "解释显示来源与过期，纠正只影响解释/记忆修订，不改任务或权威记录",
+      "result": "not_run"
+    },
+    {
+      "id": "S16",
+      "owners": [
+        "W1",
+        "M1"
+      ],
+      "setup": "项目常驻后归档、回收站、恢复，普通记忆整理完成",
+      "expected": "复用管理入口且可恢复，代码文件不删除，routine 不新增待处理提醒",
+      "result": "not_run"
+    },
+    {
+      "id": "S17",
+      "owners": [
+        "P4",
+        "P5",
+        "A0",
+        "P6",
+        "M1"
+      ],
+      "setup": "合成敏感哨兵/对话/transcript/原始工具输入输出；M1单条2000/2001及项目有效正文20000/20001 Unicode字符边界",
+      "expected": "白名单外正文不进库/日志/同步/模型；M1仅已有SS简报/交付/用户字段，超限明确拒绝不静默截断；远端不包含私有Ref/路径/恢复命令",
+      "result": "not_run"
+    },
+    {
+      "id": "S18",
+      "owners": [
+        "A1",
+        "A2"
+      ],
+      "setup": "插件/MCP重复挂载、断开、停用、卸载与重装",
+      "expected": "自身监听和授权撤销，其他工具配置不变，历史工作不删除",
+      "result": "not_run"
+    },
+    {
+      "id": "S19",
+      "owners": [
+        "F0",
+        "P4",
+        "P5",
+        "I0"
+      ],
+      "setup": "MacBook Claude Desktop/App在系统PATH无claude CLI的隔离测试项目，基础安装与版本来源优先级，再切目录/压缩/自动模式拒绝",
+      "expected": "无CLI仍有基础12 hooks；新5项/async按显式参数>记录会话版本>PATH核实，未知不虚构能力；真实观察不误交付，未触发项目仍无法验证",
+      "result": "not_run"
+    },
+    {
+      "id": "S20",
+      "owners": [
+        "A1",
+        "A2",
+        "I0"
+      ],
+      "setup": "用户U01/U02明确接入且独立profile/项目授权后，真实Harness/WorkBuddy测试声明能力；模型记录另需U03",
+      "expected": "未授权时仅研究、不加载插件/注册MCP；只有真实成功场景标verified，返回/监听/用量逐项记录，不由本机传输推断模型本地",
+      "result": "not_run"
+    },
+    {
+      "id": "S21",
+      "owners": [
+        "P7"
+      ],
+      "setup": "相同版本号不同提交、squash、回退、设备离线与健康检查通过",
+      "expected": "安装与运行记录精确绑定构建，未知不猜，健康不写用户处理/功能符合要求",
+      "result": "not_run"
+    },
+    {
+      "id": "S22",
+      "owners": [
+        "PR42",
+        "I0"
+      ],
+      "authorization_gate": "仅执行设备本机，独立逐动作凭据；用户已授权PR42先按手机暂只拒绝/批准回本机收紧，远端allow403并隐藏，本机明确允许保留。最终产品默认/凭据与真实手机网络待确认；Ekko已决定只参考不复用。本包不执行场景。",
+      "setup": "手机断连/重连，控制服务仍运行，执行设备任务继续",
+      "expected": "同一managed/native Session ID可重新挂接，后台ReconcileManaged持续工作；不新开任务、不把断连当退出；重连复用V1离开期间提示，不产生重复交付或自动已处理",
+      "result": "not_run"
+    },
+    {
+      "id": "S23",
+      "owners": [
+        "PR42",
+        "I0"
+      ],
+      "authorization_gate": "仅执行设备本机，独立逐动作凭据；用户已授权PR42先按手机暂只拒绝/批准回本机收紧，远端allow403并隐藏，本机明确允许保留。最终产品默认/凭据与真实手机网络待确认；Ekko已决定只参考不复用。本包不执行场景。",
+      "setup": "重复或并发start，使用相同幂等键，注入事务失败",
+      "expected": "只创建一次任务/托管会话；WorkItem、managed_sessions与审计同事务关联或全部失败，不留下重复控制状态；所有动作审计只含设备/动作/时间/结果/长度，不存命令或输入正文，普通只读cookie调用控制返回403",
+      "result": "not_run"
+    },
+    {
+      "id": "S24",
+      "owners": [
+        "PR42",
+        "I0"
+      ],
+      "authorization_gate": "仅执行设备本机，独立逐动作凭据；用户已授权PR42先按手机暂只拒绝/批准回本机收紧，远端allow403并隐藏，本机明确允许保留。最终产品默认/凭据与真实手机网络待确认；Ekko已决定只参考不复用。本包不执行场景。",
+      "setup": "手机/电脑同时输入，电脑接手或直接终端原生恢复",
+      "expected": "只有有效lease/epoch持有者能输入，接手撤旧权并审计；无法证明所有权时禁用手机输入并显示unknown，不向双入口同时注入文字",
+      "result": "not_run"
+    },
+    {
+      "id": "S25",
+      "owners": [
+        "PR42",
+        "I0"
+      ],
+      "authorization_gate": "仅执行设备本机，独立逐动作凭据；用户已授权PR42先按手机暂只拒绝/批准回本机收紧，远端allow403并隐藏，本机明确允许保留。最终产品默认/凭据与真实手机网络待确认；Ekko已决定只参考不复用。本包不执行场景。",
+      "setup": "持有独立控制凭据的手机拒绝/远端allow请求、普通只读凭据；本机明确允许；过期/指纹不符与电脑已决定后手机旧拒绝重放",
+      "expected": "按当前保守默认远端allow403且界面无允许、手机可拒绝但仍核指纹/时效、本机明确允许保留；普通只读凭据无论allow/deny均403；过期/指纹错误/已决定后的旧拒绝409且不改变结果，不自动允许。用户已授权先行收紧，最终产品默认待确认；本包未实测",
+      "result": "not_run"
+    },
+    {
+      "id": "S26",
+      "owners": [
+        "PR42",
+        "I0"
+      ],
+      "authorization_gate": "仅执行设备本机，独立逐动作凭据；用户已授权PR42先按手机暂只拒绝/批准回本机收紧，远端allow403并隐藏，本机明确允许保留。最终产品默认/凭据与真实手机网络待确认；Ekko已决定只参考不复用。本包不执行场景。",
+      "setup": "执行设备重启导致进程/tmux消失，用户随后选择恢复",
+      "expected": "ReconcileManaged标exited并给原因，不自动重启；用户选择原生CLI用精确Session ID/历史恢复，官方App同ID接手另验，--last/打开App/摘要新聊均不算证明；原生ID仅取hook/会话记录，不从启动命令猜测；桌面codex://threads以明确ID作为受控入口方案，同ID历史连续须单独验证，不能据URI文案标已接手",
+      "result": "not_run"
+    },
+    {
+      "id": "S27",
+      "owners": [
+        "W1",
+        "I0"
+      ],
+      "setup": "36本机/48全部设备（30+）合成项目，两设备有同名但来源原始ID不同的项目，一个七项目片区；当前设备/项目筛选有非默认显示范围，自动巡游启用；不使用真实项目。",
+      "expected": "手动名牌/列表立即去花园，片区看全体且名牌实际可点，仅房子/明确入口进工作室；完整返回视角与显示范围且30秒不被自动巡游抢镜。按来源host+原始项目身份解析building key，同名不串、远端只读、归档缺失不恢复或替代，导航零业务写入。以下为待实现目标，不是实测结果。",
+      "cases": [
+        {
+          "id": "A",
+          "action": "点项目名牌，再从列表点同一项目名/去花园；另开任务详情",
+          "expected": "名牌/列表共用身份解析和导航，立即调用既有镜头不等三秒，房子+门前花园+对应工作可辨认；留在世界，任务详情保持独立动作"
+        },
+        {
+          "id": "B",
+          "action": "点LocalDevData一带·7个项目片区标题，再点其中一个项目",
+          "expected": "按全部七成员布局边界取景，并保证LOD/局部显示后七个名牌可见可点；不能取第一项目，也不能fit后仍聚合隐藏成员；可继续定位具体花园"
+        },
+        {
+          "id": "C",
+          "action": "分别点房子本体、明确进入工作室、状态徽章；检查TownGuide说明",
+          "expected": "仅房子/明确入口进室内；徽章维持原查看或处理动作、阻止冒泡双动作；引导与新点击语义一致"
+        },
+        {
+          "id": "D",
+          "action": "导航时临时变更设备范围/项目筛选/局部显示，连续访问后点回到刚才的位置，随即让自动巡游触发",
+          "expected": "现有returnCamera之外补保存完整导航上下文；返回恢复原中心/平移/缩放/设备视图/筛选/显示范围，连续访问不覆盖初始返回点；返回后清理且至少30秒不被巡游/自动跟随抢镜"
+        },
+        {
+          "id": "E",
+          "action": "在本机/全部设备视图中点两设备同名项目，设备顺序和合并偏移repo_id发生变化",
+          "expected": "按来源host+来源原始项目ID的稳定身份解析到当前building key，不用显示name/偏移repo_id/排序当永久身份，不串到同名项目"
+        },
+        {
+          "id": "F",
+          "action": "定位远端、归档、已不存在、设备不可用或缺稳定原始身份的目标",
+          "expected": "远端只读；不能定位时说明具体原因，不自动恢复、不替代、不猜同名；若仅调整显示范围，返回完整恢复而不改业务状态"
+        },
+        {
+          "id": "G",
+          "action": "键盘Enter/Space导航及返回，开启减少动画，拖动/缩放结束在名牌/房子上释放",
+          "expected": "键盘等价且焦点可见；减少动效直接定位；复用swallowClick等手势抑制，不误进室内/双动作，手动仍立即而自动三秒规则不变"
+        },
+        {
+          "id": "H",
+          "action": "记录纯导航链请求与候选，拍点击前/花园定位后/返回后三图",
+          "expected": "纯导航只改界面/本地视角，不调用处理/批准/交付/功能符合等业务写API；三图同候选且返回范围可比，不拿旧图/生成图冒充"
+        }
+      ],
+      "navigation_business_writes": {
+        "expected": 0,
+        "observed": null
+      },
+      "screenshots": [
+        {
+          "stage": "点击前",
+          "status": "planned_not_captured"
+        },
+        {
+          "stage": "花园定位后",
+          "status": "planned_not_captured"
+        },
+        {
+          "stage": "返回后",
+          "status": "planned_not_captured"
+        }
+      ],
+      "result": "not_run"
+    }
+  ],
+  "note": "27 个预期场景，全部未运行；条件授权、真实工具、正式安装、用户验收分别记录。PR42 只是 dependencies.json 登记的外部候选 owner，不代表原型通过或任务已启动。 S27为新增W1/I0手动导航计划，三截图未拍、导航业务写入尚未观测，不能把expected=0当observed=0。",
+  "decision_ledger": {
+    "entries": 8,
+    "settled": [
+      "U08"
+    ],
+    "interim_default_pending_final_confirmation": [
+      "U06"
+    ],
+    "pending": [
+      "U01",
+      "U02",
+      "U03",
+      "U04",
+      "U05",
+      "U07"
+    ],
+    "ekko_choice": "只参考固定ba84e38/BSL1.1出处，不接入、不复制/AI改写代码或依赖；按SS自实现个人使用",
+    "phone_interim_default": "手机暂只拒绝，批准回本机；已授权PR42先远端allow403/隐藏、本机明确允许保留，最终产品默认待确认"
+  }
+}
