@@ -42,7 +42,8 @@
       "depends": [
         "D0"
       ],
-      "stage": "mock_allowed_after_contract"
+      "stage": "mock_allowed_after_contract",
+      "navigation_contract": "S27由W1/I0验收；复用D0来源host+原始项目身份和WorldStage镜头，补完整导航上下文，分离花园/片区与建筑进入，30秒保护、零业务写入、三截图均待实现；不新增硬依赖。"
     },
     "W2": {
       "depends": [

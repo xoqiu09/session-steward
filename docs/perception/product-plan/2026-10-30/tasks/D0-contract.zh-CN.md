@@ -21,13 +21,23 @@
 
 按[共用契约第 6 节](../architecture-addendum.zh-CN.md#6-仅控制执行设备的本机控制提案)定义独立动作契约。执行设备仅 Mac Studio 本机，不借 hub 控制其他设备；未来控制状态统一进 managed_sessions/managed_audit/ReconcileManaged，不复制任务或控制状态机。PR #42 仅是待核对的外部原型输入，I0 必须按精确候选分别验证 S22～S26。
 
-凭据须独立、按设备可撤销，start/input/interrupt/stop/resume/approve 逐项授权，approve 默认关闭且等待用户 U06；不得复用 remote.token、面板/只读 cookie 或 hub 密钥。原 remoteBlocked 不变，`/api/managed*` 与 conversation 即使 GET 仍拒绝，普通远端仍只读；未来新增 path/listener/router 须独立鉴权，真实手机网络待 U07。
+凭据须独立、按设备可撤销，start/input/interrupt/stop/resume 与权限拒绝/允许分别授权；不得复用 remote.token、面板/只读 cookie 或 hub 密钥。用户已授权 PR #42 先按“手机暂只拒绝、批准回本机”的保守默认收紧：远端allow返回403并隐藏允许，本机允许仍须明确用户操作，最终产品默认/凭据细节待U06确认。原 remoteBlocked 不变，`/api/managed*` 与 conversation 即使 GET 仍拒绝，普通远端仍只读；独立控制入口不继承只读cookie权限，真实手机网络待U07。本PR仅记文档，不声称#42新规则已验证。
 
-原生 CLI 恢复与官方桌面 App 接手是两项能力，都须核原 Session ID 与历史，禁止 --last；打开 App 或带摘要新开聊天不算接手。并发启动幂等、输入所有权、陈旧批准与重启处理按 S22～S26；不能验证 App 接手时，是否接受仅 CLI 恢复由用户决定。Ekko 先固定仓库/提交/许可与署名复用清单，用户 U08 未确认前不复制未知或不兼容许可代码。
+原生 CLI resume 明确Session ID与桌面 codex://threads 明确ID接手是两项能力，都须核原ID与历史，禁止--last；带摘要新开或仅唤起App不算接手，实际桌面能力仍未知。并发启动幂等、输入所有权、陈旧请求与重启按S22～S26，是否接受仅CLI回退仍待确认。
+
+| 第一阶段范围 | 契约边界（待逐项验证） |
+| --- | --- |
+| 手机任务固定Mac Studio | 使用SS原WorkItem/Session/Run、项目与人物，不控制其他设备、不另建远程任务表。 |
+| 手机断开继续 | 同任务/同会话继续运行；重连复用V1离开期间提示，不生成重复交付。 |
+| 去原会话 | CLI resume和桌面codex://threads均明确原生ID，同ID历史连续分别验证，不用摘要新开/唤起冒充。 |
+| 手机保守权限默认 | 手机暂只拒绝，批准回本机；已授权先收紧远端允许403/隐藏，本机明确允许保留，最终默认仍待确认。 |
+| 明确交付才菜熟 | Agent明确交付只到review/等处理，绝不自动已处理、批准或写功能符合要求。 |
+
+**Ekko已决定只参考，不复用代码。** 参考固定ba84e38（完整提交与BSL1.1出处见README），按SS方式自实现个人使用，不整套接入、不复制/AI改写其代码或依赖，不接Vue/Koa/profile/model-provider/workspace/session-library；模型设置仍归Codex，UI沿用小镇。出处可回查不等于复用授权，本轮不作新许可结论，U08不再待决定。
 
 ## 不做
 
-不改事件/数据库/快照类型，不承诺尚无依据的返回 URI，不扩大采集。
+不改事件/数据库/快照类型，不把带明确ID的返回URI方案冒称已验证，不扩大采集。不接入Ekko整套、不复制或AI改写其代码/依赖，不引入Vue/Koa/profile/model-provider/workspace/session-library或另一套模型设置；观察借鉴不变成代码复用。
 
 ## 验收标准
 
@@ -35,7 +45,7 @@
 2. 所有权限写入者有表，模型/桥接不能写用户处理、合并或安装/运行事实。
 3. 能力验证与连接健康分开；未知不等于不支持，模拟不等于真实已验证。
 4. A0/W1/W2/P6 可以用同一组合成契约独立工作，不需猜公共字段。
-5. 观察桥接与本机控制授权分开；本机范围、逐动作独立凭据、默认关闭审批、唯一托管登记、remoteBlocked 不变、CLI/App 分开验证均有明确契约与 S22～S26 owner，仍标未实现。
+5. 观察桥接与本机控制授权分开；本机范围、逐动作独立凭据、手机只拒绝/批准回本机的保守默认、唯一托管登记、remoteBlocked不变、明确ID的CLI/App分开验证均有契约与S22～S26 owner；Ekko只参考不复用已决定，与仍待用户最终确认/真实验证的部分分开。
 
 ## 验证
 

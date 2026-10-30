@@ -3,7 +3,13 @@
   "synthetic_world": {
     "local_projects": 36,
     "all_devices_projects": 48,
-    "device_count": 2
+    "device_count": 2,
+    "navigation_fixture": {
+      "district_name": "LocalDevData一带",
+      "district_project_count": 7,
+      "same_name_projects_on_distinct_devices": true,
+      "status": "planned_not_created"
+    }
   },
   "scenarios": [
     {
@@ -229,9 +235,9 @@
         "PR42",
         "I0"
       ],
-      "authorization_gate": "仅执行设备本机；独立逐动作凭据，审批默认关闭；真实手机动作/网络及Ekko复用须分别获用户决定，本轮不执行",
+      "authorization_gate": "仅执行设备本机，独立逐动作凭据；用户已授权PR42先按手机暂只拒绝/批准回本机收紧，远端allow403并隐藏，本机明确允许保留。最终产品默认/凭据与真实手机网络待确认；Ekko已决定只参考不复用。本包不执行场景。",
       "setup": "手机断连/重连，控制服务仍运行，执行设备任务继续",
-      "expected": "同一managed/native Session ID可重新挂接，后台ReconcileManaged持续工作；不新开任务、不把断连当退出",
+      "expected": "同一managed/native Session ID可重新挂接，后台ReconcileManaged持续工作；不新开任务、不把断连当退出；重连复用V1离开期间提示，不产生重复交付或自动已处理",
       "result": "not_run"
     },
     {
@@ -240,7 +246,7 @@
         "PR42",
         "I0"
       ],
-      "authorization_gate": "仅执行设备本机；独立逐动作凭据，审批默认关闭；真实手机动作/网络及Ekko复用须分别获用户决定，本轮不执行",
+      "authorization_gate": "仅执行设备本机，独立逐动作凭据；用户已授权PR42先按手机暂只拒绝/批准回本机收紧，远端allow403并隐藏，本机明确允许保留。最终产品默认/凭据与真实手机网络待确认；Ekko已决定只参考不复用。本包不执行场景。",
       "setup": "重复或并发start，使用相同幂等键，注入事务失败",
       "expected": "只创建一次任务/托管会话；WorkItem、managed_sessions与审计同事务关联或全部失败，不留下重复控制状态；所有动作审计只含设备/动作/时间/结果/长度，不存命令或输入正文，普通只读cookie调用控制返回403",
       "result": "not_run"
@@ -251,7 +257,7 @@
         "PR42",
         "I0"
       ],
-      "authorization_gate": "仅执行设备本机；独立逐动作凭据，审批默认关闭；真实手机动作/网络及Ekko复用须分别获用户决定，本轮不执行",
+      "authorization_gate": "仅执行设备本机，独立逐动作凭据；用户已授权PR42先按手机暂只拒绝/批准回本机收紧，远端allow403并隐藏，本机明确允许保留。最终产品默认/凭据与真实手机网络待确认；Ekko已决定只参考不复用。本包不执行场景。",
       "setup": "手机/电脑同时输入，电脑接手或直接终端原生恢复",
       "expected": "只有有效lease/epoch持有者能输入，接手撤旧权并审计；无法证明所有权时禁用手机输入并显示unknown，不向双入口同时注入文字",
       "result": "not_run"
@@ -262,9 +268,9 @@
         "PR42",
         "I0"
       ],
-      "authorization_gate": "仅执行设备本机；独立逐动作凭据，审批默认关闭；真实手机动作/网络及Ekko复用须分别获用户决定，本轮不执行",
-      "setup": "审批默认关闭、只读凭据调用；仅在未来U06单独授权后测试过期/指纹不符与电脑已批准后手机重放",
-      "expected": "默认关闭和只读凭据拒绝；获准后的旧请求按指纹/有效期返回409冲突且不改变既有决定，不自动允许；未授权开放部分记无法验证",
+      "authorization_gate": "仅执行设备本机，独立逐动作凭据；用户已授权PR42先按手机暂只拒绝/批准回本机收紧，远端allow403并隐藏，本机明确允许保留。最终产品默认/凭据与真实手机网络待确认；Ekko已决定只参考不复用。本包不执行场景。",
+      "setup": "持有独立控制凭据的手机拒绝/远端allow请求、普通只读凭据；本机明确允许；过期/指纹不符与电脑已决定后手机旧拒绝重放",
+      "expected": "按当前保守默认远端allow403且界面无允许、手机可拒绝但仍核指纹/时效、本机明确允许保留；普通只读凭据无论allow/deny均403；过期/指纹错误/已决定后的旧拒绝409且不改变结果，不自动允许。用户已授权先行收紧，最终产品默认待确认；本包未实测",
       "result": "not_run"
     },
     {
@@ -273,11 +279,100 @@
         "PR42",
         "I0"
       ],
-      "authorization_gate": "仅执行设备本机；独立逐动作凭据，审批默认关闭；真实手机动作/网络及Ekko复用须分别获用户决定，本轮不执行",
+      "authorization_gate": "仅执行设备本机，独立逐动作凭据；用户已授权PR42先按手机暂只拒绝/批准回本机收紧，远端allow403并隐藏，本机明确允许保留。最终产品默认/凭据与真实手机网络待确认；Ekko已决定只参考不复用。本包不执行场景。",
       "setup": "执行设备重启导致进程/tmux消失，用户随后选择恢复",
-      "expected": "ReconcileManaged标exited并给原因，不自动重启；用户选择原生CLI用精确Session ID/历史恢复，官方App同ID接手另验，--last/打开App/摘要新聊均不算证明；原生ID仅取hook/会话记录，不从启动命令猜测",
+      "expected": "ReconcileManaged标exited并给原因，不自动重启；用户选择原生CLI用精确Session ID/历史恢复，官方App同ID接手另验，--last/打开App/摘要新聊均不算证明；原生ID仅取hook/会话记录，不从启动命令猜测；桌面codex://threads以明确ID作为受控入口方案，同ID历史连续须单独验证，不能据URI文案标已接手",
+      "result": "not_run"
+    },
+    {
+      "id": "S27",
+      "owners": [
+        "W1",
+        "I0"
+      ],
+      "setup": "36本机/48全部设备（30+）合成项目，两设备有同名但来源原始ID不同的项目，一个七项目片区；当前设备/项目筛选有非默认显示范围，自动巡游启用；不使用真实项目。",
+      "expected": "手动名牌/列表立即去花园，片区看全体且名牌实际可点，仅房子/明确入口进工作室；完整返回视角与显示范围且30秒不被自动巡游抢镜。按来源host+原始项目身份解析building key，同名不串、远端只读、归档缺失不恢复或替代，导航零业务写入。以下为待实现目标，不是实测结果。",
+      "cases": [
+        {
+          "id": "A",
+          "action": "点项目名牌，再从列表点同一项目名/去花园；另开任务详情",
+          "expected": "名牌/列表共用身份解析和导航，立即调用既有镜头不等三秒，房子+门前花园+对应工作可辨认；留在世界，任务详情保持独立动作"
+        },
+        {
+          "id": "B",
+          "action": "点LocalDevData一带·7个项目片区标题，再点其中一个项目",
+          "expected": "按全部七成员布局边界取景，并保证LOD/局部显示后七个名牌可见可点；不能取第一项目，也不能fit后仍聚合隐藏成员；可继续定位具体花园"
+        },
+        {
+          "id": "C",
+          "action": "分别点房子本体、明确进入工作室、状态徽章；检查TownGuide说明",
+          "expected": "仅房子/明确入口进室内；徽章维持原查看或处理动作、阻止冒泡双动作；引导与新点击语义一致"
+        },
+        {
+          "id": "D",
+          "action": "导航时临时变更设备范围/项目筛选/局部显示，连续访问后点回到刚才的位置，随即让自动巡游触发",
+          "expected": "现有returnCamera之外补保存完整导航上下文；返回恢复原中心/平移/缩放/设备视图/筛选/显示范围，连续访问不覆盖初始返回点；返回后清理且至少30秒不被巡游/自动跟随抢镜"
+        },
+        {
+          "id": "E",
+          "action": "在本机/全部设备视图中点两设备同名项目，设备顺序和合并偏移repo_id发生变化",
+          "expected": "按来源host+来源原始项目ID的稳定身份解析到当前building key，不用显示name/偏移repo_id/排序当永久身份，不串到同名项目"
+        },
+        {
+          "id": "F",
+          "action": "定位远端、归档、已不存在、设备不可用或缺稳定原始身份的目标",
+          "expected": "远端只读；不能定位时说明具体原因，不自动恢复、不替代、不猜同名；若仅调整显示范围，返回完整恢复而不改业务状态"
+        },
+        {
+          "id": "G",
+          "action": "键盘Enter/Space导航及返回，开启减少动画，拖动/缩放结束在名牌/房子上释放",
+          "expected": "键盘等价且焦点可见；减少动效直接定位；复用swallowClick等手势抑制，不误进室内/双动作，手动仍立即而自动三秒规则不变"
+        },
+        {
+          "id": "H",
+          "action": "记录纯导航链请求与候选，拍点击前/花园定位后/返回后三图",
+          "expected": "纯导航只改界面/本地视角，不调用处理/批准/交付/功能符合等业务写API；三图同候选且返回范围可比，不拿旧图/生成图冒充"
+        }
+      ],
+      "navigation_business_writes": {
+        "expected": 0,
+        "observed": null
+      },
+      "screenshots": [
+        {
+          "stage": "点击前",
+          "status": "planned_not_captured"
+        },
+        {
+          "stage": "花园定位后",
+          "status": "planned_not_captured"
+        },
+        {
+          "stage": "返回后",
+          "status": "planned_not_captured"
+        }
+      ],
       "result": "not_run"
     }
   ],
-  "note": "26 个预期场景，全部未运行；条件授权、真实工具、正式安装、用户验收分别记录。PR42 只是 dependencies.json 登记的外部候选 owner，不代表原型通过或任务已启动。"
+  "note": "27 个预期场景，全部未运行；条件授权、真实工具、正式安装、用户验收分别记录。PR42 只是 dependencies.json 登记的外部候选 owner，不代表原型通过或任务已启动。 S27为新增W1/I0手动导航计划，三截图未拍、导航业务写入尚未观测，不能把expected=0当observed=0。",
+  "decision_ledger": {
+    "entries": 8,
+    "settled": [
+      "U08"
+    ],
+    "interim_default_pending_final_confirmation": [
+      "U06"
+    ],
+    "pending": [
+      "U01",
+      "U02",
+      "U03",
+      "U04",
+      "U05",
+      "U07"
+    ],
+    "ekko_choice": "只参考固定ba84e38/BSL1.1出处，不接入、不复制/AI改写代码或依赖；按SS自实现个人使用",
+    "phone_interim_default": "手机暂只拒绝，批准回本机；已授权PR42先远端allow403/隐藏、本机明确允许保留，最终产品默认待确认"
+  }
 }
