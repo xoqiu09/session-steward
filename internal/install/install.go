@@ -31,12 +31,14 @@ type Target struct {
 	Path     string // settings.json 或 hooks.json
 	Provider string
 	Events   []string
+	Async    bool // 只影响新追加条目；版本核对通过后才启用。
 }
 
 func ClaudeTarget(home string) Target {
 	return Target{Name: "claude", Provider: "claude", Path: filepath.Join(home, ".claude", "settings.json"), Events: []string{
 		"SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PostToolUseFailure", "PermissionRequest",
 		"Notification", "Stop", "StopFailure", "SubagentStart", "SubagentStop", "SessionEnd",
+		"PermissionDenied", "CwdChanged", "PreCompact", "PostCompact", "TaskCompleted",
 	}}
 }
 
@@ -195,7 +197,8 @@ func stripOurs(hooks *ojson.Object) bool {
 	return changed
 }
 
-// Install 幂等安装：先移除旧的 Steward 条目，再在每个事件数组末尾追加一组。
+// Install 幂等补缺：已有条目和顺序原样保留，只在缺少事件时追加一组。
+// 升级不能改旧条目的 async、超时、命令或 Codex 信任指纹。
 func (in *Installer) Install(t Target) (changed bool, err error) {
 	if err := os.MkdirAll(in.StateDir, 0o700); err != nil {
 		return false, err
@@ -233,12 +236,14 @@ func (in *Installer) Install(t Target) (changed bool, err error) {
 		root.Set("hooks", hooks)
 		st.CreatedHooks = true
 	}
-	stripOurs(hooks)
 	for _, ev := range t.Events {
 		cur, ok := hooks.Get(ev)
 		arr, isArr := cur.([]ojson.Value)
 		if ok && !isArr {
 			return false, fmt.Errorf("%s 中 hooks.%s 不是数组，拒绝修改", t.Path, ev)
+		}
+		if hasOurs(arr) {
+			continue
 		}
 		if !ok && !contains(st.CreatedKeys, ev) {
 			st.CreatedKeys = append(st.CreatedKeys, ev)
@@ -246,6 +251,9 @@ func (in *Installer) Install(t Target) (changed bool, err error) {
 		h := &ojson.Object{}
 		h.Set("type", "command")
 		h.Set("command", in.command(t, ev))
+		if t.Async && asyncEvent(t.Provider, ev) {
+			h.Set("async", json.RawMessage("true"))
+		}
 		timeout := 10
 		if ev == "PermissionRequest" {
 			timeout = in.PermWait + 30
@@ -255,7 +263,7 @@ func (in *Installer) Install(t Target) (changed bool, err error) {
 		}
 		h.Set("timeout", json.RawMessage(fmt.Sprint(timeout)))
 		g := &ojson.Object{}
-		if t.Name == "codex" || ev == "PermissionRequest" || strings.Contains(ev, "Tool") {
+		if t.Provider == "codex" || ev == "PermissionRequest" || ev == "PermissionDenied" || strings.Contains(ev, "Tool") {
 			g.Set("matcher", "*")
 		}
 		g.Set("hooks", []ojson.Value{h})
@@ -279,6 +287,31 @@ func (in *Installer) Install(t Target) (changed bool, err error) {
 	st.HookBinary = in.HookBinary
 	st.PermissionSec = in.PermWait
 	return true, in.saveState(t, st)
+}
+
+func hasOurs(groups []ojson.Value) bool {
+	for _, group := range groups {
+		g, ok := group.(*ojson.Object)
+		if !ok {
+			continue
+		}
+		v, _ := g.Get("hooks")
+		hooks, _ := v.([]ojson.Value)
+		for _, h := range hooks {
+			if isOurs(h) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func asyncEvent(provider, event string) bool {
+	if event == "SessionStart" || event == "UserPromptSubmit" || event == "PermissionRequest" {
+		return false
+	}
+	// Codex 文档明确 SessionEnd 总是同步，不能写入无效的 async。
+	return provider != "codex" || event != "SessionEnd"
 }
 
 // Uninstall 移除 Steward 条目。

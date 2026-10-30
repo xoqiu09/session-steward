@@ -5,7 +5,7 @@ import { HandoffForm, ItemUsageLine, SessionUsageLine } from './P1'
 import { AISummaryBox } from './P2'
 import { managedFor, managedOfSession } from './live'
 import { DecisionCard, MergeCard, PermissionCard } from './Queue'
-import { openApprovals } from './model'
+import { openApprovals, locationBindingNotice } from './model'
 import type { ItemStatus, MergeEvidence, Session, SessionUsageDetail, Snapshot } from './types'
 import { api } from './api'
 import { AgentBadge, CopyButton, ErrorLine, useAction } from './bits'
@@ -161,6 +161,7 @@ export function SessionDetail({ snap, id, onClose, onSelectItem, foldEvents = fa
       <ConversationReturn key={s.id} snap={snap} session={s} />
       <p className="hint">会话 #{s.id} · {name.source}{s.title && s.work_item_id ? ` · 原会话标题：${s.title}` : ''}</p>
       <p className={`work-signal signal-${signal.tone}`}><strong>{signal.label}</strong><br />{signal.reason}</p>
+      {locationBindingNotice(snap, s) && <p className="warn-box" role="status">{locationBindingNotice(snap, s)}</p>}
       {(() => {
         const perms = openApprovals(snap).filter((a) => a.kind === 'permission' && a.session_id === s.id)
         return perms.map((a) => <PermissionCard key={a.id} a={a} snap={snap} />)

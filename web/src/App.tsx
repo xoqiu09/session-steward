@@ -23,6 +23,7 @@ import { ProjectsPanel, type ProjectScope } from './ProjectsPanel'
 import { buildToday } from './today/todayModel'
 import { fullPanelHref, kioskHref, parseTownRoute, worldTownRoute } from './town/route'
 import { shownNo } from './hub/ids'
+import { HooksSettings } from './HooksSettings'
 
 type Tab = 'queue' | 'items' | 'sessions' | 'launch' | 'review'
 type Sel = { kind: 'item'; id: string } | { kind: 'session'; id: number } | null
@@ -59,6 +60,7 @@ export default function App() {
   const [sessionScope, setSessionScope] = useState<SessionScope>('recent')
   const [attributionOpen, setAttributionOpen] = useState(false)
   const [projectsOpen, setProjectsOpen] = useState<ProjectScope | null>(null)
+  const [settingsOpen, setSettingsOpen] = useState(false)
   // 每日十分钟已经列出了关注队列的内容：侧栏默认只留详情位置，需要时再展开原来的标签页。
   const [todaySideTabs, setTodaySideTabs] = useState(false)
 
@@ -121,6 +123,7 @@ export default function App() {
     <button className="btn small pm-counter" title="查看和恢复本机已删除的项目" onClick={() => setProjectsOpen('trash')}>回收站 {snap.trashed_projects ?? 0}</button>
   </span>
   const projectManager = projectsOpen && <ProjectsPanel initialScope={projectsOpen} device={hub.status?.device} onClose={() => { setProjectsOpen(null); setRepoId('all'); setSel(null) }} />
+  const settings = settingsOpen && <HooksSettings onClose={() => setSettingsOpen(false)} />
 
   if (route.kiosk) {
     const drawer = sel != null || kioskQueue
@@ -142,6 +145,7 @@ export default function App() {
             </span>} />
         </main>
         {projectManager}
+        {settings}
         {drawer && <div className="kiosk-scrim" onClick={closeDrawer} aria-hidden />}
         {drawer && (
           <aside className="side kiosk-drawer" role="dialog" aria-modal="true" aria-label={sel ? '详情' : '关注队列'}>
@@ -189,6 +193,7 @@ export default function App() {
           {view === 'canvas' && <button className="btn small" onClick={() => setExpandAll((v) => !v)}>{expandAll ? '默认折叠' : '全部展开'}</button>}
           {quietCount > 0 && <button className="btn small" onClick={() => { setSel(null); setAttributionOpen(false); setTab('sessions'); setSessionScope('quiet') }}>已收起会话 {quietCount}</button>}
           <button className="btn small" onClick={openAttributions}>近期归属待确认 {attributionPending}</button>
+          <button className="btn small" onClick={() => setSettingsOpen(true)}>设置</button>
         </header>
         {isRemote() && <p className="warn-box" role="status">{remoteReadOnlyMessage}</p>}
         {(() => {
@@ -248,6 +253,7 @@ export default function App() {
         ))}
       </aside>
       {projectManager}
+      {settings}
     </div>
   )
 }

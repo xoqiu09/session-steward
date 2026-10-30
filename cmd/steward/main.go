@@ -255,6 +255,8 @@ func serve() error {
 		}
 	}
 	s := &server.Server{BuildCommit: BuildCommit, ReportingHints: cfg.ReportingHints, Core: c, IngestToken: ingest, PanelToken: panel, PermWait: time.Duration(cfg.PermissionWaitSec) * time.Second, Static: static}
+	hookMonitor := &install.Monitor{Targets: []install.Target{install.ClaudeTarget(home), install.CodexTarget(home, os.Getenv("CODEX_HOME"))}}
+	s.HookCoverage = hookMonitor.Snapshot
 	if len(cfg.RemoteHosts) > 0 {
 		// 远程设备 token 与本机面板 token 分开；steward remote --rotate 可吊销
 		if s.RemoteToken, err = config.Secret("remote.token"); err != nil {
@@ -464,6 +466,15 @@ func doInstall(which string, remove bool) error {
 			fmt.Printf("%s: %s\n", t.Name, msg)
 			continue
 		}
+		version, probeErr := install.DetectVersion(context.Background(), t.Provider)
+		plan := install.ForVersion(t, version)
+		if probeErr != nil || len(plan.Skipped) > 0 || plan.Reason != "" {
+			fmt.Printf("%s: %s；跳过 %v\n", t.Name, plan.Reason, plan.Skipped)
+		}
+		if len(plan.Target.Events) == 0 {
+			continue
+		}
+		t = plan.Target
 		changed, err := in.Install(t)
 		if err != nil {
 			return fmt.Errorf("%s: %w", t.Name, err)

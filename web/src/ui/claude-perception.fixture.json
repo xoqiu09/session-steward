@@ -1,0 +1,10 @@
+[
+  {
+    "input": {"session_id":"synthetic-p3","hook_event_name":"PermissionDenied","cwd":"/synthetic-project","tool_name":"Bash","tool_input":{"command":"PRIVATE-SYNTHETIC-CONTENT"},"transcript_path":"/must-not-read"},
+    "event": {"event_id":"p3-PermissionDenied","kind":"permission_denied","raw_name":"PermissionDenied","occurred_at":"2026-10-30T00:00:00Z","tool_name":"Bash","cwd":"/synthetic-project","preview":"被自动拒绝：Bash","reason":"auto_mode_denied"}
+  },
+  {
+    "input": {"session_id":"synthetic-p3","hook_event_name":"TaskCompleted","cwd":"/synthetic-project","task_subject":"PRIVATE-SYNTHETIC-CONTENT"},
+    "event": {"event_id":"p3-TaskCompleted","kind":"task_completed","raw_name":"TaskCompleted","occurred_at":"2026-10-30T00:00:01Z","cwd":"/synthetic-project"}
+  }
+]

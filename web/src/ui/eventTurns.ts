@@ -39,7 +39,14 @@ const NOTE: Record<string, (e: RawEvent) => { tone: StepTone; label: string; det
   notify_permission: (e) => ({ tone: 'ask', label: '提醒：等你批准', detail: str(e.preview) }),
   notify_input: (e) => ({ tone: 'ask', label: '提醒：等你回复', detail: str(e.preview) }),
   notify_idle: () => ({ tone: 'info', label: '提醒：闲着等下一步' }),
-  notify_other: (e) => ({ tone: 'info', label: '通知', detail: str(e.preview) }),
+  notify_other: (e) => ({ tone: 'info', label: e.reason === 'agent_completed' ? '收到 Claude 完成通知，工作验收另行处理'
+    : e.reason === 'quota_auto_resume_disabled' ? '自动继续已关闭'
+    : e.reason === 'quota_auto_resume_unknown' ? '额度通知，状态待核对' : '通知', detail: str(e.preview) }),
+  permission_denied: (e) => ({ tone: 'info', label: '被自动拒绝', detail: toolLabel(str(e.tool_name)) }),
+  cwd_changed: () => ({ tone: 'info', label: '工作目录已切换' }),
+  task_completed: () => ({ tone: 'info', label: 'Claude 待办完成，工作验收另行处理' }),
+  quota_resumed: () => ({ tone: 'running', label: '额度已恢复，继续工作' }),
+  quota_await_input: () => ({ tone: 'ask', label: '额度已恢复，等待你继续' }),
   ask: (e) => ({ tone: 'ask', label: 'Agent 求助', detail: str(e.text) || str(e.preview) }),
   begin: (e) => ({ tone: 'info', label: '登记任务', detail: str(e.work_title) }),
   claim: (e) => ({ tone: 'info', label: '认领工作项', detail: str(e.work_tag) }),

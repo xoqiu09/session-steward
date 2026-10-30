@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/xoqiu09/session-steward/internal/event"
 	"github.com/xoqiu09/session-steward/internal/store"
 )
 
@@ -14,7 +15,7 @@ const replayWindow = 7 * 24 * time.Hour
 // SnapshotAt 还原过去某一时刻的快照，供小镇回放。只读：
 //   - 工作项：只含当时已创建的，状态取那一刻之前最后一次状态变化；
 //   - 运行：只含当时已开始的，那一刻之后才结束的当作还在进行；
-//   - 会话：状态由那一刻之前最后一条事件推出，等权限的以当时未关闭的审批为准；
+//   - 会话：状态取实际改变状态的事件；元信息只更新活动时钟，不推断 running；
 //   - 审批：那一刻已创建、还没关闭的算待处理。
 //
 // 简报、用量、托管、合并任务等不回放（返回空），界面只用它画小镇。
@@ -116,6 +117,37 @@ func (c *Core) SnapshotAt(ctx context.Context, at time.Time) (*Snapshot, error) 
 		lastEv[id] = last{kind, when}
 	}
 	rows.Close()
+	// 状态与活动各用自己的时钟。压缩、目录变化、自动拒绝、待办完成及
+	// 未知通知不能让已停止/结束的会话在回放里重新运行。
+	type replayState struct{ state, reason string }
+	stateAt := map[int64]replayState{}
+	rows, err = r.QueryContext(ctx, `SELECT session_id,kind,COALESCE(json_extract(body,'$.reason'),'')
+		FROM events WHERE occurred_at <= ? AND kind IN (
+		'session_start','prompt','tool_pre','tool_post','tool_fail','subagent_start','subagent_stop',
+		'permission_request','notify_permission','stop','notify_idle','notify_input','stop_failure','interrupt','session_end',
+		'quota_resumed','quota_await_input') AND session_id IN (
+		SELECT session_id FROM events WHERE occurred_at <= ? AND occurred_at >= ?)
+		ORDER BY occurred_at,seq`, T, T, store.TS(at.Add(-replayWindow)))
+	if err != nil {
+		return nil, err
+	}
+	for rows.Next() {
+		var id int64
+		var kind, reason string
+		if err := rows.Scan(&id, &kind, &reason); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		state := sessionStateFor(event.Kind(kind))
+		if state != "" && (stateAt[id].state != "ended" || kind == "session_start") {
+			stateAt[id] = replayState{state, reason}
+		}
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return nil, err
+	}
+	rows.Close()
 	stale := c.StaleAfter
 	if stale <= 0 {
 		stale = 15 * time.Minute
@@ -126,18 +158,10 @@ func (c *Core) SnapshotAt(ctx context.Context, at time.Time) (*Snapshot, error) 
 			continue
 		}
 		s.LastActivityAt, s.LastProgressAt, s.LastToolPreview, s.LastToolAt = e.at, "", "", ""
-		s.DataSource, s.Freshness, s.StateReason = "live", "live", ""
-		switch e.kind {
-		case "session_end":
-			s.State = "ended"
-		case "stop":
-			s.State = "idle"
-		case "stop_failure":
-			s.State = "error"
-		case "interrupt":
-			s.State = "interrupted"
-		default:
-			s.State = "running"
+		s.DataSource, s.Freshness = "live", "live"
+		s.State, s.StateReason = stateAt[s.ID].state, stateAt[s.ID].reason
+		if s.State == "" {
+			s.State = "unknown"
 		}
 		if pendingPerm[s.ID] {
 			s.State = "waiting_permission"
