@@ -96,7 +96,7 @@ export default function App() {
   const totalItems = groups.reduce((sum, g) => sum + g.items.length, 0)
   const providers = [...new Set((snap.sessions ?? []).map((s) => s.provider))]
   const counts = queueCounts(snap, repoId, provider)
-  const todayLeft = (() => { const t = buildToday(snap, ''); return t.decide.length + t.review.length + t.stuck.length })()
+  const todayLeft = (() => { const t = buildToday(snap, ''); return t.decide.length + t.review.length + new Set(t.stuck.map(row => row.item.id)).size })()
   const todayEntry = <a className="btn small today-entry" href={`${window.location.pathname}?view=today`} onClick={(e) => { if (!route.kiosk) { e.preventDefault(); setView('today') } }} title="每日十分钟：要你决定、等你验收、卡住了的，一页看完">{todayLeft ? `要你处理 ${todayLeft} 件` : '每日十分钟'}</a>
   const actors = projectActorRows(snap, groups, provider)
   const quietCount = sessionBuckets(snap, provider, repoId).quiet.length
