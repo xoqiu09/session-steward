@@ -23,11 +23,16 @@ import { ProjectsPanel, type ProjectScope } from './ProjectsPanel'
 import { buildToday } from './today/todayModel'
 import { fullPanelHref, kioskHref, parseTownRoute, worldTownRoute } from './town/route'
 import { shownNo } from './hub/ids'
+import { NativeControl } from './NativeControl'
 
 type Tab = 'queue' | 'items' | 'sessions' | 'launch' | 'review'
 type Sel = { kind: 'item'; id: string } | { kind: 'session'; id: number } | null
 
 export default function App() {
+	return new URLSearchParams(window.location.search).get('view') === 'native' ? <NativeControl /> : <PanelApp />
+}
+
+function PanelApp() {
   const { snap, conn } = useSnapshot()
   // 多设备：“全部设备”时小镇画合并视图；点到别台电脑上的东西只提示去那台处理。
   const hub = useHub()

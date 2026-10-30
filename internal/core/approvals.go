@@ -93,6 +93,12 @@ func upsertAttention(tx *sql.Tx, sid int64, kind, preview string, payload map[st
 // RequestPermission 由 hook 适配器同步调用：先落库事件，再创建可处理的审批并等待面板决定。
 // 返回 ok=false 表示 Steward 不作决定，适配器应回到 Agent 原生审批流程。
 func (c *Core) RequestPermission(ctx context.Context, e *event.Event, wait time.Duration) (id string, d Decision, ok bool, err error) {
+	return c.RequestPermissionObserved(ctx, e, wait, nil)
+}
+
+// RequestPermissionObserved exposes the committed approval ID to a native adapter.
+// The observer runs after the waiter is registered and outside database/Core locks.
+func (c *Core) RequestPermissionObserved(ctx context.Context, e *event.Event, wait time.Duration, ready func(string)) (id string, d Decision, ok bool, err error) {
 	if e.Kind != event.KindPermission {
 		return "", d, false, errors.New("不是权限请求事件")
 	}
@@ -132,6 +138,9 @@ func (c *Core) RequestPermission(ctx context.Context, e *event.Event, wait time.
 	c.mu.Lock()
 	c.waiters[id] = ch
 	c.mu.Unlock()
+	if ready != nil {
+		ready(id)
+	}
 	c.notify()
 	defer func() {
 		c.mu.Lock()
