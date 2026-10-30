@@ -16,6 +16,6 @@
     <key>CFBundleURLSchemes</key><array><string>session-steward</string></array>
     <key>CFBundleTypeRole</key><string>Viewer</string>
   </dict></array>
-  <!-- 只连本机 127.0.0.1 上的面板（http）；不联网 -->
+  <!-- 本机面板用 HTTP；手动更新仅经 HTTPS 连接 GitHub。 -->
   <key>NSAppTransportSecurity</key><dict><key>NSAllowsLocalNetworking</key><true/></dict>
 </dict></plist>

@@ -1,5 +1,12 @@
 import Foundation
 
+/// The shipped plist registers session-steward; isolated test bundles register
+/// a separate scheme so they cannot become a handler for the real installation.
+func panelURLScheme(in bundle: Bundle) -> String? {
+    guard let types = bundle.object(forInfoDictionaryKey: "CFBundleURLTypes") as? [[String: Any]] else { return nil }
+    return types.compactMap { ($0["CFBundleURLSchemes"] as? [String])?.first }.first
+}
+
 /// A notification can select a record. It cannot contain credentials or perform an action.
 struct PanelTarget: Hashable {
     enum Kind: String, Hashable { case item, approval, session }
@@ -24,9 +31,9 @@ struct PanelTarget: Hashable {
         return parts.string!
     }
 
-    func appURL(port: Int) -> URL {
+    func appURL(port: Int, scheme: String = "session-steward") -> URL {
         var parts = URLComponents()
-        parts.scheme = "session-steward"
+        parts.scheme = scheme
         parts.host = "open"
         parts.queryItems = [URLQueryItem(name: "port", value: String(port)), URLQueryItem(name: kind.rawValue, value: id)]
         return parts.url!
@@ -44,14 +51,14 @@ struct PanelTarget: Hashable {
     }
 
     /// Only the configured local service may be selected, including during a cold launch.
-    static func fromIncomingURL(_ url: URL, base: URL) -> PanelTarget? {
+    static func fromIncomingURL(_ url: URL, base: URL, scheme: String = "session-steward") -> PanelTarget? {
         let port = base.port ?? 80
         if url.scheme == "http" {
             guard (url.port ?? 80) == port else { return nil }
             return fromPanelURL(url)
         }
         guard let parts = URLComponents(url: url, resolvingAgainstBaseURL: false),
-              parts.scheme == "session-steward", parts.host == "open", parts.path.isEmpty,
+              parts.scheme == scheme, parts.host == "open", parts.path.isEmpty,
               parts.user == nil, parts.password == nil, parts.port == nil, parts.fragment == nil,
               let fields = parts.queryItems, fields.count == 2,
               fields.filter({ $0.name == "port" }).count == 1,

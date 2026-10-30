@@ -19,6 +19,7 @@ final class NativeNoticeChannel {
             try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: file.path)
         } catch { completion(["status": "spool_failed"]); return }
         let config = NSWorkspace.OpenConfiguration(); config.activates = false
+        config.arguments = ["--steward-home", directory.deletingLastPathComponent().path]
         NSWorkspace.shared.open([file], withApplicationAt: helper, configuration: config) { _, error in
             DispatchQueue.global(qos: .utility).async {
                 defer { try? FileManager.default.removeItem(at: file); try? FileManager.default.removeItem(at: result) }

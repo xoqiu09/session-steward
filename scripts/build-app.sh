@@ -5,7 +5,15 @@
 set -eu
 repo=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 arch=${1:-$( [ "$(uname -m)" = x86_64 ] && echo amd64 || echo arm64 )}
-version=${2:-$(git -C "$repo" describe --always --dirty 2>/dev/null || echo dev)}
+version=${2:-$(/usr/bin/plutil -extract version raw -o - "$repo/native/app/update-version.json")}
+build=${UPDATE_BUILD:-$(/usr/bin/plutil -extract build raw -o - "$repo/native/app/update-version.json")}
+# 健康检查要比较真实提交；不能借用源码目录上层仓库的 HEAD。
+if [ ! -e "$repo/.git" ] || ! commit=$(git -C "$repo" rev-parse --verify HEAD 2>/dev/null); then
+	echo "只能在 git 仓库里构建 App：源码根目录必须保留 .git 和有效提交（升级健康检查需要真实提交）。" >&2
+	exit 1
+fi
+key=${UPDATE_PUBLIC_KEY:-}
+case "$build" in *[!0-9]*|'') echo "UPDATE_BUILD must be a positive integer" >&2; exit 1;; esac
 target=$([ "$arch" = amd64 ] && echo x86_64 || echo arm64)
 out=${APP_OUT:-"$repo/dist-app"}
 app="$out/Session Steward.app"
@@ -13,15 +21,17 @@ rm -rf "$app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 cd "$repo"
 # 后台程序
-CGO_ENABLED=0 GOOS=darwin GOARCH=$arch go build -trimpath -ldflags "-s -w -X main.BuildCommit=$version" -o "$app/Contents/MacOS/" ./cmd/...
+CGO_ENABLED=0 GOOS=darwin GOARCH=$arch go build -trimpath -ldflags "-s -w -X main.BuildCommit=$commit -X github.com/xoqiu09/session-steward/internal/updater.Version=${version#v} -X github.com/xoqiu09/session-steward/internal/updater.Build=$build -X github.com/xoqiu09/session-steward/internal/updater.PublicKey=$key" -o "$app/Contents/MacOS/" ./cmd/steward ./cmd/steward-hook ./cmd/steward-updater
 # 通知助手：steward 在自己旁边找 “Session Steward.app”
 NOTIFIER_TARGET=$target sh scripts/build-notifier.sh "$app/Contents/MacOS/Session Steward.app" >/dev/null
 # App 外壳
 xcrun swiftc -swift-version 5 -target "$target-apple-macos13.0" -O -framework AppKit -framework WebKit -framework ServiceManagement -framework SwiftUI -framework QuartzCore \
 	native/shared/*.swift native/app/*.swift -o "$app/Contents/MacOS/SessionSteward"
-sed "s#<string>0.0.0</string>#<string>${version#v}</string>#" native/app/Info.plist > "$app/Contents/Info.plist"
+cp native/app/Info.plist "$app/Contents/Info.plist"
+schema=$(go run ./cmd/steward-updater info | /usr/bin/plutil -extract Schema raw -o - -)
+/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString ${version#v}" -c "Set :CFBundleVersion $build" -c "Add :StewardSchema integer $schema" "$app/Contents/Info.plist"
 cp native/macos/Resources/Steward.icns "$app/Contents/Resources/Steward.icns"
 # 由内到外 ad-hoc 签名（未公证；首次打开需要“右键 → 打开”）
-codesign --force --sign - "$app/Contents/MacOS/steward" "$app/Contents/MacOS/steward-hook"
+codesign --force --sign - "$app/Contents/MacOS/steward" "$app/Contents/MacOS/steward-hook" "$app/Contents/MacOS/steward-updater"
 codesign --force --sign - --identifier io.github.xoqiu09.session-steward.app "$app"
 printf '%s\n' "$app"

@@ -71,7 +71,7 @@ func (m *MacOS) sendNative(ctx context.Context, a core.Alert) error {
 	if closeErr != nil {
 		return closeErr
 	}
-	if _, err = m.run(ctx, "/usr/bin/open", "-g", "-a", filepath.Clean(m.AppPath), name); err != nil {
+	if _, err = m.run(ctx, "/usr/bin/open", "-g", "-a", filepath.Clean(m.AppPath), name, "--args", "--steward-home", filepath.Dir(filepath.Clean(m.SpoolDir))); err != nil {
 		return err
 	}
 	// Wait for the OS enqueue acknowledgement, not a user's click. No database lock is held.
