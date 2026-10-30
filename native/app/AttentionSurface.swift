@@ -151,7 +151,7 @@ struct AttentionSurfaceView: View {
             if model.expanded {
                 VStack(alignment: .leading, spacing: 0) {
                     HStack {
-                        Text("需要你看一眼").font(.system(size: 15, weight: .semibold))
+                        Text(model.state.online && model.state.records.isEmpty ? "暂时没有需要处理的事" : "需要你看一眼").font(.system(size: 15, weight: .semibold))
                         Spacer()
                         Text("这台电脑").font(.system(size: 11)).foregroundStyle(.white.opacity(0.64))
                     }.padding(.bottom, 9)
@@ -196,7 +196,7 @@ private struct AttentionRow: View {
             HStack(spacing: 10) {
                 Circle().fill(tint).frame(width: 6, height: 6)
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(record.title).font(.system(size: 12, weight: .medium)).lineLimit(1)
+                    Text(record.title).font(.system(size: 12, weight: .medium)).lineLimit(record.titleLines)
                     Text("\(record.project) · \(record.label)").font(.system(size: 10)).foregroundStyle(.white.opacity(0.66)).lineLimit(1)
                 }
                 Spacer(minLength: 6)
