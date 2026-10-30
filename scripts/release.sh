@@ -15,7 +15,7 @@ for arch in arm64 amd64; do
 	name="session-steward_${version}_darwin_${arch}"
 	dir="$out/$name"
 	mkdir -p "$dir"
-	CGO_ENABLED=0 GOOS=darwin GOARCH=$arch go build -trimpath -ldflags "-s -w -X main.BuildCommit=$(git -C "$repo" rev-parse HEAD)" -o "$dir/" ./cmd/...
+	CGO_ENABLED=0 GOOS=darwin GOARCH=$arch go build -trimpath -ldflags "-s -w -X main.BuildCommit=$(git -C "$repo" rev-parse HEAD)" -o "$dir/" ./cmd/steward ./cmd/steward-hook
 	if command -v xcrun >/dev/null 2>&1; then
 		target=$([ "$arch" = amd64 ] && echo x86_64 || echo arm64)
 		NOTIFIER_TARGET=$target sh scripts/build-notifier.sh "$dir/Session Steward.app" >/dev/null

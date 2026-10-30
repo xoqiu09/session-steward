@@ -7,7 +7,11 @@ repo=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 arch=${1:-$( [ "$(uname -m)" = x86_64 ] && echo amd64 || echo arm64 )}
 version=${2:-$(/usr/bin/plutil -extract version raw -o - "$repo/native/app/update-version.json")}
 build=${UPDATE_BUILD:-$(/usr/bin/plutil -extract build raw -o - "$repo/native/app/update-version.json")}
-commit=$(git -C "$repo" rev-parse HEAD)
+# 健康检查要比较真实提交；不能借用源码目录上层仓库的 HEAD。
+if [ ! -e "$repo/.git" ] || ! commit=$(git -C "$repo" rev-parse --verify HEAD 2>/dev/null); then
+	echo "只能在 git 仓库里构建 App：源码根目录必须保留 .git 和有效提交（升级健康检查需要真实提交）。" >&2
+	exit 1
+fi
 key=${UPDATE_PUBLIC_KEY:-}
 case "$build" in *[!0-9]*|'') echo "UPDATE_BUILD must be a positive integer" >&2; exit 1;; esac
 target=$([ "$arch" = amd64 ] && echo x86_64 || echo arm64)

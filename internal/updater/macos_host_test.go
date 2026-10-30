@@ -4,7 +4,11 @@ package updater
 
 import (
 	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -42,5 +46,52 @@ func TestMacStartRegistrationFailureDoesNotLaunch(t *testing.T) {
 	}}
 	if err := h.Start(&Plan{App: "/synthetic/Session Steward.app", Mode: "shared"}, false); err == nil || calls != 1 {
 		t.Fatal("registration failure must enter transaction recovery", err, calls)
+	}
+}
+
+func TestMacStartRecoveryContinuesAfterRegistrationFailure(t *testing.T) {
+	for _, mode := range []string{"own", "shared"} {
+		for _, logWritable := range []bool{true, false} {
+			t.Run(fmt.Sprintf("%s/log-writable=%t", mode, logWritable), func(t *testing.T) {
+				p := &Plan{App: "/synthetic/Session Steward.app", Home: "/synthetic/home", Work: t.TempDir(), Mode: mode, Plist: "/synthetic/service.plist"}
+				logPath := filepath.Join(p.Work, "install.log")
+				const previousLog = "synthetic previous install entry\n"
+				if logWritable {
+					if err := os.WriteFile(logPath, []byte(previousLog), 0600); err != nil {
+						t.Fatal(err)
+					}
+				} else if err := os.Mkdir(logPath, 0700); err != nil {
+					t.Fatal(err)
+				}
+				var calls [][]string
+				h := MacHost{run: func(name string, args ...string) ([]byte, error) {
+					calls = append(calls, append([]string{name}, args...))
+					if name == launchServicesRegister {
+						return nil, errors.New("synthetic registration failure")
+					}
+					return nil, nil
+				}}
+				if err := h.Start(p, true); err != nil {
+					t.Fatal("registration or log failure must not block recovery", err)
+				}
+				want := [][]string{{launchServicesRegister, "-f", p.App}}
+				if mode == "shared" {
+					want = append(want, []string{"/bin/launchctl", "bootstrap", fmt.Sprintf("gui/%d", os.Getuid()), p.Plist})
+				}
+				want = append(want, []string{"/usr/bin/open", "-n", "-a", p.App, "--args", "--steward-home", p.Home, "--update-transaction", p.Work})
+				if !reflect.DeepEqual(calls, want) {
+					t.Fatal("recovery must register, bootstrap if shared, then open", calls)
+				}
+				if logWritable {
+					b, err := os.ReadFile(logPath)
+					if err != nil {
+						t.Fatal(err)
+					}
+					if !strings.HasPrefix(string(b), previousLog) || !strings.Contains(string(b), "恢复旧版时无法重新登记 App 链接") || !strings.Contains(string(b), "synthetic registration failure") {
+						t.Fatal("recovery must append the registration failure to install.log", string(b))
+					}
+				}
+			})
+		}
 	}
 }

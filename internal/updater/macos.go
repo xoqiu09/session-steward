@@ -353,7 +353,14 @@ func (h MacHost) Start(p *Plan, rollback bool) error {
 	// Re-register the exact installed path after both replacement and recovery.
 	// This refreshes URL/document handlers without choosing a default handler.
 	if _, e := h.command(launchServicesRegister, "-f", p.App); e != nil {
-		return fmt.Errorf("无法重新登记 App 链接：%w", e)
+		if !rollback {
+			return fmt.Errorf("无法重新登记 App 链接：%w", e)
+		}
+		// Registration and logging must not prevent the old backend from restarting.
+		if log, err := os.OpenFile(filepath.Join(p.Work, "install.log"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600); err == nil {
+			_, _ = fmt.Fprintf(log, "恢复旧版时无法重新登记 App 链接，继续重启：%v\n", e)
+			_ = log.Close()
+		}
 	}
 	if p.Mode == "shared" {
 		if _, e := h.command("/bin/launchctl", "bootstrap", fmt.Sprintf("gui/%d", os.Getuid()), p.Plist); e != nil {
