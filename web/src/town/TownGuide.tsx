@@ -4,6 +4,7 @@ import { CropShape } from './field'
 import { STATUS_CHIPS } from './status'
 import { AGENTS } from './agents'
 import type { CropStage } from './harvest'
+import type { FollowPreferences } from './moments'
 
 const STAGES: { stage: CropStage; overripe?: boolean; name: string; means: string }[] = [
   { stage: 'seed', name: '种子', means: '待开始' },
@@ -27,7 +28,7 @@ function Row({ icon, title, children }: { icon?: ReactNode; title: string; child
   )
 }
 
-export function TownGuide({ onClose }: { onClose: () => void }) {
+export function TownGuide({ onClose, follow, onFollowChange }: { onClose: () => void; follow?: FollowPreferences; onFollowChange?: (value: FollowPreferences) => void }) {
   return (
     <aside className="town-guide" role="dialog" aria-label="小镇怎么看" onPointerDown={(e) => e.stopPropagation()}>
       <header className="town-guide-head">
@@ -37,6 +38,17 @@ export function TownGuide({ onClose }: { onClose: () => void }) {
       <p className="town-guide-lead">
         小镇把 Session Steward 里的工作画成一张地图：<b>项目是房子，会话是小人，工作项是门口的菜</b>。它只负责让你一眼看出哪里需要你；真正的操作都在点开后的卡片里。
       </p>
+
+      {follow && onFollowChange && <fieldset className="town-follow-settings">
+        <legend>镜头跟着进展走</legend>
+        <label><input type="checkbox" checked={follow.enabled} onChange={(e) => onFollowChange({ ...follow, enabled: e.target.checked })} />有进展时自动带我过去</label>
+        <label>自动带我去的时刻
+          <select value={follow.includeMerged ? 'merged' : 'essential'} onChange={(e) => onFollowChange({ ...follow, includeMerged: e.target.value === 'merged' })}>
+            <option value="essential">要你决定和菜熟了</option><option value="merged">也包括合并完成</option>
+          </select>
+        </label>
+        <p>只记在这个浏览器里。操作地图后安静 30 秒；几秒内的动态合在一起看。</p>
+      </fieldset>}
 
       <nav className="town-guide-toc" aria-label="说明目录">
         {[['tg-map', '地图上的东西'], ['tg-ops', '怎么操作'], ['tg-day', '每天怎么用'], ['tg-not', '它不做什么']].map(([id, label]) => (
