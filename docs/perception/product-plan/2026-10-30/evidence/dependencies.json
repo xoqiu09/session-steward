@@ -1,6 +1,6 @@
 {
   "status": "proposed",
-  "note": "depends governs implementation readiness; research/design may precede it. Real cross-schema deployment also requires U1. Model-backed M1 requires P6. F0 consumes current P1/P3 candidates, not their prior merge.",
+  "note": "全部为待实现/待分配方案。depends 为完成实现的硬依赖；phases 允许逻辑/设计先行。release_depends 为正式发布门槛，不要求 U1 等 F0 先发布。用户 U05 仍须选择过渡版或手动路线；本包不启动实现。",
   "nodes": {
     "T0": {
       "status": "merged_code"
@@ -23,14 +23,20 @@
         "P1",
         "P3"
       ],
-      "stage": "unassigned_integration"
+      "stage": "unassigned_integration",
+      "release_depends": [
+        "U1"
+      ],
+      "release_gate": "用户 U05 二选一：仍为 schema4 的 U1 过渡升级器先合并/发布并在所有目标设备安装，之后才发布 F0/schema5；或明确获准且已验证恢复的一次性手动 4→5 路线。隔离整合可并行，不代表发布获准。"
     },
     "U1": {
       "depends": [
-        "T0",
-        "F0"
+        "T0"
       ],
-      "stage": "design_first"
+      "stage": "design_first_user_route_pending",
+      "coordination_inputs": [
+        "F0"
+      ]
     },
     "W1": {
       "depends": [
@@ -41,9 +47,28 @@
     "W2": {
       "depends": [
         "D0",
-        "V1"
+        "V1",
+        "P1",
+        "P2"
       ],
-      "stage": "mock_allowed_after_contract"
+      "stage": "phased_logic_then_sources",
+      "phases": {
+        "logic": [
+          "D0",
+          "V1"
+        ],
+        "signal_mapping": [
+          "D0",
+          "V1",
+          "P1"
+        ],
+        "github_mapping": [
+          "D0",
+          "V1",
+          "P1",
+          "P2"
+        ]
+      }
     },
     "A0": {
       "depends": [
@@ -56,18 +81,19 @@
       "depends": [
         "A0"
       ],
-      "stage": "research_allowed"
+      "stage": "research_allowed",
+      "user_gate": "U02 决定前仅研究；模型厂商/名称记录另需 U03"
     },
     "A2": {
       "depends": [
         "A0"
       ],
-      "stage": "research_allowed"
+      "stage": "research_allowed",
+      "user_gate": "U01 决定前仅研究；模型厂商/名称记录另需 U03"
     },
     "P2": {
       "depends": [
-        "F0",
-        "D0"
+        "P1"
       ],
       "stage": "existing_task_clarification"
     },
@@ -99,14 +125,26 @@
     "M1": {
       "depends": [
         "D0",
-        "F0"
+        "F0",
+        "P6"
       ],
-      "stage": "design_first"
+      "stage": "design_first",
+      "phases": {
+        "data_design": [
+          "D0"
+        ],
+        "model_write": [
+          "D0",
+          "F0",
+          "P6"
+        ]
+      }
     },
     "P7": {
       "depends": [
         "T0",
-        "P2"
+        "P2",
+        "U1"
       ],
       "stage": "preliminary"
     },
@@ -128,6 +166,14 @@
         "P7"
       ],
       "stage": "incremental_acceptance"
+    }
+  },
+  "external_owners": {
+    "PR42": {
+      "pr": 42,
+      "name": "本机 Codex 控制外部原型候选",
+      "status": "external_candidate_not_verified",
+      "responsibility": "与 I0 核对 S22～S26；不表示已合入/已授权，不新增第二套 task/control 状态，未来收敛 managed_sessions。"
     }
   }
 }

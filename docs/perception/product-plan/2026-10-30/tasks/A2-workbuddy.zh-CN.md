@@ -1,6 +1,6 @@
 # A2：WorkBuddy MCP 回报接入与能力核对
 
-状态：仅官方资料研究可先行；桥接原型依赖 A0。
+状态：用户 U01 决定前仅官方资料研究；注册桥接原型须 A0 与单独授权。本轮未接入。
 分支建议：`feat/adapter-workbuddy`。执行时从最新 main 创建独立 worktree；当前没有创建该分支。
 共用约束：[索引与回报格式](README.zh-CN.md)；[契约提案](../architecture-addendum.zh-CN.md)。
 
@@ -11,7 +11,7 @@
 ## 范围与复用
 
 - 核对官方文档、实际版本与项目级 .workbuddy/mcp.json 支持；研究阶段不改用户级配置或登录账号。
-- 按 A0 使用公共 MCP 服务，在合成项目声明 begin/report/deliver 工具；不要为 WorkBuddy 再复制一套 MCP server。
+- 用户决定接入和允许的测试项目/动作后，才可按 A0 另行分配公共 MCP 原型，在合成项目声明 begin/report/deliver 工具；决定前不注册 MCP、不改项目/用户配置、不调用真实工具。不要为 WorkBuddy 再复制一套 MCP server；模型厂商/名称新增记录另等 U03，不能由 MCP 接入许可推导。
 - 分别记录 MCP 可调用、自动生命周期事件、等待输入、失败、用量、返回指定会话的证据；文档未覆盖的桌面能力记 unknown。
 - CodeBuddy Code 的 hooks 另列候选，不当成 WorkBuddy 桌面能力；有需求时交独立任务，不在此混装 CLI hooks。
 - 隔离原型做连接失败、重复调用、重连、无原生会话 ID、停用和卸载；回报/模型自述在 SS 上能辨认。
