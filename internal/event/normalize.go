@@ -70,6 +70,7 @@ func Normalize(raw []byte, opt Options) (*Event, *HookInput, error) {
 		OccurredAt:    opt.Now().UTC(),
 		Source: Source{
 			Provider: opt.Provider,
+			Channel:  "hook",
 			HostID:   opt.HostID,
 		},
 		RawName:    in.HookEventName,
@@ -80,6 +81,7 @@ func Normalize(raw []byte, opt Options) (*Event, *HookInput, error) {
 		TurnID:     in.TurnID,
 		ToolUseID:  in.ToolUseID,
 	}
+	e.Source.Ref = e.EventID
 	e.Source.Client, e.Source.Version, e.Source.Originator = detectClient(opt, in.TranscriptPath)
 	e.Kind = classify(opt.Provider, &in)
 

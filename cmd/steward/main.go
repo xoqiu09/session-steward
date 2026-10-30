@@ -113,6 +113,7 @@ func serve() error {
 	defer st.Close()
 	c := core.New(st, gitx.NewLocator())
 	c.StaleAfter = time.Duration(cfg.StaleAfterMin) * time.Minute
+	c.SignalGapAfter = time.Duration(cfg.SignalGapAfterMin) * time.Minute
 	c.Agents, c.StewardHome, c.WorktreeRoot = map[string]core.AgentSpec{}, config.Home(), cfg.WorktreeRoot
 	for name, a := range config.NormalizeAgents(cfg.Agents) {
 		c.Agents[name] = core.AgentSpec{Argv: a.Argv, Provider: a.Provider, Hooks: a.Hooks, PromptArg: a.PromptArg}

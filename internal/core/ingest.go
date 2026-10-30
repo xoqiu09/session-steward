@@ -44,6 +44,15 @@ func sessionStateFor(k event.Kind) string {
 
 // Ingest 幂等地处理一条事件：去重、更新 session、归属、生成关注项。
 func (c *Core) Ingest(ctx context.Context, e *event.Event) (IngestResult, error) {
+	if e.Source.Channel == "" {
+		e.Source.Channel = "hook"
+	}
+	if e.Source.Channel == "model" {
+		return IngestResult{}, fmt.Errorf("%w: 模型解释不能通过采集入口改变状态；请使用独立解释接口", ErrBadRequest)
+	}
+	if e.Source.Ref == "" {
+		e.Source.Ref = e.EventID
+	}
 	if err := e.Validate(); err != nil {
 		return IngestResult{}, fmt.Errorf("%w: %v", ErrBadRequest, err)
 	}
@@ -101,6 +110,9 @@ func (c *Core) Ingest(ctx context.Context, e *event.Event) (IngestResult, error)
 			return err
 		}
 		res.SessionID = sid
+		if err := updateLastSignal(tx, sid, store.TS(e.OccurredAt), e.Source.Channel); err != nil {
+			return err
+		}
 		if err := attachManaged(tx, sid, loc, store.TS(e.OccurredAt), now); err != nil {
 			return err
 		}

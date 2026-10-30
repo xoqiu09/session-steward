@@ -180,7 +180,7 @@ func (c *Core) Decide(ctx context.Context, id, fingerprint string, d Decision) e
 	ch, waiting := c.waiters[id]
 	c.mu.Unlock()
 	now := c.St.Now()
-	err := c.St.Tx(ctx, func(tx *sql.Tx) error {
+	err := c.panelTx(ctx, func(tx *sql.Tx) error {
 		var status, fp, deadline, kind string
 		var handleable int
 		err := tx.QueryRow(`SELECT status, fingerprint, deadline, kind, handleable FROM approvals WHERE id=?`, id).
@@ -250,7 +250,7 @@ func (c *Core) AckDelivered(ctx context.Context, id string) error {
 // Dismiss 关闭决策/提醒/观察类条目（人工确认已处理或忽略）。
 func (c *Core) Dismiss(ctx context.Context, id, reason string) error {
 	now := c.St.NowTS()
-	err := c.St.Tx(ctx, func(tx *sql.Tx) error {
+	err := c.panelTx(ctx, func(tx *sql.Tx) error {
 		r, err := tx.Exec(`UPDATE approvals SET status='cancelled', close_reason=?, closed_at=?
 			WHERE id=? AND status='pending' AND (kind IN ('decision','attention') OR (kind='permission' AND handleable=0))`, nz(reason, "dismissed"), now, id)
 		if err != nil {

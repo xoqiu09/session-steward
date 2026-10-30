@@ -18,6 +18,7 @@ type Config struct {
 	PermissionWaitSec int    `json:"permission_wait_sec"`
 	KeepSummary       bool   `json:"keep_summary"` // 保留 prompt/最后回复的截断摘要（默认关闭）
 	StaleAfterMin     int    `json:"stale_after_min"`
+	SignalGapAfterMin int    `json:"signal_gap_after_min"` // 仅展示信息缺口，不改变状态或发通知
 	HistoryDays       int    `json:"history_days"`
 	SpoolMax          int    `json:"spool_max"`
 	// 托管会话：面板可启动的 Agent 名 → 命令 argv。面板只能选名字，不能提交命令。
@@ -97,7 +98,7 @@ func NormalizeAgents(m map[string]AgentSpec) map[string]AgentSpec {
 }
 
 func Default() Config {
-	return Config{ReportingHints: true, Listen: "127.0.0.1:7788", PermissionWaitSec: 600, StaleAfterMin: 10, HistoryDays: 14, SpoolMax: 2000,
+	return Config{ReportingHints: true, Listen: "127.0.0.1:7788", PermissionWaitSec: 600, StaleAfterMin: 10, SignalGapAfterMin: 30, HistoryDays: 14, SpoolMax: 2000,
 		Agents: map[string]AgentSpec{"claude": {Argv: []string{"claude"}}, "codex": {Argv: []string{"codex"}}}, NotifyMacOS: true, NotifyDialog: false,
 		AutoMerge: true, CheckTimeoutSec: 900}
 }
@@ -120,6 +121,7 @@ const (
 	MinSpoolMax          = 10
 	MinCheckTimeoutSec   = 10
 	MinStaleAfterMin     = 1
+	MinSignalGapAfterMin = 1
 	MinHistoryDays       = 0 // 0 表示不扫描历史会话（演示环境使用）
 )
 
@@ -135,6 +137,7 @@ func (c *Config) normalize() {
 	clamp(&c.SpoolMax, MinSpoolMax, d.SpoolMax)
 	clamp(&c.CheckTimeoutSec, MinCheckTimeoutSec, d.CheckTimeoutSec)
 	clamp(&c.StaleAfterMin, MinStaleAfterMin, d.StaleAfterMin)
+	clamp(&c.SignalGapAfterMin, MinSignalGapAfterMin, d.SignalGapAfterMin)
 	clamp(&c.HistoryDays, MinHistoryDays, d.HistoryDays)
 }
 

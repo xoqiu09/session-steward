@@ -349,6 +349,7 @@ func (s *Server) panel(h http.HandlerFunc) http.HandlerFunc {
 				return
 			}
 		}
+		r = r.WithContext(core.PanelSignalContext(r.Context(), r.Pattern, r.PathValue("id")))
 		h(w, r)
 	}
 }

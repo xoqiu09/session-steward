@@ -61,6 +61,7 @@ func (c *Core) SnapshotAt(ctx context.Context, at time.Time) (*Snapshot, error) 
 			w.Status = s
 		}
 		w.Brief, w.Agents, w.Ready, w.Waiting = nil, nil, true, nil
+		w.Signal = nil // 回放不得带入现在的信号时间。
 		w.AutomaticHistory = w.AutomaticHistory && w.Status == "done"
 		snap.WorkItems = append(snap.WorkItems, w)
 	}
@@ -101,7 +102,7 @@ func (c *Core) SnapshotAt(ctx context.Context, at time.Time) (*Snapshot, error) 
 	// 会话：那一刻之前最后一条事件
 	type last struct{ kind, at string }
 	lastEv := map[int64]last{}
-	rows, err = r.QueryContext(ctx, `SELECT session_id, kind, MAX(occurred_at) FROM events WHERE occurred_at <= ? AND occurred_at >= ? AND session_id IS NOT NULL GROUP BY session_id`,
+	rows, err = r.QueryContext(ctx, `SELECT session_id, kind, MAX(occurred_at) FROM events WHERE occurred_at <= ? AND occurred_at >= ? AND session_id IS NOT NULL AND kind<>'user_action' GROUP BY session_id`,
 		T, store.TS(at.Add(-replayWindow)))
 	if err != nil {
 		return nil, err
@@ -126,6 +127,7 @@ func (c *Core) SnapshotAt(ctx context.Context, at time.Time) (*Snapshot, error) 
 			continue
 		}
 		s.LastActivityAt, s.LastProgressAt, s.LastToolPreview, s.LastToolAt = e.at, "", "", ""
+		s.Signal = nil // 信号回放不在本期范围，避免用未来信号解释过去。
 		s.DataSource, s.Freshness, s.StateReason = "live", "live", ""
 		switch e.kind {
 		case "session_end":

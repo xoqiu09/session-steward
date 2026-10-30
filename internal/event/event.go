@@ -45,6 +45,8 @@ const (
 
 // Source 描述事件来自哪个 Agent、哪个客户端。
 type Source struct {
+	Channel    string `json:"channel,omitempty"`    // hook | transcript | process | git | github | hub | model | user
+	Ref        string `json:"ref,omitempty"`        // 本机回查引用；不进入多设备摘要
 	Provider   string `json:"provider"`             // claude | codex | other
 	Client     string `json:"client"`               // cli | desktop | unknown
 	Originator string `json:"originator,omitempty"` // 原始入口标识，供诊断；不作为客户端枚举
@@ -83,6 +85,12 @@ type Event struct {
 }
 
 func (e *Event) Validate() error {
+	if !ValidChannel(e.Source.Channel) {
+		return fmt.Errorf("未知信号渠道: %s", e.Source.Channel)
+	}
+	if len(e.Source.Ref) > 1024 || strings.ContainsAny(e.Source.Ref, "\r\n\x00") {
+		return fmt.Errorf("信号引用格式无效")
+	}
 	if e.Features != nil && e.Kind != KindFeatures {
 		return fmt.Errorf("功能回报请使用 features 动作")
 	}
