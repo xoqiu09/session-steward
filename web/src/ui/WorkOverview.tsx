@@ -28,6 +28,12 @@ export function nextActionFor(snap: Snapshot, item: WorkItem) {
 }
 
 export function WorkOverview({ snap, item }: { snap: Snapshot; item: WorkItem }) {
+  if (item.completion_policy === 'auto_history') return <section className="work-overview" aria-label="记忆整理说明">
+    <div><h3>{item.automatic_history ? '这轮整理已完成' : '记忆整理无需逐轮验收'}</h3>
+      <p>普通整理完成后自动收进历史，无需逐轮验收。只有具体问题、操作权限或整理异常才会提醒你。</p>
+    </div>
+    {item.automatic_issue && item.automatic_issue_kind !== 'formal' && <div className="work-overview-blocker"><h3>需要检查的原因</h3><p>{item.automatic_issue}</p></div>}
+  </section>
   const goal = field(item, 'goal')
   const report = field(item, 'summary') ?? field(item, 'progress')
   const blocker = !attentionManaged(item) && !['done', 'abandoned'].includes(item.status) ? field(item, 'blocker') : undefined

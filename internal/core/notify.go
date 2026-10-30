@@ -155,13 +155,13 @@ func (n *Notifier) Pending(ctx context.Context) ([]Alert, error) {
 		if json.Unmarshal([]byte(management), &m) == nil && (m.State == "paused" || m.State == "delegated") {
 			continue
 		}
-		if w, ok := automatic[item]; ok && (w.AutomaticHistory || source == "deliver" || source == "ask" || w.AutomaticIssueKind != "reported_decision") {
+		if _, ok := automatic[item]; ok {
+			// Routine routing/summary reports are not user decisions. Explicit
+			// questions have their own formal approval notification above.
 			continue
 		}
 		title, body := "需要你：接手下一步", item+" 的 Agent 回报下一步由你处理"
-		if _, ok := automatic[item]; ok {
-			title, body = "自动任务需要你回应", item+" 的 Agent 明确回报需要你决定下一步"
-		} else if status == "review" {
+		if status == "review" {
 			title, body = "交付待你验收", item+" 已提交交付；打开后可验收通过或退回修改"
 		}
 		add(Alert{Key: fmt.Sprintf("brief:%d", id), Title: title, Body: body, Link: n.link("item=" + url.QueryEscape(item))})
@@ -210,7 +210,7 @@ func (n *Notifier) Pending(ctx context.Context) ([]Alert, error) {
 	rows.Close()
 	for _, w := range automatic {
 		// Formal decisions and session failures already have their own alert above/below.
-		if w.AutomaticIssueAt <= n.since || w.AutomaticIssue == "" || w.AutomaticIssueKind == "formal" || w.AutomaticIssueKind == "session" || w.AutomaticIssueKind == "reported_decision" {
+		if w.AutomaticIssueAt <= n.since || w.AutomaticIssue == "" || w.AutomaticIssueKind == "formal" || w.AutomaticIssueKind == "session" {
 			continue
 		}
 		add(Alert{Key: "routine:" + w.ID + ":" + w.AutomaticIssueKind + ":" + w.AutomaticIssueAt, Title: "自动任务需要检查", Body: w.ID + " 出现卡点、验证失败或长时间无新活动", Link: n.link("item=" + url.QueryEscape(w.ID))})
