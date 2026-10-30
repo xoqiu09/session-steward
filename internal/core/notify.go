@@ -162,7 +162,7 @@ func (n *Notifier) Pending(ctx context.Context) ([]Alert, error) {
 		}
 		title, body := "需要你：接手下一步", item+" 的 Agent 回报下一步由你处理"
 		if status == "review" {
-			title, body = "交付待你验收", item+" 已提交交付；打开后可验收通过或退回修改"
+			title, body = "交付待你处理", item+" 已提交交付；打开后可标记已处理或退回修改"
 		}
 		add(Alert{Key: fmt.Sprintf("brief:%d", id), Title: title, Body: body, Link: n.link("item=" + url.QueryEscape(item))})
 	}

@@ -48,6 +48,6 @@ describe('项目室内', () => {
     expect(html).toContain('等你决定 · 1')
     expect(html).toContain('选 A 还是 B？')
     expect(html).toContain('还有 4 项未摆上工作台')
-    expect(html).not.toMatch(/允许本次|验收通过|标记完成/)
+    expect(html).not.toMatch(/允许本次|已处理|标记完成/)
   })
 })

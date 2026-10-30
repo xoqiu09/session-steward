@@ -126,16 +126,16 @@ describe('用户管理日常提醒', () => {
 })
 
 describe('TodayView', () => {
-  it('每件交付旁边直接能验收和退回，证据和 Agent 说的分开写', () => {
+  it('每件交付旁边直接能标记已处理和退回，证据和 Agent 说的分开写', () => {
     const html = renderToStaticMarkup(<TodayView snap={snap} onSelectItem={() => {}} onOpenTown={() => {}} />)
     expect(html).toContain('要你决定')
     expect(html).toContain('npm publish --tag beta')
     expect(html).toContain('允许这一次')
-    expect((html.match(/>验收</g) ?? []).length).toBe(3)
+    expect((html.match(/>已处理</g) ?? []).length).toBe(3)
     expect(html).toContain('Agent 说：')
     expect(html).toContain('有验证失败')
     expect(html).toContain('只有 Agent 自述')
-    expect(html).toContain('BLOG-3 就在上面等你验收')
+    expect(html).toContain('BLOG-3 就在上面等你处理')
     expect(html).toContain('合并待你批准')
     expect(html).toContain('批准合并')
     expect(html).not.toContain('没有要你处理的事')

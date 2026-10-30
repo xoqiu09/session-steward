@@ -28,10 +28,10 @@ export function ReviewTable({ review }: { review: Review }) {
   return <div className="review-wrap">
     <table className="review">
       <caption>最近 {review.days} 天开始的执行记录，按 Agent 汇总</caption>
-      <thead><tr><th scope="col">Agent</th><th scope="col">执行</th><th scope="col">交付</th><th scope="col">已验收</th><th scope="col">交付后重开</th><th scope="col">待验收</th><th scope="col">放弃</th><th scope="col">交接出去</th><th scope="col">检查门通过</th></tr></thead>
+      <thead><tr><th scope="col">Agent</th><th scope="col">执行</th><th scope="col">交付</th><th scope="col">已处理</th><th scope="col">交付后重开</th><th scope="col">待处理交付</th><th scope="col">放弃</th><th scope="col">交接出去</th><th scope="col">检查门通过</th></tr></thead>
       <tbody>{review.agents.map((a) => <ReviewRow key={a.provider} a={a} />)}</tbody>
     </table>
-    <p className="hint">口径：“交付”是 Agent 提交过 deliver；“已验收”只计你标为完成的工作项；“检查门”是服务实际运行检查的结果。同一工作项有多个执行时分别计入。数字反映记录，不代表能力评分；样本少时比例意义有限。</p>
+    <p className="hint">口径：“交付”是 Agent 提交过 deliver；“已处理”只计你标为完成的工作项，不代表验证通过或已符合要求；“检查门”是服务实际运行检查的结果。同一工作项有多个执行时分别计入。数字反映记录，不代表能力评分；样本少时比例意义有限。</p>
   </div>
 }
 

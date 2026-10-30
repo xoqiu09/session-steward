@@ -74,7 +74,7 @@ struct AttentionState: Equatable {
             let review = !automatic && status == "review"
             if review { state.reviews += 1 } else { state.blocked += 1 }
             state.records.append(AttentionRecord(target: target, title: automatic ? issue : item["title"] as? String ?? id,
-                                                  project: automatic ? "记忆整理" : project(item["repo_id"]), label: automatic ? "需要检查" : review ? "待你验收" : "卡住了",
+                                                  project: automatic ? "记忆整理" : project(item["repo_id"]), label: automatic ? "需要检查" : review ? "交付待处理" : "卡住了",
                                                   priority: review ? 2 : 1, updated: item["updated_at"] as? String ?? "", titleLines: automatic ? 2 : 1))
         }
         state.records.sort { a, b in

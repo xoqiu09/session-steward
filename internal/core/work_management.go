@@ -64,7 +64,7 @@ func writeManagement(tx *sql.Tx, id, now string, m *WorkManagement) error {
 			return err
 		}
 	}
-	text := map[string]string{"accepted": "用户标记已验收", "active": "用户选择继续处理", "paused": "用户暂停此工作项的日常提醒", "delegated": "用户记录已转交给 " + m.Owner}[m.State]
+	text := map[string]string{"accepted": "用户标记已处理", "active": "用户选择继续处理", "paused": "用户暂停此工作项的日常提醒", "delegated": "用户记录已转交给 " + m.Owner}[m.State]
 	if m.Note != "" {
 		text += "：" + m.Note
 	}

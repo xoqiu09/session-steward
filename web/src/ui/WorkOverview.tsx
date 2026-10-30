@@ -18,7 +18,7 @@ export function nextActionFor(snap: Snapshot, item: WorkItem) {
   if (requests.some(a => a.kind === 'merge')) return '代码合并已经批准，结果尚待确认。下方可查看后续操作。'
   if (attentionManaged(item)) return `${managementLabel(item)}。需要恢复时，点右上角“管理状态”。`
   if (item.automatic_issue) return item.automatic_issue
-  if (item.status === 'review' && item.completion_policy !== 'auto_history') return '这项工作已交付，等你检查。满意可验收通过，需要补充就退回修改。'
+  if (item.status === 'review' && item.completion_policy !== 'auto_history') return '这项工作已交付，等你处理。处理完可点“已处理”，需要补充就退回修改。'
   if (['done', 'abandoned'].includes(item.status)) return '目前没有需要你处理的请求。后续有变化时会重新提示。'
   if (!item.ready) return `先等上游工作 ${item.waiting.join('、')} 完成。`
   const next = field(item, 'next')?.text

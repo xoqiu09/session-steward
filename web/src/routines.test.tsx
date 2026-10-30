@@ -43,13 +43,13 @@ describe('quiet successful memory routines and visible exceptions',()=>{
  })
  it('does not show mandatory acceptance buttons for an archived routine',()=>{
   const html=renderToStaticMarkup(<ItemDetail snap={snapshot()} id={item.id} onClose={()=>{}} onSelectSession={()=>{}} />)
-  expect(html).toContain('本轮已自动归档');expect(html).not.toContain('>验收通过<');expect(html).not.toContain('>退回修改<')
+  expect(html).toContain('本轮已自动归档');expect(html).not.toContain('>已处理<');expect(html).not.toContain('>退回修改<')
  })
  it('keeps ordinary development delivery in manual review',()=>{
   const s=snapshot({...item,id:'DEV-1',title:'Synthetic product delivery',completion_policy:undefined,automatic_history:undefined})
   expect(queueCounts(s).review).toBe(1)
   const html=renderToStaticMarkup(<ItemDetail snap={s} id='DEV-1' onClose={()=>{}} onSelectSession={()=>{}} />)
-  expect(html).toContain('>验收通过<')
+  expect(html).toContain('>已处理<')
  })
  it('does not turn post-delivery routing into a memory decision, including while a new round is active',()=>{
   const w:WorkItem={...item,automatic_history:false,brief:{...item.brief!,fields:{
@@ -74,7 +74,7 @@ describe('quiet successful memory routines and visible exceptions',()=>{
   expect(html).toContain('我已在原会话处理')
   expect(html).not.toContain('memories_v2')
   expect(html).not.toContain(item.title)
-  expect(html).not.toContain('验收通过')
+  expect(html).not.toContain('已处理')
   expect(JSON.stringify(s)).toBe(before)
   const detail=renderToStaticMarkup(<ItemDetail snap={s} id={item.id} onClose={()=>{}} onSelectSession={()=>{}} />)
   expect(detail).toContain('<h2>记忆与偏好</h2>')

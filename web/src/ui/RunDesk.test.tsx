@@ -99,22 +99,22 @@ describe('运行台渲染', () => {
   })
   it('keeps local write controls in local mode', () => {
     const html = render(false)
-    for (const label of ['允许本次', '标为阻塞', '修改标题 / 项目', '交接给其他 Agent', '停止会话', '添加', '确认此功能候选验收通过']) expect(html).toContain(label)
+    for (const label of ['允许本次', '标为阻塞', '修改标题 / 项目', '交接给其他 Agent', '停止会话', '添加', '确认此功能符合要求']) expect(html).toContain(label)
   })
   it('puts delivery acceptance before runtime and feature details', () => {
     const snap = { ...synthSnapshot, work_items: synthSnapshot.work_items!.map(w => w.id === item.id ? { ...w, status: 'review' as const } : w) }
     const html = render(false, snap)
-    expect(html).toContain('这项交付待你验收')
-    expect(html.indexOf('>验收通过</button>')).toBeLessThan(html.indexOf('当前运行 vs 候选提交'))
-    expect(html.match(/>验收通过<\/button>/g)).toHaveLength(1)
-    expect(html).toContain('验收只改这项工作的状态，不会批准工具、合并代码或发布')
+    expect(html).toContain('这项交付待你处理')
+    expect(html.indexOf('>已处理</button>')).toBeLessThan(html.indexOf('当前运行 vs 候选提交'))
+    expect(html.match(/>已处理<\/button>/g)).toHaveLength(1)
+    expect(html).toContain('“已处理”只记录这件事已处理，验证结果与功能确认分别保留')
   })
   it('keeps delivery acceptance read-only remotely', () => {
     const snap = { ...synthSnapshot, work_items: synthSnapshot.work_items!.map(w => w.id === item.id ? { ...w, status: 'review' as const } : w) }
     const html = render(true, snap)
-    expect(html).toContain('这项交付待你验收')
+    expect(html).toContain('这项交付待你处理')
     expect(html).toContain('请在本机面板验收')
-    expect(html).not.toContain('>验收通过</button>')
+    expect(html).not.toContain('>已处理</button>')
     expect(html).not.toContain('>退回修改</button>')
   })
   it('removes every write entry in remote read-only mode', () => {
@@ -122,7 +122,7 @@ describe('运行台渲染', () => {
     expect(html).toContain('远程 · 全局只读')
     expect(html).toContain('go test ./... -run TestQueueOrder')
     expect(html).toContain('归属队列排序（合成功能）')
-    for (const label of ['允许本次', '>拒绝<', '标为阻塞', '标为执行中', '提交验收', '>放弃<', '修改标题 / 项目', '交接给其他 Agent', '停止会话', '接管输入', '>添加<', '>移除<', '确认无误', '更正', '标记有误', '由我补充', '补记结果', '生成 AI 摘要', '确认此功能候选验收通过']) {
+    for (const label of ['允许本次', '>拒绝<', '标为阻塞', '标为执行中', '提交验收', '>放弃<', '修改标题 / 项目', '交接给其他 Agent', '停止会话', '接管输入', '>添加<', '>移除<', '确认无误', '更正', '标记有误', '由我补充', '补记结果', '生成 AI 摘要', '确认此功能符合要求']) {
       expect(html).not.toContain(label)
     }
   })
