@@ -17,34 +17,41 @@ const SchemaVersion = 1
 type Kind string
 
 const (
-	KindSessionStart Kind = "session_start"
-	KindPrompt       Kind = "prompt"
-	KindToolPre      Kind = "tool_pre"
-	KindToolPost     Kind = "tool_post"
-	KindToolFail     Kind = "tool_fail"
-	KindPermission   Kind = "permission_request"
-	KindNotifyPerm   Kind = "notify_permission"
-	KindNotifyIdle   Kind = "notify_idle"
-	KindNotifyInput  Kind = "notify_input"
-	KindNotifyOther  Kind = "notify_other"
-	KindStop         Kind = "stop"
-	KindStopFailure  Kind = "stop_failure"
-	KindInterrupt    Kind = "interrupt"
-	KindSessionEnd   Kind = "session_end"
-	KindSubagentOn   Kind = "subagent_start"
-	KindSubagentOff  Kind = "subagent_stop"
-	KindCompact      Kind = "compact"
-	KindAsk          Kind = "ask"   // steward-hook ask：Agent 主动求助
-	KindClaim        Kind = "claim" // steward-hook claim：Agent 声明工作项
-	KindDeliver      Kind = "deliver"
-	KindBegin        Kind = "begin"  // 明确任务标题后，一次创建或复用并关联
-	KindReport       Kind = "report" // steward-hook report：Agent 回报工作简报
-	KindFeatures     Kind = "features"
-	KindUnknown      Kind = "unknown"
+	KindSessionStart     Kind = "session_start"
+	KindPrompt           Kind = "prompt"
+	KindToolPre          Kind = "tool_pre"
+	KindToolPost         Kind = "tool_post"
+	KindToolFail         Kind = "tool_fail"
+	KindPermission       Kind = "permission_request"
+	KindNotifyPerm       Kind = "notify_permission"
+	KindNotifyIdle       Kind = "notify_idle"
+	KindNotifyInput      Kind = "notify_input"
+	KindNotifyOther      Kind = "notify_other"
+	KindStop             Kind = "stop"
+	KindStopFailure      Kind = "stop_failure"
+	KindInterrupt        Kind = "interrupt"
+	KindSessionEnd       Kind = "session_end"
+	KindSubagentOn       Kind = "subagent_start"
+	KindSubagentOff      Kind = "subagent_stop"
+	KindCompact          Kind = "compact"
+	KindPermissionDenied Kind = "permission_denied"
+	KindCwdChanged       Kind = "cwd_changed"
+	KindTaskCompleted    Kind = "task_completed"
+	KindQuotaResumed     Kind = "quota_resumed"
+	KindQuotaAwaitInput  Kind = "quota_await_input"
+	KindAsk              Kind = "ask"   // steward-hook ask：Agent 主动求助
+	KindClaim            Kind = "claim" // steward-hook claim：Agent 声明工作项
+	KindDeliver          Kind = "deliver"
+	KindBegin            Kind = "begin"  // 明确任务标题后，一次创建或复用并关联
+	KindReport           Kind = "report" // steward-hook report：Agent 回报工作简报
+	KindFeatures         Kind = "features"
+	KindUnknown          Kind = "unknown"
 )
 
 // Source 描述事件来自哪个 Agent、哪个客户端。
 type Source struct {
+	Channel    string `json:"channel,omitempty"`    // hook | transcript | process | git | github | hub | model | user
+	Ref        string `json:"ref,omitempty"`        // 本机回查引用；不进入多设备摘要
 	Provider   string `json:"provider"`             // claude | codex | other
 	Client     string `json:"client"`               // cli | desktop | unknown
 	Originator string `json:"originator,omitempty"` // 原始入口标识，供诊断；不作为客户端枚举
@@ -83,6 +90,12 @@ type Event struct {
 }
 
 func (e *Event) Validate() error {
+	if !ValidChannel(e.Source.Channel) {
+		return fmt.Errorf("未知信号渠道: %s", e.Source.Channel)
+	}
+	if len(e.Source.Ref) > 1024 || strings.ContainsAny(e.Source.Ref, "\r\n\x00") {
+		return fmt.Errorf("信号引用格式无效")
+	}
 	if e.Features != nil && e.Kind != KindFeatures {
 		return fmt.Errorf("功能回报请使用 features 动作")
 	}

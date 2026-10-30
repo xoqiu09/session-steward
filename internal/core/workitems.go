@@ -60,7 +60,7 @@ func (c *Core) CreateWorkItem(ctx context.Context, in WorkItemInput) error {
 		mergeState = "none"
 	}
 	now := c.St.NowTS()
-	err := c.St.Tx(ctx, func(tx *sql.Tx) error {
+	err := c.panelTx(ctx, func(tx *sql.Tx) error {
 		var resolveErr error
 		in.RepoID, resolveErr = canonicalRepo(tx, in.RepoID)
 		if resolveErr != nil {
@@ -130,7 +130,7 @@ func (c *Core) UpdateWorkItem(ctx context.Context, id string, p WorkItemPatch) e
 		return fmt.Errorf("%w: 未知状态 %s", ErrBadRequest, *p.Status)
 	}
 	now := c.St.NowTS()
-	err := c.St.Tx(ctx, func(tx *sql.Tx) error {
+	err := c.panelTx(ctx, func(tx *sql.Tx) error {
 		var oldStatus string
 		if err := tx.QueryRow(`SELECT status FROM work_items WHERE id=?`, id).Scan(&oldStatus); err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
@@ -270,7 +270,7 @@ func DepSatisfied(cond, upStatus, upMerge string) bool {
 // BindManual 人工把 session 绑定到工作项（最高优先级）。
 func (c *Core) BindManual(ctx context.Context, sessionID int64, item string) error {
 	now := c.St.NowTS()
-	err := c.St.Tx(ctx, func(tx *sql.Tx) error {
+	err := c.panelTx(ctx, func(tx *sql.Tx) error {
 		var n int
 		tx.QueryRow(`SELECT COUNT(1) FROM sessions WHERE id=?`, sessionID).Scan(&n)
 		if n == 0 {
@@ -293,7 +293,7 @@ func (c *Core) Unbind(ctx context.Context, sessionID int64, outcome string) erro
 		return fmt.Errorf("%w: 未知结果 %s", ErrBadRequest, outcome)
 	}
 	now := c.St.NowTS()
-	err := c.St.Tx(ctx, func(tx *sql.Tx) error {
+	err := c.panelTx(ctx, func(tx *sql.Tx) error {
 		if _, err := tx.Exec(`UPDATE runs SET ended_at=?, outcome=? WHERE session_id=? AND ended_at=''`, now, outcome, sessionID); err != nil {
 			return err
 		}
@@ -311,7 +311,7 @@ func (c *Core) SetRunOutcome(ctx context.Context, runID int64, outcome string) e
 		return fmt.Errorf("%w: 未知结果 %s", ErrBadRequest, outcome)
 	}
 	now := c.St.NowTS()
-	err := c.St.Tx(ctx, func(tx *sql.Tx) error {
+	err := c.panelTx(ctx, func(tx *sql.Tx) error {
 		r, err := tx.Exec(`UPDATE runs SET outcome=?, ended_at=CASE WHEN ended_at='' THEN ? ELSE ended_at END WHERE id=?`, outcome, now, runID)
 		if err != nil {
 			return err

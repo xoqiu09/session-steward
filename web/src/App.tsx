@@ -24,6 +24,7 @@ import { buildToday } from './today/todayModel'
 import { fullPanelHref, kioskHref, parseTownRoute, worldTownRoute } from './town/route'
 import { shownNo } from './hub/ids'
 import { NativeControl } from './NativeControl'
+import { HooksSettings } from './HooksSettings'
 
 type Tab = 'queue' | 'items' | 'sessions' | 'launch' | 'review'
 type Sel = { kind: 'item'; id: string } | { kind: 'session'; id: number } | null
@@ -64,6 +65,7 @@ function PanelApp() {
   const [sessionScope, setSessionScope] = useState<SessionScope>('recent')
   const [attributionOpen, setAttributionOpen] = useState(false)
   const [projectsOpen, setProjectsOpen] = useState<ProjectScope | null>(null)
+  const [settingsOpen, setSettingsOpen] = useState(false)
   // 每日十分钟已经列出了关注队列的内容：侧栏默认只留详情位置，需要时再展开原来的标签页。
   const [todaySideTabs, setTodaySideTabs] = useState(false)
 
@@ -101,7 +103,7 @@ function PanelApp() {
   const totalItems = groups.reduce((sum, g) => sum + g.items.length, 0)
   const providers = [...new Set((snap.sessions ?? []).map((s) => s.provider))]
   const counts = queueCounts(snap, repoId, provider)
-  const todayLeft = (() => { const t = buildToday(snap, ''); return t.decide.length + t.review.length + t.stuck.length })()
+  const todayLeft = (() => { const t = buildToday(snap, ''); return t.decide.length + t.review.length + new Set(t.stuck.map(row => row.item.id)).size })()
   const todayEntry = <a className="btn small today-entry" href={`${window.location.pathname}?view=today`} onClick={(e) => { if (!route.kiosk) { e.preventDefault(); setView('today') } }} title="每日十分钟：要你决定、等你验收、卡住了的，一页看完">{todayLeft ? `要你处理 ${todayLeft} 件` : '每日十分钟'}</a>
   const actors = projectActorRows(snap, groups, provider)
   const quietCount = sessionBuckets(snap, provider, repoId).quiet.length
@@ -126,6 +128,7 @@ function PanelApp() {
     <button className="btn small pm-counter" title="查看和恢复本机已删除的项目" onClick={() => setProjectsOpen('trash')}>回收站 {snap.trashed_projects ?? 0}</button>
   </span>
   const projectManager = projectsOpen && <ProjectsPanel initialScope={projectsOpen} device={hub.status?.device} onClose={() => { setProjectsOpen(null); setRepoId('all'); setSel(null) }} />
+  const settings = settingsOpen && <HooksSettings onClose={() => setSettingsOpen(false)} />
 
   if (route.kiosk) {
     const drawer = sel != null || kioskQueue
@@ -147,6 +150,7 @@ function PanelApp() {
             </span>} />
         </main>
         {projectManager}
+        {settings}
         {drawer && <div className="kiosk-scrim" onClick={closeDrawer} aria-hidden />}
         {drawer && (
           <aside className="side kiosk-drawer" role="dialog" aria-modal="true" aria-label={sel ? '详情' : '关注队列'}>
@@ -194,6 +198,7 @@ function PanelApp() {
           {view === 'canvas' && <button className="btn small" onClick={() => setExpandAll((v) => !v)}>{expandAll ? '默认折叠' : '全部展开'}</button>}
           {quietCount > 0 && <button className="btn small" onClick={() => { setSel(null); setAttributionOpen(false); setTab('sessions'); setSessionScope('quiet') }}>已收起会话 {quietCount}</button>}
           <button className="btn small" onClick={openAttributions}>近期归属待确认 {attributionPending}</button>
+          <button className="btn small" onClick={() => setSettingsOpen(true)}>设置</button>
         </header>
         {isRemote() && <p className="warn-box" role="status">{remoteReadOnlyMessage}</p>}
         {(() => {
@@ -253,6 +258,7 @@ function PanelApp() {
         ))}
       </aside>
       {projectManager}
+      {settings}
     </div>
   )
 }

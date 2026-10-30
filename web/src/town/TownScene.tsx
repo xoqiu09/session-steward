@@ -1,3 +1,4 @@
+import { recentSignal } from '../signals'
 // 微缩工作室：一张桌面上的等距小镇。建筑=项目，角色=会话，包裹=单次运行。只读，不提供批准/验收入口。
 import type { KeyboardEvent, ReactNode } from 'react'
 import { HipRoof, IsoBox, IsoTile, iso, pts, type Pt } from './iso'
@@ -470,7 +471,7 @@ export function charLook(c: CharacterView) {
   return { isCat, style, st: STATUS_COLOR[c.status] }
 }
 
-export function Character({ at, c, selected, dimClass, onSelect }: { at: Pt; c: CharacterView; selected: boolean; dimClass: string; onSelect: () => void }) {
+export function Character({ at, c, selected, dimClass, onSelect, now }: { at: Pt; c: CharacterView; selected: boolean; dimClass: string; onSelect: () => void; now?: string }) {
   const s = c.session
   const { isCat, style } = charLook(c)
   const skin = isCat ? '#f2b36b' : '#f6d7b8'
@@ -479,6 +480,7 @@ export function Character({ at, c, selected, dimClass, onSelect }: { at: Pt; c: 
     <g style={{ transform: `translate(${at[0]}px,${at[1]}px) scale(1.22)` }}
       className={`town-obj town-move town-char is-${c.status}${selected ? ' is-selected' : ''}${dimClass}`}
       aria-label={`${c.name}，${characterStatusLabel[c.status]}${c.item ? `，任务 ${c.item.title}` : ''}`} {...activate(onSelect)}>
+      <title>{`${c.name} · ${recentSignal(s.signal, now ?? new Date().toISOString())}`}</title>
       {/* 闲着的会话在院子里来回溜达；干活的手边冒火花 */}
       <g className={c.status === 'idle' ? 'town-stroll' : undefined} style={c.status === 'idle' ? { animationDelay: `${-(s.id % 7) * 1.3}s` } : undefined}>
       <rect x="-17" y="-58" width="34" height="64" fill="transparent" />
@@ -491,7 +493,7 @@ export function Character({ at, c, selected, dimClass, onSelect }: { at: Pt; c: 
         <rect x="1.5" y="-11" width="4.5" height="11" rx="2" fill="#3d3a4a" />
         <rect x="-10" y="-30" width="20" height="21" rx="7" fill={style.body} />
         <rect x="-6.5" y="-26" width="13" height="10" rx="2" fill="#fffaf0" />
-        <text y="-18.3" textAnchor="middle" fontSize="7.5" fontWeight="700" fill="#3a2a1c">{s.id}</text>
+        <text y="-18.3" textAnchor="middle" fontSize="7.5" fontWeight="700" fill="#3a2a1c">{shownNo(s.id)}</text>
         <circle cy="-41" r="11" fill={skin} stroke="rgba(80,50,30,.25)" />
         {isCat ? (
           <g>

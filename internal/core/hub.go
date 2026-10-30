@@ -35,7 +35,7 @@ type HubDevice struct {
 
 // trimForHub 去掉摘要里不该离开这台电脑的字段。
 func trimForHub(s *Snapshot) *Snapshot {
-	out := &Snapshot{Cursor: s.Cursor, Now: s.Now, Deps: s.Deps}
+	out := &Snapshot{Cursor: s.Cursor, Now: s.Now, Deps: s.Deps, SignalGapAfterMin: s.SignalGapAfterMin}
 	for _, r := range s.Repos {
 		out.Repos = append(out.Repos, Repo{ID: r.ID, Name: r.Name, IsGit: r.IsGit})
 	}
@@ -43,7 +43,7 @@ func trimForHub(s *Snapshot) *Snapshot {
 		out.Sessions = append(out.Sessions, Session{
 			ID: x.ID, Provider: x.Provider, Client: x.Client, RepoID: x.RepoID, State: x.State, DataSource: x.DataSource, Freshness: x.Freshness,
 			FirstSeenAt: x.FirstSeenAt, LastActivityAt: x.LastActivityAt, LastProgressAt: x.LastProgressAt, WorkItemID: x.WorkItemID, Binding: x.Binding,
-			Title: x.Title, TitleSource: x.TitleSource,
+			Title: x.Title, TitleSource: x.TitleSource, Signal: publicSignal(x.Signal),
 		})
 	}
 	for _, w := range s.WorkItems {
@@ -55,7 +55,7 @@ func trimForHub(s *Snapshot) *Snapshot {
 			ID: w.ID, RepoID: w.RepoID, Title: w.Title, Status: w.Status, MergeState: w.MergeState, NeedsMerge: w.NeedsMerge,
 			CreatedAt: w.CreatedAt, UpdatedAt: w.UpdatedAt, Ready: w.Ready, Waiting: w.Waiting, Agents: w.Agents,
 			CompletionPolicy: w.CompletionPolicy, AutomaticHistory: w.AutomaticHistory,
-			Management: management,
+			Management: management, Signal: publicSignal(w.Signal),
 		})
 	}
 	out.Runs = append(out.Runs, s.Runs...)
@@ -172,7 +172,7 @@ func (c *Core) HubCombine(ctx context.Context, selfID, selfName string, others *
 	if err != nil {
 		return nil, err
 	}
-	merged := &Snapshot{Cursor: self.Snapshot.Cursor, Now: self.Snapshot.Now}
+	merged := &Snapshot{Cursor: self.Snapshot.Cursor, Now: self.Snapshot.Now, SignalGapAfterMin: self.Snapshot.SignalGapAfterMin}
 	merged.Devices = append(merged.Devices, HubDevice{ID: selfID, Name: selfName, Self: true, ReceivedAt: self.SentAt, Online: true})
 	addSnap(merged, self.Snapshot, selfName, 0, "")
 	merged.Devices = append(merged.Devices, others.Devices...)

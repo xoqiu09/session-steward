@@ -224,7 +224,7 @@ func (c *Core) EditBrief(ctx context.Context, item string, b BriefEdit) (int64, 
 	}
 	now := c.St.NowTS()
 	var out int64
-	err := c.St.Tx(ctx, func(tx *sql.Tx) error {
+	err := c.panelTx(ctx, func(tx *sql.Tx) error {
 		if !itemExists(tx, item) {
 			return ErrNotFound
 		}

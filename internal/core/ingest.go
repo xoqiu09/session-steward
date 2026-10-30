@@ -24,13 +24,13 @@ type IngestResult struct {
 func sessionStateFor(k event.Kind) string {
 	switch k {
 	case event.KindSessionStart, event.KindPrompt, event.KindToolPre, event.KindToolPost,
-		event.KindToolFail, event.KindSubagentOn, event.KindSubagentOff, event.KindCompact:
+		event.KindToolFail, event.KindSubagentOn, event.KindSubagentOff, event.KindQuotaResumed:
 		return "running"
 	case event.KindPermission, event.KindNotifyPerm:
 		return "waiting_permission"
 	case event.KindStop, event.KindNotifyIdle:
 		return "idle"
-	case event.KindNotifyInput:
+	case event.KindNotifyInput, event.KindQuotaAwaitInput:
 		return "idle"
 	case event.KindStopFailure:
 		return "error"
@@ -42,8 +42,27 @@ func sessionStateFor(k event.Kind) string {
 	return ""
 }
 
-// Ingest 幂等地处理一条事件：去重、更新 session、归属、生成关注项。
+// ValidateIngestChannel 限制采集入口的渠道，可信写入者的来源不能由 hook 调用者冒用。
+func ValidateIngestChannel(channel string) error {
+	switch channel {
+	case "", "hook", "transcript", "process":
+		return nil
+	default:
+		return fmt.Errorf("%w: 采集入口不接受来源渠道 %q；仅允许空值、hook、transcript、process，其他来源由对应的可信写入者记录", ErrBadRequest, channel)
+	}
+}
+
+// Ingest 幂等地处理一条采集事件：去重、更新 session、归属、生成关注项。
 func (c *Core) Ingest(ctx context.Context, e *event.Event) (IngestResult, error) {
+	if err := ValidateIngestChannel(e.Source.Channel); err != nil {
+		return IngestResult{}, err
+	}
+	if e.Source.Channel == "" {
+		e.Source.Channel = "hook"
+	}
+	if e.Source.Ref == "" {
+		e.Source.Ref = e.EventID
+	}
 	if err := e.Validate(); err != nil {
 		return IngestResult{}, fmt.Errorf("%w: %v", ErrBadRequest, err)
 	}
@@ -101,6 +120,9 @@ func (c *Core) Ingest(ctx context.Context, e *event.Event) (IngestResult, error)
 			return err
 		}
 		res.SessionID = sid
+		if err := updateLastSignal(tx, sid, store.TS(e.OccurredAt), e.Source.Channel); err != nil {
+			return err
+		}
 		if err := attachManaged(tx, sid, loc, store.TS(e.OccurredAt), now); err != nil {
 			return err
 		}
@@ -195,8 +217,9 @@ func (c *Core) upsertSession(tx *sql.Tx, e *event.Event, l *locInfo, now string)
 	}
 	var id int64
 	var dataSource string
-	err := tx.QueryRow(`SELECT id, data_source FROM sessions WHERE host_id=? AND provider=? AND provider_session_id=?`,
-		e.Source.HostID, e.Source.Provider, e.SessionID).Scan(&id, &dataSource)
+	var lastActivity string
+	err := tx.QueryRow(`SELECT id, data_source, last_activity_at FROM sessions WHERE host_id=? AND provider=? AND provider_session_id=?`,
+		e.Source.HostID, e.Source.Provider, e.SessionID).Scan(&id, &dataSource, &lastActivity)
 	if errors.Is(err, sql.ErrNoRows) {
 		wt, br := "", e.Branch
 		if l != nil {
@@ -219,7 +242,7 @@ func (c *Core) upsertSession(tx *sql.Tx, e *event.Event, l *locInfo, now string)
 		client = CASE WHEN ? NOT IN ('', 'unknown') THEN ? ELSE client END,
 		version = CASE WHEN ? <> '' THEN ? ELSE version END`
 	args := []any{e.Source.Client, e.Source.Client, e.Source.Version, e.Source.Version}
-	if e.Cwd != "" && l != nil {
+	if e.Cwd != "" && l != nil && (e.Kind != event.KindCwdChanged || store.TS(e.OccurredAt) >= lastActivity) {
 		q += `, cwd=?, worktree=?, branch=?, repo_id=?`
 		args = append(args, e.Cwd, l.worktree, e.Branch, nullInt(repoID))
 	}

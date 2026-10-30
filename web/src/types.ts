@@ -1,3 +1,5 @@
+export interface Signal { channel: 'hook' | 'transcript' | 'process' | 'git' | 'github' | 'hub' | 'model' | 'user'; at: string }
+
 export type Provider = 'claude' | 'codex' | 'other' | string
 
 export interface Repo {
@@ -43,6 +45,7 @@ export interface MergeEvidence {
 }
 
 export interface Session {
+  signal?: Signal
   id: number
   host_id: string
   provider: Provider
@@ -81,6 +84,7 @@ export interface WorkManagement {
 }
 
 export interface WorkItem {
+  signal?: Signal
   management?: WorkManagement
   completion_policy?: 'auto_history' | 'manual'
   automatic_history?: boolean
@@ -189,6 +193,7 @@ export interface Approval {
 }
 
 export interface Snapshot {
+  signal_gap_after_min?: number
   archived_projects?: number
   trashed_projects?: number
   /** 只在前端的小镇切片里有：最近一天里，工作在不同 Agent 之间的交接和接力（小推车）。 */
