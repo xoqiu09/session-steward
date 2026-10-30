@@ -444,6 +444,13 @@ func (s *Server) handleEvent(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 400, map[string]string{"error": err.Error()})
 		return
 	}
+	// 批次先核对来源再逐条写入，避免非法来源返回 200 或前半批已改变信号。
+	for i := range batch {
+		if err := core.ValidateIngestChannel(batch[i].Source.Channel); err != nil {
+			writeErr(w, err)
+			return
+		}
+	}
 	acked := make([]string, 0, len(batch))
 	var rejected []map[string]string
 	for i := range batch {
@@ -482,6 +489,10 @@ func (s *Server) handleEvent(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleAgentAction(w http.ResponseWriter, r *http.Request) {
 	var e event.Event
 	if err := readJSON(r, &e); err != nil {
+		writeErr(w, err)
+		return
+	}
+	if err := core.ValidateIngestChannel(e.Source.Channel); err != nil {
 		writeErr(w, err)
 		return
 	}

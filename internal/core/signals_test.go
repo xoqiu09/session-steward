@@ -28,7 +28,7 @@ func TestRecentSignalsPreferOccurrenceTimeAndSourcePriority(t *testing.T) {
 	for _, input := range []struct {
 		minutes int
 		channel string
-	}{{5, "process"}, {5, "transcript"}, {5, "hook"}, {5, "process"}, {4, "hook"}, {6, "transcript"}, {3, "user"}} {
+	}{{5, "process"}, {5, "transcript"}, {5, "hook"}, {5, "process"}, {4, "hook"}, {6, "transcript"}, {3, "process"}} {
 		e := ev("s1", event.KindUnknown, t0.Add(time.Duration(input.minutes)*time.Minute))
 		e.Source.Channel = input.channel
 		mustIngest(t, c, e)
@@ -272,22 +272,24 @@ func TestUserObservationDoesNotChangeReplayOrAgentDayActivity(t *testing.T) {
 	}
 }
 
-func TestModelChannelCannotEnterTheIngestStateMachine(t *testing.T) {
+func TestReservedChannelsCannotEnterTheIngestStateMachine(t *testing.T) {
 	c, t0 := claimed(t, "SIG-1")
 	before := signalSnapshot(t, c)
 	var eventsBefore, eventsAfter int
 	c.St.R().QueryRow(`SELECT COUNT(*) FROM events`).Scan(&eventsBefore)
-	for _, kind := range []event.Kind{event.KindDeliver, event.KindUnknown} {
-		e := ev("model-only", kind, t0.Add(time.Hour))
-		e.Source.Channel = "model"
-		e.WorkTag = "SIG-1"
-		if _, err := c.Ingest(context.Background(), e); !errors.Is(err, ErrBadRequest) {
-			t.Fatalf("model channel accepted: %v", err)
+	for _, channel := range []string{"user", "git", "github", "hub", "model", "unknown", "HOOK", " hook"} {
+		for _, sid := range []string{"s1", "untrusted-new-session"} {
+			e := ev(sid, event.KindDeliver, t0.Add(time.Hour))
+			e.Source.Channel = channel
+			e.WorkTag = "SIG-1"
+			if _, err := c.Ingest(context.Background(), e); !errors.Is(err, ErrBadRequest) || !strings.Contains(err.Error(), "仅允许") {
+				t.Fatalf("reserved channel %q accepted or unclear error: %v", channel, err)
+			}
 		}
 	}
 	after := signalSnapshot(t, c)
 	c.St.R().QueryRow(`SELECT COUNT(*) FROM events`).Scan(&eventsAfter)
-	if eventsBefore != eventsAfter || len(before.Sessions) != len(after.Sessions) || before.Cursor != after.Cursor || before.WorkItems[0].Status != after.WorkItems[0].Status {
-		t.Fatal("model inference modified facts or state")
+	if eventsBefore != eventsAfter || len(before.Sessions) != len(after.Sessions) || before.Cursor != after.Cursor || before.WorkItems[0].Status != after.WorkItems[0].Status || *before.Sessions[0].Signal != *after.Sessions[0].Signal {
+		t.Fatal("reserved channel modified facts, state or last signal")
 	}
 }

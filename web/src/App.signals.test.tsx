@@ -30,4 +30,5 @@ it('同一工作两种陈旧原因保留，顶部和每日统计都只算一件'
   expect(daily).toContain('<b class="is-stuck">1</b>')
   expect(daily).toContain('很久没回报进展')
   expect(daily).toContain('40 分钟没有任何信号')
+  expect(daily).toContain('信息缺口：')
 })
