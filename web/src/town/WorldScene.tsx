@@ -21,6 +21,10 @@ import { Field } from './field'
 import { Cart, SHED_MAX, Track, Workshop, shedSeat, shedSpots, type ShedSpot } from './workshop'
 import { harvestResult, ripeQueue } from './harvest'
 import { AGENTS, agentChips, agentCounts, agentLegend, agentOf, mainAgent, sumAgents, type Agent } from './agents'
+import type { Snapshot } from '../types'
+import { autoMoment, canAutoFollow, localMoment, type TownMoment } from './moments'
+import { useMoments } from './useMoments'
+import { MomentCard } from './MomentCard'
 
 /** 每个街区的退件筐最多摆几个箱子，其余只计数。 */
 const BIN_MAX = 2
@@ -52,6 +56,8 @@ interface SceneProps {
   needsYou: (b: BuildingView) => boolean
   /** “按 Agent 看”打开时：按 Agent 着色；focus 非空时只突出这个 Agent 的会话和项目。 */
   agents?: { focus: Agent | null } | null
+  momentGlow?: string
+  progressSparks?: ReadonlySet<string>
 }
 
 /** 四档建筑：占地、墙色、高度、窗户层数。占满院子后排，远看也认得出大小差别。 */
@@ -67,7 +73,7 @@ function districtPlot(d: District): Plot {
   return { gx: d.ox + 0.8, gy: d.oy + 0.5, w: t.w, d: t.d, facing: 'x', ...buildingColors(d.b.repo?.id) }
 }
 
-export function WorldScene({ model, world, view, far, selected, highlight, onSelect, changed = new Set(), offline = false, needsYou, agents = null }: SceneProps) {
+export function WorldScene({ model, world, view, far, selected, highlight, onSelect, changed = new Set(), offline = false, needsYou, agents = null, momentGlow, progressSparks }: SceneProps) {
   const isSel = (kind: Selection['kind'], key: string) => selected?.kind === kind && selected.key === key
   const dim = (match: boolean) => (highlight && !match ? ' is-dim' : '')
   const flash = (key: string) => (changed.has(key) ? ' is-changed' : '')
@@ -228,6 +234,8 @@ export function WorldScene({ model, world, view, far, selected, highlight, onSel
             {/* 门口的菜地：一棵菜一个工作项，熟了 = 待你验收 */}
             <Field gx={d.ox + 5.5} gy={d.oy + 4.9} b={d.b} pending={model.pendingApprovals} now={nowMs}
               selectedKey={selected?.kind === 'item' ? selected.key : null} dimClass={dim(highlight === 'review')} onSelect={onSelect} />
+            {momentGlow === d.key && <ellipse className="town-moment-ring" cx={iso(d.ox + 7, d.oy + 6.4)[0]} cy={iso(d.ox + 7, d.oy + 6.4)[1]} rx="112" ry="49" fill="none" stroke="#e07b39" strokeWidth="5" aria-hidden />}
+            {progressSparks?.has(d.key) && <text className="town-progress-spark" x={iso(d.ox + 7, d.oy + 6.4, 55)[0]} y={iso(d.ox + 7, d.oy + 6.4, 55)[1]} textAnchor="middle" fontSize="32" fill="#9a540d" aria-hidden>✦</text>}
             {failed > 0 && (
               <g className={dim(highlight === 'failed')}>
                 <IsoBox gx={d.ox + 2.35} gy={d.oy + 7.45} w={1.0} d={0.7} h={9} top="#7a3a32" left="#a5483e" right="#8a3c33" />
@@ -510,10 +518,10 @@ function Roadblock({ gx, gy }: { gx: number; gy: number }) {
 // ---- 舞台：相机、拖动、缩放、小地图、巡游 ----
 
 function attentionOf(d: District, needsYou: (b: BuildingView) => boolean) {
-  return needsYou(d.b) || d.b.characters.some((c) => c.status === 'working') || d.b.parcels.some(onReviewDesk) || d.b.items.some((w) => w.status === 'blocked')
+  return needsYou(d.b) || d.b.characters.some((c) => c.status === 'working') || d.b.parcels.some(onReviewDesk) || d.b.items.some((w) => w.status === 'blocked' || w.status === 'review')
 }
 
-export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far'> & { kiosk?: boolean; rotateMs?: number; paused?: boolean; focusKey?: string; plan?: WorldPlan; replaying?: boolean }) {
+export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far'> & { kiosk?: boolean; rotateMs?: number; paused?: boolean; focusKey?: string; plan?: WorldPlan; replaying?: boolean; snapshot?: Snapshot }) {
   const { model, needsYou, kiosk = false, rotateMs = 20_000, paused = false, focusKey, plan } = props
   // 走进某栋建筑：显示它的室内；拖动、缩放、巡游都暂停。
   const [inside, setInside] = useState<string | null>(null)
@@ -543,16 +551,31 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far'> & {
   const world = useMemo(() => worldLayout(model.buildings, needsYou, plan), [model, needsYou, plan])
   const box = useRef<HTMLDivElement>(null)
   const [aspect, setAspect] = useState(1.6)
+  const [compact, setCompact] = useState(() => typeof window !== 'undefined' && window.innerWidth < 760)
   const [cam, setCam] = useState<Camera | null>(null)
   const anim = useRef<number | null>(null)
   const lastTouch = useRef(0)
   const drag = useRef<{ x: number; y: number; cam: Camera; moved: boolean; id: number } | null>(null)
   const swallowClick = useRef(false)
+  const [reducedMotion, setReducedMotion] = useState(() => !!globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches)
+  const [moment, setMoment] = useState<TownMoment | null>(null)
+  const [showMoments, setShowMoments] = useState(false)
+  const [returnCamera, setReturnCamera] = useState<Camera | null>(null)
+  const [sparks, setSparks] = useState<ReadonlySet<string>>(new Set())
+  const lastFlight = useRef(-Infinity)
+  const followUntil = useRef(0)
+  useEffect(() => {
+    const mq = window.matchMedia?.('(prefers-reduced-motion: reduce)')
+    if (!mq) return
+    const changed = () => setReducedMotion(mq.matches)
+    mq.addEventListener('change', changed)
+    return () => mq.removeEventListener('change', changed)
+  }, [])
 
   useEffect(() => {
     const el = box.current
     if (!el || typeof ResizeObserver === 'undefined') return
-    const ro = new ResizeObserver(() => { const r = el.getBoundingClientRect(); if (r.width > 0 && r.height > 0) setAspect(r.width / r.height) })
+    const ro = new ResizeObserver(() => { const r = el.getBoundingClientRect(); if (r.width > 0 && r.height > 0) { setAspect(r.width / r.height); setCompact(r.width < 760) } })
     ro.observe(el)
     return () => ro.disconnect()
   }, [])
@@ -562,6 +585,7 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far'> & {
   const stop = () => { if (anim.current != null) cancelAnimationFrame(anim.current); anim.current = null }
   const flyTo = (to: Camera, ms = 900) => {
     stop()
+    if (reducedMotion) { setCam(clampCamera(to, world.bounds)); return }
     const from = camera, t0 = performance.now()
     const step = (t: number) => {
       const k = Math.min(1, (t - t0) / ms)
@@ -571,6 +595,11 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far'> & {
     anim.current = requestAnimationFrame(step)
   }
   useEffect(() => stop, [])
+  useEffect(() => {
+    const visibility = () => { if (document.hidden) { stop(); setMoment(null); setShowMoments(false) } }
+    document.addEventListener('visibilitychange', visibility)
+    return () => document.removeEventListener('visibilitychange', visibility)
+  }, [])
 
   // 选中某个会话时飞到它的街区。
   useEffect(() => {
@@ -581,7 +610,7 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far'> & {
 
   // 桌面模式巡游：全景 → 各个需要注意的街区 → 全景；有人刚操作过、抽屉打开时暂停。
   const stops = useMemo(() => tourStops(world, (d) => attentionOf(d, needsYou), aspect), [world, aspect, needsYou])
-  const ripe = useMemo(() => ripeQueue(world.districts.map((d) => d.b)), [world])
+  const ripe = useMemo(() => ripeQueue(world.districts.map((d) => d.b)).filter((r) => !props.snapshot || localMoment(props.snapshot, r.item.repo_id, r.item.id)), [world, props.snapshot])
   const results = harvest ? harvest.ids.map((id) => harvestResult(id, model.buildings)) : []
   const goHarvest = (ids: string[], index: number) => {
     setHarvest({ ids, index })
@@ -595,6 +624,48 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far'> & {
     props.onSelect({ kind: 'item', key: id })
   }
   const startHarvest = () => { if (!ripe.length) return; setInside(null); goHarvest(ripe.map((r) => r.item.id), 0) }
+  const visitMoment = (m: TownMoment) => {
+    const d = world.districts.find((d) => d.key === m.buildingKey)
+    if (!d) return
+    setReturnCamera((saved) => saved ?? camera)
+    lastFlight.current = Date.now()
+    followUntil.current = Date.now() + 20_000
+    // 和收菜一样把目标放在卡片旁；整块院子（房子和菜地）一起取景。
+    const target = fitCamera(cellBox(d.ox, d.oy), aspect, 1.18)
+    flyTo(clampCamera(compact ? { ...target, cy: target.cy + target.w / aspect * 0.18 } : { ...target, cx: target.cx + target.w * 0.22 }, world.bounds))
+    setMoment(m); setShowMoments(false)
+  }
+  const feed = useMoments(props.snapshot, (batch) => {
+    if (!canAutoFollow({ now: Date.now(), lastTouch: lastTouch.current, lastFlight: lastFlight.current,
+      paused, inside: !!inside, harvesting: !!harvest, replaying: !!props.replaying, guide, hidden: document.hidden, offline: !!props.offline, presenting: !!moment || showMoments })) return
+    const first = batch.find((m) => autoMoment(m, feed.preferences) && world.districts.some((d) => d.key === m.buildingKey))
+    if (first) visitMoment(first)
+  }, (progress) => {
+    if (!reducedMotion && !props.replaying && !inside && !guide) setSparks(new Set(progress.map((m) => m.buildingKey)))
+  })
+  useEffect(() => {
+    if (!sparks.size) return
+    const timer = window.setTimeout(() => setSparks(new Set()), 2200)
+    return () => window.clearTimeout(timer)
+  }, [sparks])
+  const inWorld = (m: TownMoment) => world.districts.some((d) => d.key === m.buildingKey)
+  const queued = feed.queue.filter((m) => inWorld(m) && m.key !== moment?.key)
+  const away = feed.away.filter(inWorld)
+  const localAway = away.filter((m) => m.local)
+  const remoteAway = away.filter((m) => !m.local)
+  const awayRipe = localAway.filter((m) => m.kind === 'ripe').length
+  const awayDecisions = localAway.filter((m) => m.kind === 'decision').length
+  const remoteRipe = remoteAway.filter((m) => m.kind === 'ripe').length
+  const remoteDecisions = remoteAway.filter((m) => m.kind === 'decision').length
+  const awayFirst = localAway[0] ?? remoteAway[0]
+  const visibleMoment = !inside && !paused && !guide && !harvest && !props.replaying ? moment : null
+  useEffect(() => { if (moment && !feed.queue.some((m) => m.key === moment.key)) setMoment(null) }, [moment, feed.queue])
+  useEffect(() => {
+    if (!moment && !showMoments) return
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { setMoment(null); setShowMoments(false) } }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [moment, showMoments])
   const nextPending = (from: number, step: 1 | -1) => {
     if (!harvest) return -1
     for (let i = from + step; i >= 0 && i < harvest.ids.length; i += step) if (results[i] === 'pending') return i
@@ -619,16 +690,19 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far'> & {
   const [stopIndex, setStopIndex] = useState(0)
   const [tick, setTick] = useState(0)
   useEffect(() => {
-    if (!kiosk || paused || inside || harvest || stops.length < 2) return
+    if (!kiosk || paused || inside || harvest || guide || showMoments || props.replaying || props.offline || document.hidden || stops.length < 2) return
+    const resumeDelay = Math.max(0, followUntil.current - Date.now(), 30_000 - (Date.now() - lastTouch.current))
     const t = window.setTimeout(() => {
       // 刚拖过或缩放过：这一轮先不动，过一会儿再试。
       if (Date.now() - lastTouch.current < 30_000) { setTick((n) => n + 1); return }
+      if (document.hidden) { setTick((n) => n + 1); return }
+      setMoment(null)
       const next = (stopIndex + 1) % stops.length
       setStopIndex(next)
       flyTo(stops[next], 1400)
-    }, rotateMs)
+    }, moment ? resumeDelay : rotateMs)
     return () => window.clearTimeout(t)
-  }, [kiosk, paused, inside, harvest, stops, stopIndex, rotateMs, tick])
+  }, [kiosk, paused, inside, harvest, guide, showMoments, props.replaying, props.offline, moment, stops, stopIndex, rotateMs, tick])
 
   // 滚轮缩放：以光标为中心。
   useEffect(() => {
@@ -636,9 +710,9 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far'> & {
     if (!el) return
     const onWheel = (e: WheelEvent) => {
       // 说明面板里滚轮是翻页，不缩放地图。
-      if (inside || (e.target as Element | null)?.closest?.('.town-guide')) return
+      if (inside || (e.target as Element | null)?.closest?.('.town-guide, .town-world-ui, .town-harvest-bar')) return
       e.preventDefault()
-      stop(); lastTouch.current = Date.now()
+      stop(); lastTouch.current = Date.now(); setReturnCamera(null)
       const r = el.getBoundingClientRect()
       setCam((c) => clampCamera(zoomAt(c ?? camera, Math.exp(e.deltaY * 0.0015), (e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height, aspect), world.bounds))
     }
@@ -655,7 +729,7 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far'> & {
     if (!d || d.id !== e.pointerId) return
     const dx = e.clientX - d.x, dy = e.clientY - d.y
     if (!d.moved && Math.hypot(dx, dy) < 5) return
-    if (!d.moved) { d.moved = true; stop(); box.current?.setPointerCapture(e.pointerId) }
+    if (!d.moved) { d.moved = true; stop(); setReturnCamera(null); box.current?.setPointerCapture(e.pointerId) }
     lastTouch.current = Date.now()
     const r = box.current!.getBoundingClientRect()
     const k = d.cam.w / r.width
@@ -666,13 +740,15 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far'> & {
     drag.current = null
     if (d?.moved) { swallowClick.current = true; box.current?.releasePointerCapture(e.pointerId) }
   }
-  const zoomBy = (f: number) => { lastTouch.current = Date.now(); flyTo(clampCamera(zoomAt(camera, f, 0.5, 0.5, aspect), world.bounds), 350) }
+  const zoomBy = (f: number) => { lastTouch.current = Date.now(); setReturnCamera(null); flyTo(clampCamera(zoomAt(camera, f, 0.5, 0.5, aspect), world.bounds), 350) }
 
   const view = viewBoxOf(camera, aspect)
   const far = camera.w > FAR_W
   return (
-    <div className="town-world" ref={box} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp}
+    <div className={`town-world${moment ? ' has-moment' : ''}`} ref={box} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp}
+      onPointerDownCapture={() => { lastTouch.current = Date.now(); stop() }} onKeyDownCapture={() => { lastTouch.current = Date.now(); stop() }}
       onClickCapture={(e) => { if (swallowClick.current) { swallowClick.current = false; e.stopPropagation(); e.preventDefault() } }}>
+      <div className="town-moment-status" role="status" aria-live="polite" aria-atomic="true">{visibleMoment?.message ?? ''}</div>
       {insideB ? (
         <>
           <InteriorScene b={insideB} model={model} selected={props.selected} highlight={props.highlight} onSelect={props.onSelect} changed={props.changed} offline={props.offline} />
@@ -680,16 +756,17 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far'> & {
             <button type="button" onClick={() => setInside(null)} title="回到世界（Esc）">← 回到世界</button>
           </div>
           <p className="town-world-hint">{insideB.name} · 室内：工作台是工作项，点任何东西看详情</p>
-          {guide && <TownGuide onClose={() => setGuide(false)} />}
+          {guide && <TownGuide onClose={() => setGuide(false)} follow={feed.preferences} onFollowChange={feed.savePreferences} />}
         </>
       ) : (
         <>
-      <WorldScene {...props} onSelect={sceneSelect} world={world} view={view} far={far} agents={byAgent ? { focus: agentFocus } : null} />
+      <WorldScene {...props} onSelect={sceneSelect} world={world} view={view} far={far} agents={byAgent ? { focus: agentFocus } : null}
+        momentGlow={!reducedMotion && !props.replaying ? moment?.buildingKey : undefined} progressSparks={reducedMotion ? undefined : sparks} />
       <div className="town-world-tools" onPointerDown={(e) => e.stopPropagation()}>
         <button type="button" onClick={() => zoomBy(0.7)} aria-label="放大" title="放大（也可以滚动滚轮）">＋</button>
         <button type="button" onClick={() => zoomBy(1.4)} aria-label="缩小" title="缩小">－</button>
-        <button type="button" onClick={() => { lastTouch.current = Date.now(); flyTo(fitAll()) }} title="看全部街区">全景</button>
-        <button type="button" onClick={() => { lastTouch.current = Date.now(); flyTo(fitCamera(cellBox(world.plaza.ox, world.plaza.oy), aspect, 1.1)) }} title="回到中央广场">广场</button>
+        <button type="button" onClick={() => { lastTouch.current = Date.now(); setReturnCamera(null); flyTo(fitAll()) }} title="看全部街区">全景</button>
+        <button type="button" onClick={() => { lastTouch.current = Date.now(); setReturnCamera(null); flyTo(fitCamera(cellBox(world.plaza.ox, world.plaza.oy), aspect, 1.1)) }} title="回到中央广场">广场</button>
         {!props.replaying && <button type="button" className={`town-basket${ripe.length ? ' has-ripe' : ''}`} onClick={startHarvest} disabled={!ripe.length && !harvest}
           title={ripe.length ? `熟了 ${ripe.length} 棵：一棵一棵打开验收卡片，收下或退回` : '现在没有熟了的菜（没有待验收的工作项）'}>收菜 {ripe.length}</button>}
         <span className="town-guide-anchor">
@@ -698,6 +775,26 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far'> & {
         </span>
         <button type="button" aria-pressed={byAgent} className={byAgent ? 'is-on' : undefined} onClick={() => { setByAgent(!byAgent); setAgentFocus(null) }} title="按会话来自哪个 Agent 着色">按 Agent 看</button>
       </div>
+      <div className="town-moments town-world-ui" onPointerDown={(e) => e.stopPropagation()}>
+        {queued.length > 0 && <button type="button" aria-expanded={showMoments} onClick={() => setShowMoments(!showMoments)}>{queued.length} 处有新动态</button>}
+        {showMoments && queued.length > 0 && <ol className="town-moment-list" aria-label="新动态，按优先级排列">
+          {queued.map((m) => <li key={m.key}><button type="button" disabled={paused || !!harvest || !!props.replaying || guide} onClick={() => visitMoment(m)}>{m.message}{!m.local && <small>另一台电脑 · 仅查看</small>}</button></li>)}
+        </ol>}
+      </div>
+      {away.length > 0 && <div className="town-away town-world-ui" role="status" onPointerDown={(e) => e.stopPropagation()}>
+        <span>你离开期间：{awayRipe} 棵菜熟了，{awayDecisions} 件要你决定</span>
+        {remoteAway.length > 0 && <span>另一台电脑：{remoteRipe} 棵菜熟了，{remoteDecisions} 件要你决定（请到那台电脑处理）</span>}
+        <button type="button" disabled={paused || !!harvest || !!props.replaying || guide} onClick={() => { visitMoment(awayFirst); feed.dismissAway() }}>带我去看</button>
+        <button type="button" onClick={feed.dismissAway}>知道了</button>
+      </div>}
+      {visibleMoment && <div className="town-moment-overlay town-world-ui">
+        <MomentCard moment={visibleMoment} ripeCount={ripe.length}
+          onOpen={() => { setMoment(null); props.onSelect(visibleMoment.approvalId ? { kind: 'approval', key: visibleMoment.approvalId } : { kind: 'item', key: visibleMoment.itemId! }) }}
+          onHarvest={() => { const ids = [visibleMoment.itemId!, ...ripe.map((r) => r.item.id).filter((id) => id !== visibleMoment.itemId)]; setMoment(null); goHarvest(ids, 0) }}
+          onLater={() => setMoment(null)} onAcknowledge={() => { feed.acknowledge(visibleMoment.key); setMoment(null) }} />
+      </div>}
+      {returnCamera && <button type="button" className="town-moment-return town-world-ui" disabled={paused || !!harvest || !!props.replaying || guide}
+        onPointerDown={(e) => e.stopPropagation()} onClick={() => { flyTo(returnCamera); setReturnCamera(null); setMoment(null) }}>回到刚才的位置</button>}
       {byAgent && (
         <div className="town-agent-legend" role="group" aria-label="按 Agent 筛选" onPointerDown={(e) => e.stopPropagation()}>
           <button type="button" aria-pressed={agentFocus == null} onClick={() => setAgentFocus(null)}>全部</button>
@@ -709,9 +806,9 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far'> & {
           ))}
         </div>
       )}
-      <MiniMap world={world} view={view} needsYou={needsYou} pending={model.pendingApprovals} onJump={(p) => { lastTouch.current = Date.now(); flyTo(clampCamera({ cx: p[0], cy: p[1], w: Math.min(camera.w, 1500) }, world.bounds), 600) }} />
+      <MiniMap world={world} view={view} needsYou={needsYou} pending={model.pendingApprovals} onJump={(p) => { lastTouch.current = Date.now(); setReturnCamera(null); flyTo(clampCamera({ cx: p[0], cy: p[1], w: Math.min(camera.w, 1500) }, world.bounds), 600) }} />
       <p className="town-world-hint">拖动地图移动 · 滚轮缩放 · 拉远看全部项目</p>
-      {guide && <TownGuide onClose={() => setGuide(false)} />}
+      {guide && <TownGuide onClose={() => setGuide(false)} follow={feed.preferences} onFollowChange={feed.savePreferences} />}
       {harvest && !props.replaying && <HarvestBar ids={harvest.ids} index={harvest.index} results={results} model={model}
         onPrev={() => { const n = nextPending(harvest.index, -1); if (n >= 0) goHarvest(harvest.ids, n) }}
         onNext={() => { const n = nextPending(harvest.index, 1); if (n >= 0) goHarvest(harvest.ids, n) }}
@@ -739,7 +836,7 @@ function HarvestBar({ ids, index, results, model, onPrev, onNext, onReopen, onEn
       </p>
       {left === 0 ? <p className="town-harvest-now">这一批都看完了。收下的进了粮仓，退回的重新种下，Agent 会接着改。</p>
         : <p className="town-harvest-now">{now === 'harvested' ? '收下了 ✓ ' : now === 'returned' ? '退回重种 ↺ ' : ''}<code>{ids[index]}</code> {item?.title ?? '这项已不在地里'}</p>}
-      <p className="town-harvest-hint">右边的验收卡片里看交付说明，点“验收通过”收下，“退回修改”重新种。</p>
+      <p className="town-harvest-hint">右边的交付卡片里看说明，处理完点“已处理”收下，需要修改点“退回修改”重新种。</p>
       <div className="town-harvest-actions">
         <button type="button" onClick={onPrev}>上一棵</button>
         <button type="button" onClick={onReopen}>重新打开卡片</button>

@@ -57,6 +57,6 @@ describe('菜地', () => {
     expect(html).toContain('熟了很久还没收')
     expect(html).toContain('W-2 等决定：缺水 · 等你决定')
     expect(html).toContain('熟了 2')
-    expect(html).not.toMatch(/验收通过|退回修改/)
+    expect(html).not.toMatch(/已处理|退回修改/)
   })
 })

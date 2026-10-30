@@ -18,7 +18,7 @@ export function nextActionFor(snap: Snapshot, item: WorkItem) {
   if (requests.some(a => a.kind === 'merge')) return '代码合并已经批准，结果尚待确认。下方可查看后续操作。'
   if (attentionManaged(item)) return `${managementLabel(item)}。需要恢复时，点右上角“管理状态”。`
   if (item.automatic_issue) return item.automatic_issue
-  if (item.status === 'review' && item.completion_policy !== 'auto_history') return '这项工作已交付，等你检查。满意可验收通过，需要补充就退回修改。'
+  if (item.status === 'review' && item.completion_policy !== 'auto_history') return '这项工作已交付，等你处理。处理完可点“已处理”，需要补充就退回修改。'
   if (['done', 'abandoned'].includes(item.status)) return '目前没有需要你处理的请求。后续有变化时会重新提示。'
   if (!item.ready) return `先等上游工作 ${item.waiting.join('、')} 完成。`
   const next = field(item, 'next')?.text
@@ -28,6 +28,12 @@ export function nextActionFor(snap: Snapshot, item: WorkItem) {
 }
 
 export function WorkOverview({ snap, item }: { snap: Snapshot; item: WorkItem }) {
+  if (item.completion_policy === 'auto_history') return <section className="work-overview" aria-label="记忆整理说明">
+    <div><h3>{item.automatic_history ? '这轮整理已完成' : '记忆整理无需逐轮验收'}</h3>
+      <p>普通整理完成后自动收进历史，无需逐轮验收。只有具体问题、操作权限或整理异常才会提醒你。</p>
+    </div>
+    {item.automatic_issue && item.automatic_issue_kind !== 'formal' && <div className="work-overview-blocker"><h3>需要检查的原因</h3><p>{item.automatic_issue}</p></div>}
+  </section>
   const goal = field(item, 'goal')
   const report = field(item, 'summary') ?? field(item, 'progress')
   const blocker = !attentionManaged(item) && !['done', 'abandoned'].includes(item.status) ? field(item, 'blocker') : undefined

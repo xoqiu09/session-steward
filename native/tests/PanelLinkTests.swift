@@ -33,6 +33,9 @@ struct PanelLinkTests {
         check(PanelTarget(kind: "session", id: "0") == nil, "zero is not a session")
         var navigation = PanelNavigation()
         let first = PanelTarget(kind: "item", id: "SYN-001")!
+        let testScheme = "steward-isolated-synthetic"
+        check(PanelTarget.fromIncomingURL(first.appURL(port: 7788, scheme: testScheme), base: base, scheme: testScheme) == first, "isolated scheme round trip")
+        check(PanelTarget.fromIncomingURL(first.appURL(port: 7788, scheme: testScheme), base: base) == nil, "production rejects isolated scheme")
         let latest = PanelTarget(kind: "approval", id: "synthetic-approval")!
         check(navigation.receive(first) == nil, "cold click waits")
         check(navigation.receive(latest) == nil, "latest cold click waits")
@@ -66,6 +69,13 @@ struct PanelLinkTests {
         let standalone = root.appendingPathComponent("bin/Helper.app")
         check(notificationHost(helper: standalone, identifier: hostID, installed: [oldApp, installed])?.standardizedFileURL.path == installed.standardizedFileURL.path, "legacy App without URL receiver must be skipped")
         check(notificationHost(helper: standalone, identifier: "unrelated.application", installed: [installed]) == nil, "wrong App identity is not opened")
+        let syntheticHome = URL(fileURLWithPath: "/synthetic/user")
+        func spool(_ args: [String], _ env: [String: String]) -> String {
+            notificationDirectory(arguments: args, environment: env, userHome: syntheticHome).path
+        }
+        check(spool([], [:]) == "/synthetic/user/.steward/notifications", "normal notification directory")
+        check(spool([], ["STEWARD_HOME": "/synthetic/env"]) == "/synthetic/env/notifications", "helper follows explicit environment")
+        check(spool(["helper", "--steward-home", "/synthetic/argument"], ["STEWARD_HOME": "/synthetic/env"]) == "/synthetic/argument/notifications", "argument survives LaunchServices and wins over environment")
         var version = SnapshotVersion()
         check(version.accept(["cursor": 20]), "first snapshot")
         check(!version.accept(["cursor": 19]), "stale snapshot cannot resurrect reminders")

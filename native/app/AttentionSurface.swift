@@ -151,12 +151,12 @@ struct AttentionSurfaceView: View {
             if model.expanded {
                 VStack(alignment: .leading, spacing: 0) {
                     HStack {
-                        Text("需要你看一眼").font(.system(size: 15, weight: .semibold))
+                        Text(model.state.online && model.state.records.isEmpty ? "暂时没有需要处理的事" : "需要你看一眼").font(.system(size: 15, weight: .semibold))
                         Spacer()
                         Text("这台电脑").font(.system(size: 11)).foregroundStyle(.white.opacity(0.64))
                     }.padding(.bottom, 9)
                     if model.state.records.isEmpty {
-                        Text(model.state.online ? "暂时没有待决定、待验收或受阻的工作。" : "正在连接本机小镇。服务恢复后会更新。")
+                        Text(model.state.online ? "暂时没有待决定、待处理的交付或受阻的工作。" : "正在连接本机小镇。服务恢复后会更新。")
                             .font(.system(size: 12)).foregroundStyle(.white.opacity(0.76))
                             .fixedSize(horizontal: false, vertical: true).frame(maxWidth: .infinity, minHeight: 63, alignment: .leading)
                     } else {
@@ -165,7 +165,7 @@ struct AttentionSurfaceView: View {
                         }
                     }
                     HStack {
-                        Text("决定 \(model.state.decisions) · 验收 \(model.state.reviews) · 受阻 \(model.state.blocked)")
+                        Text("决定 \(model.state.decisions) · 交付 \(model.state.reviews) · 受阻 \(model.state.blocked)")
                             .font(.system(size: 10)).foregroundStyle(.white.opacity(0.64))
                         Spacer()
                         Button { onOpen("/?view=today") } label: {
@@ -196,7 +196,7 @@ private struct AttentionRow: View {
             HStack(spacing: 10) {
                 Circle().fill(tint).frame(width: 6, height: 6)
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(record.title).font(.system(size: 12, weight: .medium)).lineLimit(1)
+                    Text(record.title).font(.system(size: 12, weight: .medium)).lineLimit(record.titleLines)
                     Text("\(record.project) · \(record.label)").font(.system(size: 10)).foregroundStyle(.white.opacity(0.66)).lineLimit(1)
                 }
                 Spacer(minLength: 6)

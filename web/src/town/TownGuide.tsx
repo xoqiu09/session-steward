@@ -4,6 +4,7 @@ import { CropShape } from './field'
 import { STATUS_CHIPS } from './status'
 import { AGENTS } from './agents'
 import type { CropStage } from './harvest'
+import type { FollowPreferences } from './moments'
 
 const STAGES: { stage: CropStage; overripe?: boolean; name: string; means: string }[] = [
   { stage: 'seed', name: '种子', means: '待开始' },
@@ -27,7 +28,7 @@ function Row({ icon, title, children }: { icon?: ReactNode; title: string; child
   )
 }
 
-export function TownGuide({ onClose }: { onClose: () => void }) {
+export function TownGuide({ onClose, follow, onFollowChange }: { onClose: () => void; follow?: FollowPreferences; onFollowChange?: (value: FollowPreferences) => void }) {
   return (
     <aside className="town-guide" role="dialog" aria-label="小镇怎么看" onPointerDown={(e) => e.stopPropagation()}>
       <header className="town-guide-head">
@@ -37,6 +38,17 @@ export function TownGuide({ onClose }: { onClose: () => void }) {
       <p className="town-guide-lead">
         小镇把 Session Steward 里的工作画成一张地图：<b>项目是房子，会话是小人，工作项是门口的菜</b>。它只负责让你一眼看出哪里需要你；真正的操作都在点开后的卡片里。
       </p>
+
+      {follow && onFollowChange && <fieldset className="town-follow-settings">
+        <legend>镜头跟着进展走</legend>
+        <label><input type="checkbox" checked={follow.enabled} onChange={(e) => onFollowChange({ ...follow, enabled: e.target.checked })} />有进展时自动带我过去</label>
+        <label>自动带我去的时刻
+          <select value={follow.includeMerged ? 'merged' : 'essential'} onChange={(e) => onFollowChange({ ...follow, includeMerged: e.target.value === 'merged' })}>
+            <option value="essential">要你决定和菜熟了</option><option value="merged">也包括合并完成</option>
+          </select>
+        </label>
+        <p>只记在这个浏览器里。操作地图后安静 30 秒；几秒内的动态合在一起看。</p>
+      </fieldset>}
 
       <nav className="town-guide-toc" aria-label="说明目录">
         {[['tg-map', '地图上的东西'], ['tg-ops', '怎么操作'], ['tg-day', '每天怎么用'], ['tg-not', '它不做什么']].map(([id, label]) => (
@@ -80,7 +92,7 @@ export function TownGuide({ onClose }: { onClose: () => void }) {
           <Row title="点房子或名牌：">走进这个项目内部。工作台 = 工作项，墙上白板 = 这个项目等你决定的事。左上“← 回到世界”或按 Esc 回来。</Row>
           <Row title="点小人：">打开会话详情，里面的“复制恢复命令”粘到终端，就能接着那个会话干。</Row>
           <Row title="点菜：">打开这个工作项；熟了的菜会显示验收卡片（交付了什么、在哪个分支、验收标准）。</Row>
-          <Row title="收菜 N：">一棵一棵飞到熟了的菜前、打开验收卡片。满意点“验收通过”收下，不满意点“退回修改”重新种，处理完自动去下一棵。</Row>
+          <Row title="收菜 N：">一棵一棵飞到熟了的菜前、打开交付卡片。处理完点“已处理”收下，需要修改点“退回修改”重新种，处理完自动去下一棵。</Row>
           <Row title="按 Agent 看：">名牌改成 Claude / Codex / 其他各有几个会话；在右边图例里点一个，只突出它。</Row>
           <Row title="小地图：">右下角，点哪里镜头就飞到哪里。桌面模式会自己在需要你的项目之间巡游，你一拖动就先停 30 秒。</Row>
         </ul>
@@ -100,7 +112,7 @@ export function TownGuide({ onClose }: { onClose: () => void }) {
         <h3>4 · 它不做什么</h3>
         <ul className="town-guide-plain">
           <li>小镇只读：不会替你批准、验收、合并或派单，这些都只在卡片里由你点。</li>
-          <li>“验收通过”只改工作项的状态，不会合并代码，也不会发布。</li>
+          <li>“已处理”记录这件事已处理，验证结果和功能确认独立保留；合并代码和发布仍分别操作。</li>
           <li>会话结束 ≠ 工作完成：工作项会一直留在地里，直到你收下或放弃。</li>
           <li>数据只存在这台电脑的 ~/.steward，别的电脑看不到这里的工作。</li>
         </ul>

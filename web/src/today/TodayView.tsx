@@ -58,12 +58,12 @@ export function TodayView({ snap, onSelectItem, onOpenTown, device }: { snap: Sn
 
         <nav className="today-stats" aria-label="四件事">
           <a href="#today-decide"><span>要你决定</span><b className="is-decide">{t.decide.length}</b><small>{t.decide.length ? 'Agent 停着等你' : '没有'}</small></a>
-          <a href="#today-review"><span>做完了，等你验收</span><b className="is-review">{t.review.length}</b><small>{t.review.length ? `有可核对证据的 ${ok} 件` : '没有'}</small></a>
+          <a href="#today-review"><span>有交付，等你处理</span><b className="is-review">{t.review.length}</b><small>{t.review.length ? `有可核对证据的 ${ok} 件` : '没有'}</small></a>
           <a href="#today-stuck"><span>卡住了</span><b className="is-stuck">{t.stuck.length}</b><small>{userNext ? `${userNext} 件下一步在你` : t.stuck.length ? '在等上游或外部' : '没有'}</small></a>
           <a href="#today-quiet"><span>正在做</span><b className="is-run">{t.running.length}</b><small>不用管</small></a>
         </nav>
 
-        {empty && <section className="today-empty"><h2>没有要你处理的事</h2><p className="muted">没有等你决定的请求，没有等你验收的交付，也没有卡住的工作。</p></section>}
+        {empty && <section className="today-empty"><h2>没有要你处理的事</h2><p className="muted">没有等你决定的请求，没有等你处理的交付，也没有卡住的工作。</p></section>}
 
         {t.decide.length > 0 && <section id="today-decide" className="today-card">
           <h2><i className="dot is-decide" />要你决定 <small>{t.decide.length} · Agent 停着等你，先处理这里</small></h2>
@@ -71,7 +71,7 @@ export function TodayView({ snap, onSelectItem, onOpenTown, device }: { snap: Sn
         </section>}
 
         {t.review.length > 0 && <section id="today-review" className="today-card">
-          <h2><i className="dot is-review" />做完了，等你验收 <small>{t.review.length} · 有可核对证据的排在前面</small></h2>
+          <h2><i className="dot is-review" />有交付，等你处理 <small>{t.review.length} · 有可核对证据的排在前面</small></h2>
           {t.review.map((r) => <ReviewLine key={r.item.id} r={r} snap={snap} onSelectItem={onSelectItem} />)}
         </section>}
 
@@ -92,7 +92,7 @@ export function TodayView({ snap, onSelectItem, onOpenTown, device }: { snap: Sn
           <details><summary>正在顺利进行 {t.running.length} 件</summary>
             <ul>{t.running.map((w) => <li key={w.id}><button type="button" className="linkish" onClick={() => onSelectItem(w.id)}><span className="mono">{w.id}</span> {w.title}</button></li>)}</ul>
           </details>
-          <details><summary>{seen ? '上次看过以来' : '最近一天'}验收过 {t.acceptedSince.length} 件</summary>
+          <details><summary>{seen ? '上次看过以来' : '最近一天'}已处理 {t.acceptedSince.length} 件</summary>
             <ul>{t.acceptedSince.map((w) => <li key={w.id}><button type="button" className="linkish" onClick={() => onSelectItem(w.id)}><span className="mono">{w.id}</span> {w.title}</button></li>)}</ul>
           </details>
           <p>另有 {t.unregistered} 个会话没有登记任务，不算进上面的数字。</p>
@@ -183,7 +183,7 @@ function ReviewLine({ r, snap, onSelectItem }: { r: ReviewRow; snap: Snapshot; o
         {r.evidence.length ? r.evidence.map((e, i) => <span key={i} className={`chip is-${e.tone}`} title={e.detail || undefined}>{e.label}</span>)
           : <span className="small is-warn-text">没附验证结果，也没有分支或合并记录，只有 Agent 自述</span>}
       </div>
-      {r.merge && <details className="today-merge"><summary><span className="tag is-decide">合并待你批准</span> <span className="mono">{(r.merge.primary.payload as unknown as MergePayload).source_ref} → {(r.merge.primary.payload as unknown as MergePayload).target_ref}</span> <span className="muted">展开看提交并批准；批准合并和验收分开记录</span></summary>
+      {r.merge && <details className="today-merge"><summary><span className="tag is-decide">合并待你批准</span> <span className="mono">{(r.merge.primary.payload as unknown as MergePayload).source_ref} → {(r.merge.primary.payload as unknown as MergePayload).target_ref}</span> <span className="muted">展开看提交并批准；批准合并和处理交付分别记录</span></summary>
         <MergeCard group={r.merge} snap={snap} onSelectItem={onSelectItem} advice={[]} /></details>}
       <span className="today-meta">{r.repo} · {r.item.agents.map(providerLabel).join(' · ') || 'Agent'} · {clock(r.at, snap.now)} 交付</span>
       <ErrorLine msg={act.error} />
@@ -192,7 +192,7 @@ function ReviewLine({ r, snap, onSelectItem }: { r: ReviewRow; snap: Snapshot; o
       <WorkStatusActions item={r.item} />
       <button className="btn" type="button" onClick={() => onSelectItem(r.item.id)}>详情</button>
       <button className={r.grade === 'failed' ? 'btn primary' : 'btn'} type="button" disabled={act.busy} onClick={() => set('in_progress')}>退回</button>
-      <button className={r.grade === 'failed' ? 'btn' : 'btn primary'} type="button" disabled={act.busy} onClick={() => set('done')}>验收</button>
+      <button className={r.grade === 'failed' ? 'btn' : 'btn primary'} type="button" disabled={act.busy} onClick={() => set('done')}>已处理</button>
     </div>}
   </div>
 }
@@ -201,7 +201,7 @@ function StuckLine({ s, snap, onSelectItem }: { s: StuckRow; snap: Snapshot; onS
   return <div className="today-row">
     <div className="today-body">
       <Title id={s.item.id} title={s.item.title} onSelectItem={onSelectItem} tag={<span className={`tag is-${s.tone}`}>{s.label}</span>} />
-      <p><span className="muted">卡在：</span>{s.reason}{s.upstreamInReview && <> <a href="#today-review">{s.upstreamInReview} 就在上面等你验收</a></>}</p>
+      <p><span className="muted">卡在：</span>{s.reason}{s.upstreamInReview && <> <a href="#today-review">{s.upstreamInReview} 就在上面等你处理</a></>}</p>
       {s.next && <p><span className="muted">下一步：</span>{s.next}</p>}
       <span className="today-meta">{s.repo} · {ago(s.at, snap.now)}</span>
     </div>

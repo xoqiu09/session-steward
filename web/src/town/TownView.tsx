@@ -144,7 +144,7 @@ export function TownView({ snap, conn, repoId, provider, sel, onSelectItem, onSe
   layout?: LayoutName
   /** 状态条右侧的附加内容（桌面模式的连接状态、退出入口）。 */
   bar?: ReactNode
-  /** 预览：大地图世界，替代宽屏的分页（竖屏仍分页）。 */
+  /** 宽屏使用世界地图；窄屏保留一页一个项目，不接入自动跟随。 */
   world?: boolean
   /** 从历史日历点“回放这一天”进来时的日期。 */
   replayDay?: string
@@ -282,7 +282,7 @@ export function TownView({ snap, conn, repoId, provider, sel, onSelectItem, onSe
         </div>}
         {asWorld
           ? <WorldStage model={model} needsYou={urgent} selected={selected} highlight={highlight} onSelect={onSelect} changed={changed} offline={offline}
-              kiosk={kiosk} rotateMs={rotateMs} paused={paused} focusKey={selKey} plan={plan} replaying={!!replay || noReplay} />
+              kiosk={kiosk} rotateMs={rotateMs} paused={paused || sel != null} focusKey={selKey} plan={plan} replaying={!!replay} snapshot={shown} />
           : <TownScene model={model} buildings={pages[page]} layout={shape} selected={selected} highlight={highlight} onSelect={onSelect} changed={changed} offline={offline} />}
         <ul className="town-legend" aria-label="图例">
           <li><i className="lg-building" />建筑 = 项目</li>

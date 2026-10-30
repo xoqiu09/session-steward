@@ -17,7 +17,7 @@ func TestNativeNoticeEnqueuesWithoutDialogOrAction(t *testing.T) {
 	var name string
 	m := &MacOS{AppPath: "/synthetic/Session Steward.app", SpoolDir: dir}
 	m.Run = func(_ context.Context, cmd string, args ...string) ([]byte, error) {
-		if cmd != "/usr/bin/open" || len(args) != 4 || args[0] != "-g" || args[1] != "-a" || args[2] != m.AppPath {
+		if cmd != "/usr/bin/open" || len(args) != 7 || args[0] != "-g" || args[1] != "-a" || args[2] != m.AppPath || args[4] != "--args" || args[5] != "--steward-home" || args[6] != filepath.Dir(dir) {
 			t.Fatalf("unexpected command: %s %q", cmd, args)
 		}
 		name = args[3]

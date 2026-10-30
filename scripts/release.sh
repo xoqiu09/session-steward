@@ -5,15 +5,17 @@
 set -eu
 version=${1:?用法: scripts/release.sh <版本号，例如 v0.3.0>}
 repo=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-out="$repo/dist-release"
+out=${RELEASE_OUT:-"$repo/dist-release"}
 rm -rf "$out"
 mkdir -p "$out"
 cd "$repo"
+# Releases must explicitly advance this ordinal; semantic versions and commits are separate.
+: "${UPDATE_BUILD:?Set UPDATE_BUILD to a new monotonically increasing release ordinal}"
 for arch in arm64 amd64; do
 	name="session-steward_${version}_darwin_${arch}"
 	dir="$out/$name"
 	mkdir -p "$dir"
-	CGO_ENABLED=0 GOOS=darwin GOARCH=$arch go build -trimpath -ldflags "-s -w -X main.BuildCommit=$version" -o "$dir/" ./cmd/...
+	CGO_ENABLED=0 GOOS=darwin GOARCH=$arch go build -trimpath -ldflags "-s -w -X main.BuildCommit=$(git -C "$repo" rev-parse HEAD)" -o "$dir/" ./cmd/steward ./cmd/steward-hook
 	if command -v xcrun >/dev/null 2>&1; then
 		target=$([ "$arch" = amd64 ] && echo x86_64 || echo arm64)
 		NOTIFIER_TARGET=$target sh scripts/build-notifier.sh "$dir/Session Steward.app" >/dev/null
@@ -42,3 +44,13 @@ TXT
 done
 (cd "$out" && shasum -a 256 ./*.tar.gz ./*.zip 2>/dev/null | sed 's#\./##' > SHA256SUMS)
 cat "$out/SHA256SUMS"
+
+# Without a configured signing identity, packages are still manual downloads.
+# No private key or secret is generated or uploaded by this script.
+if [ -n "${UPDATE_SIGNING_KEY_FILE:-}" ]; then
+ : "${UPDATE_PUBLIC_KEY:?Set the public key pinned in the distributed App}"
+ : "${UPDATE_NOTES_FILE:?Set a UTF-8 release notes file}"
+ go run ./cmd/steward-update-manifest -version "$version" -build "$UPDATE_BUILD" -commit "$(git -C "$repo" rev-parse HEAD)" -dir "$out" -notes "$UPDATE_NOTES_FILE"
+else
+ echo "No update signing key supplied: no in-app update manifest was produced." >&2
+fi

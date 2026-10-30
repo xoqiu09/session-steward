@@ -13,8 +13,8 @@ export function DeliveryReview({ snap, item, onSelectSession, actions }: { snap:
   const g = reviewGuide(snap, item)
   const s = g.session
   return (
-    <section className="delivery-review" aria-label="交付验收">
-      <h3>这项交付待你验收</h3>
+    <section className="delivery-review" aria-label="交付处理">
+      <h3>这项交付待你处理</h3>
       <dl className="review-facts">
         <dt>交付了什么</dt>
         <dd>
@@ -40,7 +40,7 @@ export function DeliveryReview({ snap, item, onSelectSession, actions }: { snap:
       </dl>
       {g.mismatch && <p className="review-mismatch" role="note">⚠ 这次交付在 {g.mismatch.delivered}，不在本项目 {g.mismatch.item}</p>}
       {actions}
-      <p className="hint">验收只改这项工作的状态，不会批准工具、合并代码或发布。</p>
+      <p className="hint">“已处理”只记录这件事已处理，验证结果与功能确认分别保留；工具批准、代码合并和发布仍需分别操作。</p>
     </section>
   )
 }
