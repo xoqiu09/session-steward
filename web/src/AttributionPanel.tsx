@@ -3,6 +3,7 @@ import { useState } from 'react'
 import type { Attribution, AttributionDecision, Snapshot } from './types'
 import { api } from './api'
 import { AgentBadge, ErrorLine, useAction } from './bits'
+import { shownNo } from './hub/ids'
 import { ago } from './model'
 import { attributionChoice, attributionRequest, canUndoAttribution, clusterAttributions, clusterRequests, clusterTitle, scopedAttributions, type AttributionCluster, type AttributionDraft } from './attribution'
 
@@ -64,16 +65,16 @@ function AttributionEntry({ a, snap, draft, bulkRepo, selected, busy, onSelect, 
   const pending = a.status === 'pending'
   const repoName = (id: number) => (snap.repos ?? []).find((r) => r.id === id)?.name || '项目待确认'
   return <div className="q-card attribution-entry">
-    <div className="row">{pending && <input type="checkbox" aria-label={`选择会话 #${a.session_id}`} checked={selected} disabled={busy} onChange={(e) => onSelect(e.target.checked)} />}{s && <AgentBadge provider={s.provider} client={s.client} />}<span className="small muted">会话 #{a.session_id}</span><span className="small muted right">{ago(a.created_at, snap.now)}</span></div>
+    <div className="row">{pending && <input type="checkbox" aria-label={`选择会话 #${shownNo(a.session_id)}`} checked={selected} disabled={busy} onChange={(e) => onSelect(e.target.checked)} />}{s && <AgentBadge provider={s.provider} client={s.client} />}<span className="small muted">会话 #{shownNo(a.session_id)}</span><span className="small muted right">{ago(a.created_at, snap.now)}</span></div>
     <strong className="entry-title">{s?.title || a.plan.title || '工作内容待登记'}</strong>
     <p className="hint">{a.plan.reasons.join('；')}</p>
     {s?.branch && <p className="hint mono">分支：{s.branch}</p>}
     {pending ? <div className="attribution-fields">
-      <label>关联目标<select aria-label={`会话 #${a.session_id} 关联目标`} value={choice.target} onChange={(e) => onDraft({ target: e.target.value })}>
+      <label>关联目标<select aria-label={`会话 #${shownNo(a.session_id)} 关联目标`} value={choice.target} onChange={(e) => onDraft({ target: e.target.value })}>
         {a.plan.candidates.length > 1 && <option value="">多个候选，请选择…</option>}<option value="new">新建工作项</option>
         {a.plan.candidates.map((c) => <option key={c.work_item_id} value={c.work_item_id}>{c.work_item_id} · {repoName(c.repo_id)} · {c.title}</option>)}
       </select></label>
-      {choice.target === 'new' && <><label>所属项目<select aria-label={`会话 #${a.session_id} 所属项目`} value={choice.repoId} onChange={(e) => onDraft({ repoId: Number(e.target.value) })}><option value={0}>请选择所属项目…</option>{(snap.repos ?? []).map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}</select></label><label>工作标题<input aria-label={`会话 #${a.session_id} 工作标题`} value={choice.title} onChange={(e) => onDraft({ title: e.target.value })} /></label></>}
+      {choice.target === 'new' && <><label>所属项目<select aria-label={`会话 #${shownNo(a.session_id)} 所属项目`} value={choice.repoId} onChange={(e) => onDraft({ repoId: Number(e.target.value) })}><option value={0}>请选择所属项目…</option>{(snap.repos ?? []).map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}</select></label><label>工作标题<input aria-label={`会话 #${shownNo(a.session_id)} 工作标题`} value={choice.title} onChange={(e) => onDraft({ title: e.target.value })} /></label></>}
       {choice.target && choice.target !== 'new' && <p className="hint">将关联已有工作项，保持该工作项的所属项目。</p>}
     </div> : <div>
       <p className="hint">{a.status === 'applied' ? `${a.automatic ? '自动' : '已确认'}${a.created_item ? '创建并关联' : '关联'} · ${repoName(a.plan.repo_id)}` : a.status === 'undone' ? '已撤销，不会重复自动关联' : '已暂不关联，线索未变时不再提示'}</p>
@@ -126,10 +127,10 @@ function ClusterCard({ c, snap, busy, onApply, onItem }: {
     {c.records.map((a) => {
       const s = sessions.get(a.session_id)
       return <label key={a.id} className="cl-sess">
-        <input type="checkbox" checked={!skip.has(a.id)} disabled={busy} aria-label={`包含会话 #${a.session_id}`}
+        <input type="checkbox" checked={!skip.has(a.id)} disabled={busy} aria-label={`包含会话 #${shownNo(a.session_id)}`}
           onChange={(e) => setSkip((old) => { const n = new Set(old); if (e.target.checked) n.delete(a.id); else n.add(a.id); return n })} />
         {s && <AgentBadge provider={s.provider} client={s.client} />}
-        <span>#{a.session_id} {s?.title || '（无标题）'}</span>
+        <span>#{shownNo(a.session_id)} {s?.title || '（无标题）'}</span>
         <small className="muted right">{ago(s?.last_activity_at || a.created_at, snap.now)}</small>
       </label>
     })}

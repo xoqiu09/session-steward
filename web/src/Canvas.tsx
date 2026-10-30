@@ -4,6 +4,7 @@ import '@xyflow/react/dist/style.css'
 import type { Session, Snapshot, WorkItem } from './types'
 import { type Group, ago, itemStatusLabel, itemSignal, projectQueueCounts, sessionRepo, sessionsFor, type Signal } from './model'
 import { AgentBadge } from './bits'
+import { shownNo } from './hub/ids'
 import { attemptSummary, progressView, sourceTag } from './brief'
 import { canvasLayout, canvasReadingViewport, CARD_W, CARD_H, CANVAS_ZOOM, type CanvasProject } from './canvasLayout'
 import './canvas.css'
@@ -28,7 +29,7 @@ function ItemNode({ data }: NodeProps<Node<ItemData>>) {
         {progress.stale && <span className="stale" title="这条回报之后仍有较多新活动，内容可能已过期">⏱ 可能过期</span>}
       </div>}
       <div className="card-foot">
-        {sessions.length ? sessions.slice(0, 2).map((s) => <span className="runner" key={s.id} title={s.title || s.provider_session_id}><AgentBadge provider={s.provider} /><small>#{s.id}</small></span>) : <span className="muted">待分配 Agent</span>}
+        {sessions.length ? sessions.slice(0, 2).map((s) => <span className="runner" key={s.id} title={s.title || s.provider_session_id}><AgentBadge provider={s.provider} /><small>#{shownNo(s.id)}</small></span>) : <span className="muted">待分配 Agent</span>}
         {sessions.length > 2 && <small>+{sessions.length - 2}</small>}
         <small className="muted">{data.attempts}</small>
         <span className="card-time">{ago(sessions[0]?.last_activity_at || item.updated_at, now)}</span>

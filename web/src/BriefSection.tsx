@@ -95,7 +95,7 @@ export function RelayTimeline({ snap, item, onSelectSession, onOutcome }: { snap
                   {j > 0 && <div className="relay">{relation(a.runs[j - 1], r) === 'relay' ? '↓ 接力（上一会话已结束）' : '∥ 并行'}</div>}
                   <button className="sess-row" onClick={() => onSelectSession(r.session_id)}>
                     <AgentBadge provider={r.provider} client={s?.client} />
-                    <span>#{r.session_id}{s?.title ? ` · ${s.title}` : ''}<br />
+                    <span>#{shownNo(r.session_id)}{s?.title ? ` · ${s.title}` : ''}<br />
                       <small className="muted">{bindingLabel[r.binding] ?? r.binding} · {ago(r.started_at, snap.now)}开始{r.ended_at ? ` · ${ago(r.ended_at, snap.now)}结束` : ''}</small></span>
                     <span className="pill">{r.ended_at ? (outcomeLabel[r.outcome] ?? r.outcome) : '进行中'}</span>
                   </button>

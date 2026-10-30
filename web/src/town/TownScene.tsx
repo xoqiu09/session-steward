@@ -493,7 +493,7 @@ export function Character({ at, c, selected, dimClass, onSelect, now }: { at: Pt
         <rect x="1.5" y="-11" width="4.5" height="11" rx="2" fill="#3d3a4a" />
         <rect x="-10" y="-30" width="20" height="21" rx="7" fill={style.body} />
         <rect x="-6.5" y="-26" width="13" height="10" rx="2" fill="#fffaf0" />
-        <text y="-18.3" textAnchor="middle" fontSize="7.5" fontWeight="700" fill="#3a2a1c">{s.id}</text>
+        <text y="-18.3" textAnchor="middle" fontSize="7.5" fontWeight="700" fill="#3a2a1c">{shownNo(s.id)}</text>
         <circle cy="-41" r="11" fill={skin} stroke="rgba(80,50,30,.25)" />
         {isCat ? (
           <g>
