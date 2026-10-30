@@ -54,7 +54,7 @@ export function RunDesk({ snap, item, remote, onClose, onSelectSession, attentio
         <h2>{memory ? '记忆与偏好' : item.title}</h2>
         <p className="rd-sub">
           <code>{item.id}</code> · {memory ? '自动记忆整理' : repo?.name ?? '未关联项目'}
-          <span className={`rd-pill st-${item.status}`}>{item.automatic_history ? '已自动归档' : memory ? (item.automatic_issue ? '需要关注' : '自动整理') : itemStatusLabel[item.status]}</span>
+          <span className={`rd-pill st-${item.status}`}>{item.automatic_history ? '已自动归档' : memory && item.automatic_issue ? '需要关注' : memory && item.status === 'review' ? '自动整理' : itemStatusLabel[item.status]}</span>
           <span className="rd-muted">更新 {ago(item.updated_at, snap.now)}</span>
         </p>
       </header>

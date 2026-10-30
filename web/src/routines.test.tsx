@@ -86,4 +86,10 @@ describe('quiet successful memory routines and visible exceptions',()=>{
   expect(html).toContain('尚未提供具体问题')
   expect(html).not.toContain('建议记住：')
  })
+ it('preserves the abandoned state instead of labelling it as active memory maintenance',()=>{
+  const s=snapshot({...item,status:'abandoned',automatic_history:false})
+  const html=renderToStaticMarkup(<ItemDetail snap={s} id={item.id} onClose={()=>{}} onSelectSession={()=>{}} />)
+  expect(html).toContain('rd-pill st-abandoned">已放弃</span>')
+  expect(html).not.toContain('记忆整理会自动进行')
+ })
 })
