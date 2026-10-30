@@ -627,7 +627,7 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far'> & {
   const visitMoment = (m: TownMoment) => {
     const d = world.districts.find((d) => d.key === m.buildingKey)
     if (!d) return
-    setReturnCamera(camera)
+    setReturnCamera((saved) => saved ?? camera)
     lastFlight.current = Date.now()
     followUntil.current = Date.now() + 20_000
     // 和收菜一样把目标放在卡片旁；整块院子（房子和菜地）一起取景。
@@ -651,8 +651,14 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far'> & {
   const inWorld = (m: TownMoment) => world.districts.some((d) => d.key === m.buildingKey)
   const queued = feed.queue.filter((m) => inWorld(m) && m.key !== moment?.key)
   const away = feed.away.filter(inWorld)
-  const awayRipe = away.filter((m) => m.kind === 'ripe').length
-  const awayDecisions = away.filter((m) => m.kind === 'decision').length
+  const localAway = away.filter((m) => m.local)
+  const remoteAway = away.filter((m) => !m.local)
+  const awayRipe = localAway.filter((m) => m.kind === 'ripe').length
+  const awayDecisions = localAway.filter((m) => m.kind === 'decision').length
+  const remoteRipe = remoteAway.filter((m) => m.kind === 'ripe').length
+  const remoteDecisions = remoteAway.filter((m) => m.kind === 'decision').length
+  const awayFirst = localAway[0] ?? remoteAway[0]
+  const visibleMoment = !inside && !paused && !guide && !harvest && !props.replaying ? moment : null
   useEffect(() => { if (moment && !feed.queue.some((m) => m.key === moment.key)) setMoment(null) }, [moment, feed.queue])
   useEffect(() => {
     if (!moment && !showMoments) return
@@ -706,7 +712,7 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far'> & {
       // 说明面板里滚轮是翻页，不缩放地图。
       if (inside || (e.target as Element | null)?.closest?.('.town-guide, .town-world-ui, .town-harvest-bar')) return
       e.preventDefault()
-      stop(); lastTouch.current = Date.now()
+      stop(); lastTouch.current = Date.now(); setReturnCamera(null)
       const r = el.getBoundingClientRect()
       setCam((c) => clampCamera(zoomAt(c ?? camera, Math.exp(e.deltaY * 0.0015), (e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height, aspect), world.bounds))
     }
@@ -723,7 +729,7 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far'> & {
     if (!d || d.id !== e.pointerId) return
     const dx = e.clientX - d.x, dy = e.clientY - d.y
     if (!d.moved && Math.hypot(dx, dy) < 5) return
-    if (!d.moved) { d.moved = true; stop(); box.current?.setPointerCapture(e.pointerId) }
+    if (!d.moved) { d.moved = true; stop(); setReturnCamera(null); box.current?.setPointerCapture(e.pointerId) }
     lastTouch.current = Date.now()
     const r = box.current!.getBoundingClientRect()
     const k = d.cam.w / r.width
@@ -734,7 +740,7 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far'> & {
     drag.current = null
     if (d?.moved) { swallowClick.current = true; box.current?.releasePointerCapture(e.pointerId) }
   }
-  const zoomBy = (f: number) => { lastTouch.current = Date.now(); flyTo(clampCamera(zoomAt(camera, f, 0.5, 0.5, aspect), world.bounds), 350) }
+  const zoomBy = (f: number) => { lastTouch.current = Date.now(); setReturnCamera(null); flyTo(clampCamera(zoomAt(camera, f, 0.5, 0.5, aspect), world.bounds), 350) }
 
   const view = viewBoxOf(camera, aspect)
   const far = camera.w > FAR_W
@@ -742,6 +748,7 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far'> & {
     <div className={`town-world${moment ? ' has-moment' : ''}`} ref={box} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp}
       onPointerDownCapture={() => { lastTouch.current = Date.now(); stop() }} onKeyDownCapture={() => { lastTouch.current = Date.now(); stop() }}
       onClickCapture={(e) => { if (swallowClick.current) { swallowClick.current = false; e.stopPropagation(); e.preventDefault() } }}>
+      <div className="town-moment-status" role="status" aria-live="polite" aria-atomic="true">{visibleMoment?.message ?? ''}</div>
       {insideB ? (
         <>
           <InteriorScene b={insideB} model={model} selected={props.selected} highlight={props.highlight} onSelect={props.onSelect} changed={props.changed} offline={props.offline} />
@@ -758,8 +765,8 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far'> & {
       <div className="town-world-tools" onPointerDown={(e) => e.stopPropagation()}>
         <button type="button" onClick={() => zoomBy(0.7)} aria-label="放大" title="放大（也可以滚动滚轮）">＋</button>
         <button type="button" onClick={() => zoomBy(1.4)} aria-label="缩小" title="缩小">－</button>
-        <button type="button" onClick={() => { lastTouch.current = Date.now(); flyTo(fitAll()) }} title="看全部街区">全景</button>
-        <button type="button" onClick={() => { lastTouch.current = Date.now(); flyTo(fitCamera(cellBox(world.plaza.ox, world.plaza.oy), aspect, 1.1)) }} title="回到中央广场">广场</button>
+        <button type="button" onClick={() => { lastTouch.current = Date.now(); setReturnCamera(null); flyTo(fitAll()) }} title="看全部街区">全景</button>
+        <button type="button" onClick={() => { lastTouch.current = Date.now(); setReturnCamera(null); flyTo(fitCamera(cellBox(world.plaza.ox, world.plaza.oy), aspect, 1.1)) }} title="回到中央广场">广场</button>
         {!props.replaying && <button type="button" className={`town-basket${ripe.length ? ' has-ripe' : ''}`} onClick={startHarvest} disabled={!ripe.length && !harvest}
           title={ripe.length ? `熟了 ${ripe.length} 棵：一棵一棵打开验收卡片，收下或退回` : '现在没有熟了的菜（没有待验收的工作项）'}>收菜 {ripe.length}</button>}
         <span className="town-guide-anchor">
@@ -776,14 +783,15 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far'> & {
       </div>
       {away.length > 0 && <div className="town-away town-world-ui" role="status" onPointerDown={(e) => e.stopPropagation()}>
         <span>你离开期间：{awayRipe} 棵菜熟了，{awayDecisions} 件要你决定</span>
-        <button type="button" disabled={paused || !!harvest || !!props.replaying || guide} onClick={() => { visitMoment(away[0]); feed.dismissAway() }}>带我去看</button>
+        {remoteAway.length > 0 && <span>另一台电脑：{remoteRipe} 棵菜熟了，{remoteDecisions} 件要你决定（请到那台电脑处理）</span>}
+        <button type="button" disabled={paused || !!harvest || !!props.replaying || guide} onClick={() => { visitMoment(awayFirst); feed.dismissAway() }}>带我去看</button>
         <button type="button" onClick={feed.dismissAway}>知道了</button>
       </div>}
-      {moment && !paused && !guide && !harvest && !props.replaying && <div className="town-moment-overlay town-world-ui">
-        <MomentCard moment={moment} ripeCount={ripe.length}
-          onOpen={() => { setMoment(null); props.onSelect(moment.approvalId ? { kind: 'approval', key: moment.approvalId } : { kind: 'item', key: moment.itemId! }) }}
-          onHarvest={() => { const ids = [moment.itemId!, ...ripe.map((r) => r.item.id).filter((id) => id !== moment.itemId)]; setMoment(null); goHarvest(ids, 0) }}
-          onLater={() => setMoment(null)} onAcknowledge={() => { feed.acknowledge(moment.key); setMoment(null) }} />
+      {visibleMoment && <div className="town-moment-overlay town-world-ui">
+        <MomentCard moment={visibleMoment} ripeCount={ripe.length}
+          onOpen={() => { setMoment(null); props.onSelect(visibleMoment.approvalId ? { kind: 'approval', key: visibleMoment.approvalId } : { kind: 'item', key: visibleMoment.itemId! }) }}
+          onHarvest={() => { const ids = [visibleMoment.itemId!, ...ripe.map((r) => r.item.id).filter((id) => id !== visibleMoment.itemId)]; setMoment(null); goHarvest(ids, 0) }}
+          onLater={() => setMoment(null)} onAcknowledge={() => { feed.acknowledge(visibleMoment.key); setMoment(null) }} />
       </div>}
       {returnCamera && <button type="button" className="town-moment-return town-world-ui" disabled={paused || !!harvest || !!props.replaying || guide}
         onPointerDown={(e) => e.stopPropagation()} onClick={() => { flyTo(returnCamera); setReturnCamera(null); setMoment(null) }}>回到刚才的位置</button>}
@@ -798,7 +806,7 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far'> & {
           ))}
         </div>
       )}
-      <MiniMap world={world} view={view} needsYou={needsYou} pending={model.pendingApprovals} onJump={(p) => { lastTouch.current = Date.now(); flyTo(clampCamera({ cx: p[0], cy: p[1], w: Math.min(camera.w, 1500) }, world.bounds), 600) }} />
+      <MiniMap world={world} view={view} needsYou={needsYou} pending={model.pendingApprovals} onJump={(p) => { lastTouch.current = Date.now(); setReturnCamera(null); flyTo(clampCamera({ cx: p[0], cy: p[1], w: Math.min(camera.w, 1500) }, world.bounds), 600) }} />
       <p className="town-world-hint">拖动地图移动 · 滚轮缩放 · 拉远看全部项目</p>
       {guide && <TownGuide onClose={() => setGuide(false)} follow={feed.preferences} onFollowChange={feed.savePreferences} />}
       {harvest && !props.replaying && <HarvestBar ids={harvest.ids} index={harvest.index} results={results} model={model}

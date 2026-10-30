@@ -116,11 +116,14 @@ describe('TownView 分页与版式', () => {
       onSelectItem={() => {}} onSelectSession={() => {}} onSelectRepo={() => {}} onQueue={() => {}} />)).not.toContain('town-pager')
   })
 
-  it('世界地图在窄屏仍使用同一相机和动态卡片，而工作室保留竖屏分页', () => {
+  it('窄屏即使指定世界地图仍然分页，一页一个项目，不挂载自动跟随', () => {
     const html = renderToStaticMarkup(<TownView snap={many} conn="live" repoId="all" provider="all" sel={null} layout="portrait" world
       onSelectItem={() => {}} onSelectSession={() => {}} onSelectRepo={() => {}} onQueue={() => {}} />)
-    expect(html).toContain('town-world')
-    expect(html).not.toContain('town-pager')
+    expect(html).toContain('town-svg is-portrait')
+    expect(html).toContain('town-pager')
+    expect(html).toContain('1/5 · 5 个项目')
+    expect(html).not.toContain('class="town-world')
+    expect(html).not.toContain('项目新动态')
   })
 })
 

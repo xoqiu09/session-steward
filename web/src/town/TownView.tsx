@@ -144,7 +144,7 @@ export function TownView({ snap, conn, repoId, provider, sel, onSelectItem, onSe
   layout?: LayoutName
   /** 状态条右侧的附加内容（桌面模式的连接状态、退出入口）。 */
   bar?: ReactNode
-  /** 大地图世界；窄屏使用为菜地留位置的紧凑浮层。工作室仍按宽度分页。 */
+  /** 宽屏使用世界地图；窄屏保留一页一个项目，不接入自动跟随。 */
   world?: boolean
   /** 从历史日历点“回放这一天”进来时的日期。 */
   replayDay?: string
@@ -186,7 +186,7 @@ export function TownView({ snap, conn, repoId, provider, sel, onSelectItem, onSe
 
   const narrow = useMedia(PORTRAIT_QUERY)
   const shape: LayoutName = layout ?? (narrow ? 'portrait' : 'wide')
-  const asWorld = world
+  const asWorld = world && shape === 'wide'
   const urgent = useCallback((b: BuildingView) => needsYou(b, model.pendingApprovals), [model])
   // 村庄与野外按完整快照里近 7 天的活动和关联来分；只在快照变化时重算，位置才稳定。
   const plan = useMemo(() => planWorld(model.buildings.filter((b) => b.repo).map((b) => b.repo!), shown, Date.parse(shown.now) || Date.now()), [model, shown])

@@ -9,7 +9,6 @@
   .town-view { height: auto; }
   .town-view .town-diorama { flex: none; min-height: 0; }
   .town-view .town-diorama > .town-svg { position: static; }
-  .town-view .town-diorama:has(> .town-world) { height: calc(100dvh - 180px); min-height: 480px; }
 }
 
 /* 窄屏下 SS 默认把侧栏留在右侧一列；小镇视图改为上下排，场景占满宽度 */

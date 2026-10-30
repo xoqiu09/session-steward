@@ -118,6 +118,7 @@
 }
 
 /* 新动态沿用小镇纸卡与泥土色；浮层文字不随 SVG 镜头缩放。 */
+.town-view .town-moment-status { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
 .town-view .town-world-ui { cursor: default; touch-action: auto; }
 .town-view .town-world-ui button, .town-view button.town-world-ui, .town-view .town-follow-settings select {
   min-height: 44px; padding: 8px 12px; border: 1px solid var(--town-line); border-radius: 9px;
