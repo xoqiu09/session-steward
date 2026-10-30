@@ -100,7 +100,7 @@ describe('WorldStage 跟随动态', () => {
     deliver(); advance(2999); expect(notice(tree)).toBeUndefined()
     advance(1); expect(notice(tree)?.props.moment.itemId).toBe('DEMO-2')
     expect(requestAnimationFrame).toHaveBeenCalledOnce(); expect(selected).not.toHaveBeenCalled()
-    expect(words(tree)).not.toContain('验收通过')
+    expect(words(tree)).not.toContain('已处理')
   })
   it('30 秒内点过地图时只入队；不会保护结束后突然补飞', () => {
     render(); tree.props.onPointerDownCapture(); deliver(); advance(3000)

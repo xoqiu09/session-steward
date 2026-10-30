@@ -836,7 +836,7 @@ function HarvestBar({ ids, index, results, model, onPrev, onNext, onReopen, onEn
       </p>
       {left === 0 ? <p className="town-harvest-now">这一批都看完了。收下的进了粮仓，退回的重新种下，Agent 会接着改。</p>
         : <p className="town-harvest-now">{now === 'harvested' ? '收下了 ✓ ' : now === 'returned' ? '退回重种 ↺ ' : ''}<code>{ids[index]}</code> {item?.title ?? '这项已不在地里'}</p>}
-      <p className="town-harvest-hint">右边的验收卡片里看交付说明，点“验收通过”收下，“退回修改”重新种。</p>
+      <p className="town-harvest-hint">右边的交付卡片里看说明，处理完点“已处理”收下，需要修改点“退回修改”重新种。</p>
       <div className="town-harvest-actions">
         <button type="button" onClick={onPrev}>上一棵</button>
         <button type="button" onClick={onReopen}>重新打开卡片</button>

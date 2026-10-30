@@ -7,7 +7,7 @@ import { managementLabel } from '../workManagement'
 import './workStatus.css'
 
 const choices: Record<WorkManagement['state'], { label: string; confirm: string; help: string }> = {
-  accepted: { label: '标记已验收', confirm: '确认已验收', help: '按你的确认将此工作项标为已完成，旧简报保留。代码合并和核心功能的验收仍分别记录。' },
+  accepted: { label: '标记已处理', confirm: '确认已处理', help: '将这件事收进已处理，保留原交付和来源记录。验证结果、核心功能确认和代码合并分别记录。' },
   delegated: { label: '记录已转交', confirm: '确认转交记录', help: '记录接手人，并收起此项的日常催办。这里只保存交接记录，接手人的通知和安排由你完成。' },
   paused: { label: '暂停提醒', confirm: '确认暂停提醒', help: '暂时收起此项的日常催办，可随时继续处理。正在运行的会话不会停止，正式审批仍会显示。' },
   active: { label: '继续处理', confirm: '确认继续处理', help: '恢复日常跟进并清除旧的阻塞提示。旧回报保留；可在说明中填写现在的下一步。' },

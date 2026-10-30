@@ -8,5 +8,5 @@ it('说明讲清地图上的东西、操作、每天怎么用和它不做什么�
     expect(html).toContain(t)
   }
   expect(html.match(/town-guide-crops/g)).toHaveLength(1)
-  expect(html).not.toMatch(/>验收通过<|>退回修改<|>允许本次</)
+  expect(html).not.toMatch(/>已处理<|>退回修改<|>允许本次</)
 })

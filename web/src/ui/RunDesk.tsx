@@ -43,6 +43,7 @@ export function RunDesk({ snap, item, remote, onClose, onSelectSession, attentio
   const handoffs = (snap.handoffs ?? []).filter((h) => h.work_item_id === item.id)
   const events = timelineOf(snap, item)
   const commands = commandsOf(snap, item)
+  const memory = item.completion_policy === 'auto_history'
 
   return (
     <div className="run-desk detail">
@@ -51,10 +52,10 @@ export function RunDesk({ snap, item, remote, onClose, onSelectSession, attentio
           <p className="rd-kicker">工作详情</p>
           <div className="rd-head-actions">{actions}<button className="btn small rd-close" onClick={onClose} aria-label="关闭工作详情">✕</button></div>
         </div>
-        <h2>{item.title}</h2>
+        <h2>{memory ? '记忆与偏好' : item.title}</h2>
         <p className="rd-sub">
-          <code>{item.id}</code> · {repo?.name ?? '未关联项目'}
-          <span className={`rd-pill st-${item.status}`}>{item.automatic_history ? '已自动归档' : itemStatusLabel[item.status]}</span>
+          <code>{item.id}</code> · {memory ? '自动记忆整理' : repo?.name ?? '未关联项目'}
+          <span className={`rd-pill st-${item.status}`}>{item.automatic_history ? '已自动归档' : memory && item.automatic_issue ? '需要关注' : memory && item.status === 'review' ? '自动整理' : itemStatusLabel[item.status]}</span>
           <span className="rd-muted">更新 {ago(item.updated_at, snap.now)}</span>
         </p>
       </header>

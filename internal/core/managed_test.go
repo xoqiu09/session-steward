@@ -500,7 +500,7 @@ func TestNotifierDeliveryExplainsAcceptanceAction(t *testing.T) {
 			if len(alerts) != 1 || alerts[0].Link != "http://127.0.0.1:1/#item=NT-4" || strings.Contains(alerts[0].Body, "private") {
 				t.Fatal("wrong action target or private content in notification", alerts)
 			}
-			if status == "review" && (alerts[0].Title != "交付待你验收" || !strings.Contains(alerts[0].Body, "验收通过或退回修改")) {
+			if status == "review" && (alerts[0].Title != "交付待你处理" || !strings.Contains(alerts[0].Body, "已处理或退回修改")) {
 				t.Fatal("missing acceptance guidance", alerts)
 			}
 			if status != "review" && alerts[0].Title != "需要你：接手下一步" {

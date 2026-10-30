@@ -95,14 +95,110 @@ func TestAutomaticMemoryDeliveryHistoryAndNotifications(t *testing.T) {
 			if err != nil || len(alerts) != 0 {
 				t.Fatalf("success notified after recovery: %+v %v", alerts, err)
 			}
-			decision := ev("routine", event.KindReport, at.Add(5*time.Second))
-			decision.Brief = map[string]string{"next_owner": "user", "next": "Synthetic explicit decision", "stage": "implementing"}
+			decision := ev("routine", event.KindAsk, at.Add(5*time.Second))
+			decision.Text = "Synthetic explicit decision"
 			if _, err := c.Ingest(ctx, decision); err != nil {
 				t.Fatal(err)
 			}
 			alerts, err = n.Pending(ctx)
-			if err != nil || len(alerts) != 1 || alerts[0].Title != "自动任务需要你回应" {
+			if err != nil || len(alerts) != 1 || alerts[0].Title != "需要你：做决定" {
 				t.Fatal("explicit decision must not become routine acceptance", alerts, err)
+			}
+		})
+	}
+}
+
+func TestRoutineDeliveredFollowupDoesNotInventDecision(t *testing.T) {
+	c, n, now := routineNotifierFixture(t)
+	ctx := context.Background()
+	*now = now.Add(time.Minute)
+	delivery := ev("routine-boundary", event.KindDeliver, *now)
+	delivery.Text = "Synthetic summary completed and checked"
+	mustIngest(t, c, delivery)
+	*now = now.Add(time.Second)
+	mustIngest(t, c, ev("routine-boundary", event.KindStop, *now))
+	*now = now.Add(time.Second)
+	mustIngest(t, c, report("routine-boundary", *now, map[string]string{
+		"summary": "Synthetic summary checked", "progress": "Synthetic maintenance complete",
+		"stage": "validating", "next_owner": "user", "next": "The summary is available for the next conversation.",
+	}))
+	snap, err := c.Snapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := snap.WorkItems[0]
+	if !w.AutomaticHistory || w.AutomaticIssue != "" || w.Status != "review" || w.Management != nil {
+		t.Fatalf("informational follow-up became a decision or user acceptance: %+v", w)
+	}
+	assertNoPending(t, n)
+
+	// Real questions still surface once, and answering closes the question
+	// without accepting the work or leaving the ask text as a permanent blocker.
+	*now = now.Add(time.Second)
+	ask := ev("routine-boundary", event.KindAsk, *now)
+	ask.Text = "Synthetic suggestion: remember my preferred report format? Reason: future reports can follow it."
+	mustIngest(t, c, ask)
+	snap, err = c.Snapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if snap.WorkItems[0].AutomaticHistory || snap.WorkItems[0].AutomaticIssueKind != "formal" {
+		t.Fatalf("real memory question lost or duplicated as blocker: %+v", snap.WorkItems[0])
+	}
+	alerts, err := n.Pending(ctx)
+	if err != nil || len(alerts) != 1 || alerts[0].Title != "需要你：做决定" {
+		t.Fatalf("real question must notify once: %+v %v", alerts, err)
+	}
+	*now = now.Add(time.Second)
+	mustIngest(t, c, ev("routine-boundary", event.KindPrompt, *now))
+	*now = now.Add(time.Second)
+	mustIngest(t, c, ev("routine-boundary", event.KindStop, *now))
+	snap, err = c.Snapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !snap.WorkItems[0].AutomaticHistory || snap.WorkItems[0].AutomaticIssue != "" || snap.WorkItems[0].Status != "review" {
+		t.Fatalf("answered memory question did not return to quiet history: %+v", snap.WorkItems[0])
+	}
+	assertNoPending(t, n)
+}
+
+func TestRoutineFollowupCannotHideRealActivityOrFailures(t *testing.T) {
+	for _, test := range []string{"active-session", "new-run", "blocker", "error", "new-work", "no-delivery", "validating-without-delivery", "formal"} {
+		t.Run(test, func(t *testing.T) {
+			c := newCore(t, nil)
+			delivered, later := "2026-10-24T00:00:00.000000000Z", "2026-10-24T00:01:00.000000000Z"
+			w := WorkItem{ID: "MEM-1", Title: "整理记忆", Status: "review", Ready: true,
+				Brief: &Brief{LastDeliveredAt: delivered, Fields: map[string]*BriefField{
+					"stage":      {Text: "validating", At: later, Source: "report"},
+					"summary":    {Text: "Synthetic checked result", At: later, Source: "report"},
+					"next_owner": {Text: "user", At: later, Source: "report"},
+				}}}
+			snap := Snapshot{Now: later}
+			s := Session{ID: 1, WorkItemID: w.ID, DataSource: "live", State: "running", Freshness: "live", LastActivityAt: later}
+			switch test {
+			case "active-session":
+				snap.Sessions = []Session{s}
+			case "new-run":
+				snap.Runs = []Run{{WorkItemID: w.ID, SessionID: 1, StartedAt: later}}
+			case "blocker":
+				w.Brief.Fields["blocker"] = &BriefField{Text: "Synthetic failure", At: later, Source: "report"}
+			case "error":
+				s.State = "error"
+				snap.Sessions = []Session{s}
+			case "new-work":
+				w.Brief.Fields["stage"].Text = "implementing"
+			case "no-delivery", "validating-without-delivery":
+				w.Brief.LastDeliveredAt = ""
+			case "formal":
+				snap.Approvals = []Approval{{ID: "real-question", WorkItemID: &w.ID, Kind: "decision", Status: "pending", CreatedAt: later}}
+			}
+			c.routineState(&snap, &w)
+			if w.AutomaticHistory {
+				t.Fatalf("active/incomplete/exceptional round hidden: %+v", w)
+			}
+			if (test == "blocker" || test == "error" || test == "formal") && w.AutomaticIssue == "" {
+				t.Fatal("real exception lost")
 			}
 		})
 	}

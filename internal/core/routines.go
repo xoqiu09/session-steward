@@ -93,17 +93,23 @@ func (c *Core) routineState(snap *Snapshot, w *WorkItem) {
 		if latest < delivered {
 			continue
 		} // earlier routine rounds stay in history
-		if f := b.Fields["blocker"]; f != nil && !f.Flagged && strings.TrimSpace(f.Text) != "" {
+		if f := b.Fields["blocker"]; f != nil && !f.Flagged && f.Source != "ask" && strings.TrimSpace(f.Text) != "" {
 			issue("blocked", f.At, "Agent 回报卡点："+f.Text)
 		}
+		// A validation/summary report after delivery can describe the completed
+		// round. It is not a new round or a request to accept routine maintenance.
+		// Actual live runs, failures, blockers and formal questions below still win.
+		stage := b.Fields["stage"]
+		completionFollowup := delivered != "" && (w.Status == "review" || w.Status == "done") &&
+			stage != nil && !stage.Flagged && stage.Source == "report" && stage.At >= delivered &&
+			(stage.Text == "validating" || stage.Text == "review")
 		for _, key := range []string{"stage", "summary", "progress"} {
-			if f := b.Fields[key]; f != nil && !f.Flagged && f.At > delivered && f.Source != "deliver" {
+			if f := b.Fields[key]; f != nil && !f.Flagged && f.At > delivered && f.Source != "deliver" && !(completionFollowup && f.Source == "report" && f.At <= stage.At) {
 				hold = true
 			}
 		}
-		if f := b.Fields["next_owner"]; f != nil && !f.Flagged && f.Text == "user" && f.Source != "deliver" && f.At >= delivered && (b.InputResolvedAt == "" || b.InputResolvedAt <= f.At) {
-			issue("reported_decision", f.At, "Agent 明确回报需要你回应")
-		}
+		// next_owner is routing metadata, not evidence that the user has a
+		// question to answer. Explicit ask/native input creates a formal decision.
 	}
 	sids := map[int64]bool{}
 	for _, run := range snap.Runs {

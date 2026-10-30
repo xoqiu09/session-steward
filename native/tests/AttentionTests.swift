@@ -34,6 +34,35 @@ struct AttentionTests {
         check(state.records.first?.project == "合成项目", "project label is retained")
         check(AttentionState.snapshot([:]).records.isEmpty, "empty server arrays")
         check(!AttentionState().online, "offline does not claim an empty successful queue")
+        let memory: [String: Any] = ["id": "MEM-SYN", "title": "整合会话记忆摘要", "status": "review", "repo_id": 3,
+                                     "completion_policy": "auto_history", "automatic_history": false]
+        let memoryRepos: [[String: Any]] = [["id": 3, "name": "memories_v2"]]
+        let quiet = AttentionState.snapshot(["work_items": [memory], "repos": memoryRepos])
+        check(quiet.count == 0 && quiet.records.isEmpty, "routine review with ongoing metadata must never request acceptance")
+        let question = "建议记住：报告优先用中文。\n原因：后续报告可以按你的阅读习惯整理。需要保存吗？"
+        let request: [String: Any] = ["id": "memory-question", "kind": "decision", "status": "pending", "work_item_id": "MEM-SYN", "preview": question]
+        var formal = memory
+        formal["automatic_issue"] = "存在正式审批或决定请求"
+        formal["automatic_issue_kind"] = "formal"
+        let proposed = AttentionState.snapshot(["work_items": [formal], "approvals": [request], "repos": memoryRepos])
+        check(proposed.decisions == 1 && proposed.reviews == 0 && proposed.blocked == 0, "memory question is one decision, not an extra acceptance or blocker")
+        check(proposed.records.first?.title == question && proposed.records.first?.project == "记忆与偏好", "show actual suggestion instead of internal summary and repository names")
+        check(proposed.records.first?.titleLines == 2 && proposed.records.first?.target.id == "memory-question", "question has readable space and opens its own request")
+        var sessionRequest = request
+        sessionRequest.removeValue(forKey: "work_item_id")
+        sessionRequest["session_id"] = 31
+        let sessionQuestion = AttentionState.snapshot(["work_items": [formal], "approvals": [sessionRequest], "sessions": [["id": 31, "work_item_id": "MEM-SYN"]]])
+        check(sessionQuestion.records.first?.project == "记忆与偏好", "session-bound questions use the same readable presentation")
+        var failure = memory
+        failure["automatic_issue"] = "验证失败，需要检查"
+        failure["automatic_issue_kind"] = "validation"
+        failure["status"] = "in_progress"
+        let failed = AttentionState.snapshot(["work_items": [failure], "repos": memoryRepos])
+        check(failed.blocked == 1 && failed.reviews == 0 && failed.records.first?.title == "验证失败，需要检查", "routine failures remain visible as checks, never acceptance")
+        check(AttentionState.snapshot(["work_items": [memory], "approvals": [["id": "memory-permission", "kind": "permission", "status": "pending", "handleable": true, "work_item_id": "MEM-SYN"]]]).decisions == 1, "real routine permissions remain visible")
+        var answered = request
+        answered["status"] = "cancelled"
+        check(AttentionState.snapshot(["work_items": [memory], "approvals": [answered]]).count == 0, "handled question clears without turning routine into acceptance")
         let external = AttentionGeometry(screen: CGRect(x: -1920, y: 120, width: 1920, height: 1080), visibleTop: 1175, safeTop: 0, left: nil, right: nil)
         let frame = external.frame(expanded: false, rows: 1)
         check(!external.hasNotch && frame.maxY == 1167, "non-notch display stays below the menu bar")

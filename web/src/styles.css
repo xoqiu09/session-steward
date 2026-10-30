@@ -164,6 +164,7 @@ tbody tr:hover { background: #fafaf7; }
 .q-card.low { background: #fbfbf9; border-style: dashed; }
 .q-meta { display: flex; gap: 6px; align-items: center; margin-bottom: 6px; min-width: 0; }
 .q-text { margin: 4px 0; line-height: 1.5; }
+.memory-question { white-space: pre-wrap; overflow-wrap: anywhere; margin: 10px 0; }
 .preview { background: #f6f6f3; border-radius: 6px; padding: 6px 8px; margin: 4px 0; white-space: pre-wrap; word-break: break-all; font-size: 12px; }
 .lifecycle { display: flex; gap: 4px; }
 .lifecycle span { font-size: 11px; padding: 1px 7px; border-radius: 999px; background: #f0f0ee; color: #999; }

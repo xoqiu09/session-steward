@@ -8,6 +8,7 @@ struct AttentionRecord: Equatable, Identifiable {
     let label: String
     let priority: Int
     let updated: String
+    var titleLines: Int = 1
     var id: String { target.kind.rawValue + ":" + target.id }
 }
 
@@ -23,6 +24,7 @@ struct AttentionState: Equatable {
         let items = object["work_items"] as? [[String: Any]] ?? []
         let repos = object["repos"] as? [[String: Any]] ?? []
         let approvals = object["approvals"] as? [[String: Any]] ?? []
+        let sessions = object["sessions"] as? [[String: Any]] ?? []
         let byID = Dictionary(items.compactMap { item -> (String, [String: Any])? in
             guard let id = item["id"] as? String else { return nil }
             return (id, item)
@@ -47,24 +49,33 @@ struct AttentionState: Equatable {
                   let id = approval["id"] as? String, let target = PanelTarget(kind: "approval", id: id) else { continue }
             if archived.contains(approval["repo_id"] as? Int ?? -1) { continue }
             if kind == "merge", let payload = approval["payload"] as? [String: Any], !(payload["stale"] as? String ?? "").isEmpty { continue }
-            let item = byID[approval["work_item_id"] as? String ?? ""] ?? [:]
+            let sessionItem = sessions.first { ($0["id"] as? Int) == (approval["session_id"] as? Int) }?["work_item_id"] as? String
+            let item = byID[approval["work_item_id"] as? String ?? sessionItem ?? ""] ?? [:]
             // A still-live permission/decision is a real request even if the work item was paused.
             if kind == "merge" && hidden(item) { continue }
             let label = kind == "merge" ? "合并待决定" : kind == "permission" ? "工具权限待决定" : "等你决定"
+            let memoryQuestion = kind == "decision" && item["completion_policy"] as? String == "auto_history"
+            let question = (approval["preview"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
             state.decisions += 1
-            state.records.append(AttentionRecord(target: target, title: item["title"] as? String ?? label,
-                                                  project: project(approval["repo_id"] ?? item["repo_id"]), label: label,
-                                                  priority: 0, updated: approval["created_at"] as? String ?? ""))
+            state.records.append(AttentionRecord(target: target,
+                                                  title: memoryQuestion ? (question.isEmpty ? "有一个记忆问题需要你回答" : question) : item["title"] as? String ?? label,
+                                                  project: memoryQuestion ? "记忆与偏好" : project(approval["repo_id"] ?? item["repo_id"]), label: label,
+                                                  priority: 0, updated: approval["created_at"] as? String ?? "", titleLines: memoryQuestion ? 2 : 1))
         }
         for item in items where !hidden(item) {
             let status = item["status"] as? String ?? ""
-            guard ["review", "blocked"].contains(status), let id = item["id"] as? String,
+            let automatic = item["completion_policy"] as? String == "auto_history"
+            let issue = (item["automatic_issue"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            // Formal requests already have a row. A routine never needs generic
+            // delivery acceptance, including during a new active round.
+            if automatic && (issue.isEmpty || item["automatic_issue_kind"] as? String == "formal") { continue }
+            guard (automatic || ["review", "blocked"].contains(status)), let id = item["id"] as? String,
                   let target = PanelTarget(kind: "item", id: id) else { continue }
-            let review = status == "review"
+            let review = !automatic && status == "review"
             if review { state.reviews += 1 } else { state.blocked += 1 }
-            state.records.append(AttentionRecord(target: target, title: item["title"] as? String ?? id,
-                                                  project: project(item["repo_id"]), label: review ? "待你验收" : "卡住了",
-                                                  priority: review ? 2 : 1, updated: item["updated_at"] as? String ?? ""))
+            state.records.append(AttentionRecord(target: target, title: automatic ? issue : item["title"] as? String ?? id,
+                                                  project: automatic ? "记忆整理" : project(item["repo_id"]), label: automatic ? "需要检查" : review ? "交付待处理" : "卡住了",
+                                                  priority: review ? 2 : 1, updated: item["updated_at"] as? String ?? "", titleLines: automatic ? 2 : 1))
         }
         state.records.sort { a, b in
             if a.priority != b.priority { return a.priority < b.priority }

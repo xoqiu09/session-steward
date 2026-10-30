@@ -27,7 +27,7 @@ const repos = [
 ]
 const brief = (sessionId: number) => ({ fields: { summary: { entry_id: 1, text: '做好了一屏小镇', kind: 'agent' as const, source: 'deliver', session_id: sessionId, at: '2026-10-26T15:30:00Z' } }, tool_events_since: 0, last_event_at: now, stale: false })
 const withSessions = (item: WorkItem, sessions: Snapshot['sessions']): Snapshot => ({ ...snap(item), repos, sessions })
-const render = (s: Snapshot, item: WorkItem) => renderToStaticMarkup(<DeliveryReview snap={s} item={item} onSelectSession={() => {}} actions={<button>验收通过</button>} />)
+const render = (s: Snapshot, item: WorkItem) => renderToStaticMarkup(<DeliveryReview snap={s} item={item} onSelectSession={() => {}} actions={<button>已处理</button>} />)
 
 describe('待验收卡片', () => {
   const item = fakeItem({ id: 'AGE-1', repo_id: 1, title: '小镇候选', status: 'review', branch: 'claude/old-prototype', acceptance: '一屏看清所有项目', brief: brief(80) })
