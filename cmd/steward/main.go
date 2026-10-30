@@ -80,7 +80,7 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "用法: steward serve | open | remote [--rotate] | install [claude|codex|all] [--project DIR] | uninstall [claude|codex|all] [--project DIR] | status | service install|uninstall|restart|status | hub | m0")
+	fmt.Fprintln(os.Stderr, "用法: steward serve [--claude-version x.y.z] | open | remote [--rotate] | install [claude|codex|all] [--project DIR] [--claude-version x.y.z] | uninstall [claude|codex|all] [--project DIR] | status | service install|uninstall|restart|status | hub | m0")
 }
 
 func arg(i int, d string) string {
@@ -91,6 +91,10 @@ func arg(i int, d string) string {
 }
 
 func serve() error {
+	claudeVersion, err := claudeVersionArg(os.Args[2:])
+	if err != nil {
+		return err
+	}
 	cfg, err := config.Load()
 	if err != nil {
 		return err
@@ -256,6 +260,8 @@ func serve() error {
 		}
 	}
 	s := &server.Server{BuildCommit: BuildCommit, ReportingHints: cfg.ReportingHints, Core: c, IngestToken: ingest, PanelToken: panel, PermWait: time.Duration(cfg.PermissionWaitSec) * time.Second, Static: static}
+	hookMonitor := &install.Monitor{Targets: []install.Target{install.ClaudeTarget(home), install.CodexTarget(home, os.Getenv("CODEX_HOME"))}, ClaudeVersion: c.LatestClaudeVersion, ExplicitClaudeVersion: claudeVersion}
+	s.HookCoverage = hookMonitor.Snapshot
 	if len(cfg.RemoteHosts) > 0 {
 		// 远程设备 token 与本机面板 token 分开；steward remote --rotate 可吊销
 		if s.RemoteToken, err = config.Secret("remote.token"); err != nil {
@@ -437,6 +443,10 @@ func hookBinary() (string, error) {
 }
 
 func doInstall(which string, remove bool) error {
+	claudeVersion, err := claudeVersionArg(os.Args[2:])
+	if err != nil {
+		return err
+	}
 	cfg, err := config.Load()
 	if err != nil {
 		return err
@@ -465,16 +475,53 @@ func doInstall(which string, remove bool) error {
 			fmt.Printf("%s: %s\n", t.Name, msg)
 			continue
 		}
+		version, probeErr := install.ResolveVersion(context.Background(), t.Provider, claudeVersion, func(ctx context.Context) (string, error) {
+			return store.ReadLatestSessionVersion(ctx, config.Path("steward.sqlite"), "claude")
+		}, nil)
+		plan := install.ForVersion(t, version)
+		if probeErr != nil || len(plan.Skipped) > 0 || plan.Reason != "" {
+			fmt.Printf("%s: %s；跳过 %v\n", t.Name, plan.Reason, plan.Skipped)
+		}
+		if len(plan.Target.Events) == 0 {
+			continue
+		}
+		t = plan.Target
 		changed, err := in.Install(t)
 		if err != nil {
 			return fmt.Errorf("%s: %w", t.Name, err)
 		}
-		fmt.Printf("%s: %s（%s）\n", t.Name, map[bool]string{true: "已追加 Steward hooks", false: "已是最新"}[changed], t.Path)
+		fmt.Printf("%s: %s（%s）\n", t.Name, map[bool]string{true: "已补齐或更新 Steward hooks", false: "已是最新"}[changed], t.Path)
 		if t.Name == "codex" {
+			if changed {
+				fmt.Println("  Steward 条目内容已改变，Codex 信任指纹可能变化，请在 Codex 内重新确认。")
+			}
 			fmt.Println("  注意：Codex 需要在应用内确认新的 hooks 才会启用。运行 steward status 查看信任状态。")
 		}
 	}
 	return nil
+}
+
+func claudeVersionArg(args []string) (string, error) {
+	version := ""
+	for i := 0; i < len(args); i++ {
+		value := ""
+		if args[i] == "--claude-version" {
+			if i+1 >= len(args) {
+				return "", fmt.Errorf("--claude-version 缺少 x.y.z 版本")
+			}
+			i++
+			value = args[i]
+		} else if strings.HasPrefix(args[i], "--claude-version=") {
+			value = strings.TrimPrefix(args[i], "--claude-version=")
+		} else {
+			continue
+		}
+		if version != "" || !install.ForVersion(install.Target{Provider: "claude"}, value).VersionKnown {
+			return "", fmt.Errorf("--claude-version 需要唯一且明确的 x.y.z 版本")
+		}
+		version = value
+	}
+	return version, nil
 }
 
 func status() error {

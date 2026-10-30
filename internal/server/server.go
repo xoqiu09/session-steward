@@ -16,6 +16,7 @@ import (
 
 	"github.com/xoqiu09/session-steward/internal/core"
 	"github.com/xoqiu09/session-steward/internal/event"
+	"github.com/xoqiu09/session-steward/internal/install"
 )
 
 type Server struct {
@@ -32,6 +33,8 @@ type Server struct {
 	RemoteToken string
 	// 多设备合并（默认 nil，关闭）。
 	Hub *Hub
+	// 只读 hooks 覆盖情况；版本命令由独立 Monitor 限时和缓存。
+	HookCoverage func(context.Context) []install.Coverage
 }
 
 func (s *Server) remoteHost(host string) bool {
@@ -119,6 +122,15 @@ func (s *Server) Handler() http.Handler {
 		writeJSON(w, 200, map[string]string{"commit": s.BuildCommit})
 	}))
 	mux.HandleFunc("GET /api/snapshot", s.panel(s.handleSnapshot))
+	mux.HandleFunc("GET /api/hooks/status", s.panel(func(w http.ResponseWriter, r *http.Request) {
+		if s.HookCoverage == nil {
+			writeJSON(w, 200, []install.Coverage{})
+			return
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+		defer cancel()
+		writeJSON(w, 200, s.HookCoverage(ctx))
+	}))
 	mux.HandleFunc("POST /api/features/{repo}/{id}/confirm-scope", s.panel(func(w http.ResponseWriter, r *http.Request) {
 		repo, err := pathInt(r, "repo")
 		if err != nil {

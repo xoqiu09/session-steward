@@ -15,6 +15,7 @@ type HookInput struct {
 	SessionID        string          `json:"session_id"`
 	TranscriptPath   string          `json:"transcript_path"`
 	Cwd              string          `json:"cwd"`
+	NewCwd           string          `json:"new_cwd"` // CwdChanged 的目标目录，忽略 old_cwd。
 	HookEventName    string          `json:"hook_event_name"`
 	PermissionMode   string          `json:"permission_mode"`
 	Model            string          `json:"model"`
@@ -82,8 +83,16 @@ func Normalize(raw []byte, opt Options) (*Event, *HookInput, error) {
 		ToolUseID:  in.ToolUseID,
 	}
 	e.Source.Ref = e.EventID
-	e.Source.Client, e.Source.Version, e.Source.Originator = detectClient(opt, in.TranscriptPath)
 	e.Kind = classify(opt.Provider, &in)
+	transcript := in.TranscriptPath
+	if perceptionObservation(&in) {
+		// P3 新信号只使用 hook 里的结构化字段，不打开 transcript。
+		transcript = ""
+	}
+	e.Source.Client, e.Source.Version, e.Source.Originator = detectClient(opt, transcript)
+	if e.Kind == KindCwdChanged {
+		e.Cwd = firstNonEmpty(in.NewCwd, in.Cwd)
+	}
 
 	switch e.Kind {
 	case KindToolPre, KindToolPost, KindToolFail, KindPermission:
@@ -105,6 +114,12 @@ func Normalize(raw []byte, opt Options) (*Event, *HookInput, error) {
 		e.Reason = firstNonEmpty(in.ErrorType, errString(in.Error), in.Reason, "unknown")
 	case KindNotifyPerm, KindNotifyIdle, KindNotifyInput, KindNotifyOther:
 		e.Reason = in.NotificationType
+		if in.NotificationType == "agent_completed" || strings.HasPrefix(in.NotificationType, "quota_auto_resume_") {
+			if !knownQuotaNotification(in.NotificationType) && in.NotificationType != "agent_completed" {
+				e.Reason = "quota_auto_resume_unknown"
+			}
+			break // 不保留通知正文；完成通知也不是工作交付。
+		}
 		e.Preview = Redact(Truncate(in.Message, 160))
 		if NativeInputTool(opt.Provider, in.ToolName) {
 			e.Reason = "native_user_input"
@@ -114,6 +129,11 @@ func Normalize(raw []byte, opt Options) (*Event, *HookInput, error) {
 		}
 	case KindSessionStart, KindSessionEnd:
 		e.Reason = firstNonEmpty(in.Source, in.Reason)
+	case KindPermissionDenied:
+		e.Reason = "auto_mode_denied"
+		e.Preview = "被自动拒绝：" + Redact(Truncate(in.ToolName, 80))
+	case KindQuotaResumed, KindQuotaAwaitInput:
+		e.Reason = in.NotificationType
 	}
 	return e, &in, nil
 }
@@ -143,6 +163,10 @@ func classify(provider string, in *HookInput) Kind {
 			return KindNotifyIdle
 		case "agent_needs_input", "elicitation_dialog":
 			return KindNotifyInput
+		case "quota_auto_resume_fired":
+			return KindQuotaResumed
+		case "quota_auto_resume_stale":
+			return KindQuotaAwaitInput
 		}
 		return KindNotifyOther
 	case "Stop":
@@ -159,8 +183,28 @@ func classify(provider string, in *HookInput) Kind {
 		return KindSubagentOff
 	case "PreCompact", "PostCompact":
 		return KindCompact
+	case "PermissionDenied":
+		return KindPermissionDenied
+	case "CwdChanged":
+		return KindCwdChanged
+	case "TaskCompleted":
+		return KindTaskCompleted
 	}
 	return KindUnknown
+}
+
+func knownQuotaNotification(name string) bool {
+	return name == "quota_auto_resume_fired" || name == "quota_auto_resume_stale" || name == "quota_auto_resume_disabled"
+}
+
+func perceptionObservation(in *HookInput) bool {
+	switch in.HookEventName {
+	case "PermissionDenied", "CwdChanged", "PreCompact", "PostCompact", "TaskCompleted":
+		return true
+	case "Notification":
+		return in.NotificationType == "agent_completed" || strings.HasPrefix(in.NotificationType, "quota_auto_resume_")
+	}
+	return false
 }
 
 // These tools collect an answer or plan approval. A generic allow/deny cannot

@@ -116,7 +116,16 @@ export function sessionSignal(snap: Snapshot, s: Session): Signal {
   if (s.state === 'error') return { label: '执行出错', reason: s.state_reason || '未提供错误原因', tone: 'danger' }
   if (s.state === 'interrupted') return { label: '已中断', reason: s.state_reason || '会话被中断，结果待确认', tone: 'muted' }
   if (s.state === 'ended') return { label: '已结束', reason: '会话已结束，工作项验收另行处理', tone: 'muted' }
+  if (s.state === 'idle' && s.state_reason === 'quota_auto_resume_stale') return { label: '等待继续', reason: '额度已恢复，请回原会话按 Enter 继续', tone: 'warn' }
   return { label: '等待新指令', reason: '本轮已停止；不代表工作项已完成', tone: 'muted' }
+}
+
+/** 目录移动是事实；人工确认的工作关联继续保留，由用户核对。 */
+export function locationBindingNotice(snap: Snapshot, s: Session): string {
+  if (!['manual', 'tag', 'managed'].includes(s.binding) || s.repo_id == null) return ''
+  const item = (snap.work_items ?? []).find(w => w.id === s.work_item_id)
+  return item?.repo_id != null && item.repo_id !== s.repo_id
+    ? '当前工作目录已切换到其他项目；原工作项关联保留，请核对归属。' : ''
 }
 
 export function itemSignal(snap: Snapshot, w: WorkItem): Signal {
