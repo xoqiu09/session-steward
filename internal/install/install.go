@@ -197,8 +197,8 @@ func stripOurs(hooks *ojson.Object) bool {
 	return changed
 }
 
-// Install 幂等补缺：已有条目和顺序原样保留，只在缺少事件时追加一组。
-// 升级不能改旧条目的 async、超时、命令或 Codex 信任指纹。
+// Install 幂等补缺，原位更新自己的命令和超时；保留顺序、async 和其他字段。
+// Codex 内容改变后需在客户端重新确认信任，安装器不修改信任设置。
 func (in *Installer) Install(t Target) (changed bool, err error) {
 	if err := os.MkdirAll(in.StateDir, 0o700); err != nil {
 		return false, err
@@ -242,7 +242,7 @@ func (in *Installer) Install(t Target) (changed bool, err error) {
 		if ok && !isArr {
 			return false, fmt.Errorf("%s 中 hooks.%s 不是数组，拒绝修改", t.Path, ev)
 		}
-		if hasOurs(arr) {
+		if in.updateOurs(arr, t, ev) {
 			continue
 		}
 		if !ok && !contains(st.CreatedKeys, ev) {
@@ -254,14 +254,7 @@ func (in *Installer) Install(t Target) (changed bool, err error) {
 		if t.Async && asyncEvent(t.Provider, ev) {
 			h.Set("async", json.RawMessage("true"))
 		}
-		timeout := 10
-		if ev == "PermissionRequest" {
-			timeout = in.PermWait + 30
-		}
-		if t.Provider == "codex" && (ev == "Interrupt" || ev == "SessionEnd") {
-			timeout = 3
-		}
-		h.Set("timeout", json.RawMessage(fmt.Sprint(timeout)))
+		h.Set("timeout", json.RawMessage(fmt.Sprint(in.timeout(t.Provider, ev))))
 		g := &ojson.Object{}
 		if t.Provider == "codex" || ev == "PermissionRequest" || ev == "PermissionDenied" || strings.Contains(ev, "Tool") {
 			g.Set("matcher", "*")
@@ -289,7 +282,18 @@ func (in *Installer) Install(t Target) (changed bool, err error) {
 	return true, in.saveState(t, st)
 }
 
-func hasOurs(groups []ojson.Value) bool {
+func (in *Installer) timeout(provider, event string) int {
+	if provider == "codex" && (event == "Interrupt" || event == "SessionEnd") {
+		return 3
+	}
+	if event == "PermissionRequest" {
+		return in.PermWait + 30
+	}
+	return 10
+}
+
+func (in *Installer) updateOurs(groups []ojson.Value, t Target, event string) bool {
+	found := false
 	for _, group := range groups {
 		g, ok := group.(*ojson.Object)
 		if !ok {
@@ -299,11 +303,14 @@ func hasOurs(groups []ojson.Value) bool {
 		hooks, _ := v.([]ojson.Value)
 		for _, h := range hooks {
 			if isOurs(h) {
-				return true
+				found = true
+				own := h.(*ojson.Object)
+				own.Set("command", in.command(t, event))
+				own.Set("timeout", json.RawMessage(fmt.Sprint(in.timeout(t.Provider, event))))
 			}
 		}
 	}
-	return false
+	return found
 }
 
 func asyncEvent(provider, event string) bool {

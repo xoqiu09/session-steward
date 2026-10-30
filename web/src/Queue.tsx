@@ -116,21 +116,29 @@ export function DecisionCard({ a, snap }: { a: Approval; snap: Snapshot }) {
   const s = sessionOf(snap, a.session_id)
   const act = useAction()
   const low = a.kind === 'attention'
+  const item = (snap.work_items ?? []).find(w => w.id === (a.work_item_id || s?.work_item_id))
+  const memory = !low && item?.completion_policy === 'auto_history'
   return (
-    <div className={`q-card ${low ? 'low' : ''}`}>
+    <div className={`q-card ${low ? 'low' : ''}`} aria-label={memory ? '记忆与偏好待确认' : undefined}>
       <div className="q-meta">
         {s && <AgentBadge provider={s.provider} client={s.client} />}
-        <span className="muted">{repoName(snap, approvalRepo(snap, a))}</span>
+        <span className="muted">{memory ? '记忆与偏好 · 等你确认' : repoName(snap, approvalRepo(snap, a))}</span>
         {s?.work_item_id && <span className="pill">{s.work_item_id}</span>}
         <span className="muted right">{ago(a.created_at, snap.now)}</span>
       </div>
-      <WorkName a={a} snap={snap} />
-      <Context a={a} snap={snap} />
-      <p className="q-text">{a.preview}</p>
+      {memory ? <>
+        <div className="approval-work"><strong>这次需要你决定什么</strong></div>
+        <p className="q-text memory-question">{a.preview?.trim() || '尚未提供具体问题，请回原会话请 Agent 说明需要确认的内容。'}</p>
+        <p className="hint">这是 Agent 提出的待确认内容。普通记忆整理会安静收进历史；请回原会话回答，这里不会直接保存或修改记忆。</p>
+      </> : <>
+        <WorkName a={a} snap={snap} />
+        <Context a={a} snap={snap} />
+        <p className="q-text">{a.preview}</p>
+      </>}
       <div className="row">
         {s?.resume_command && <CopyButton text={s.resume_command} label="复制恢复命令" />}
         {s?.cwd && <CopyButton text={`cd ${JSON.stringify(s.cwd)}`} label="复制目录" />}
-        <button disabled={isRemote()} className="btn small" onClick={() => act.run(() => api.dismiss(a.id, low ? 'ignored' : 'resolved'))}>{low ? '忽略' : '已处理'}</button>
+        <button disabled={isRemote()} className="btn small" onClick={() => act.run(() => api.dismiss(a.id, low ? 'ignored' : 'resolved'))}>{low ? '忽略' : memory ? '我已在原会话处理' : '已处理'}</button>
       </div>
       <ErrorLine msg={act.error} />
     </div>

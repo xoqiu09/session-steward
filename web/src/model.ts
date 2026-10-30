@@ -7,8 +7,8 @@ export const itemStatusLabel: Record<ItemStatus, string> = {
   todo: '待开始',
   in_progress: '执行中',
   blocked: '阻塞',
-  review: '待验收',
-  done: '已完成',
+  review: '交付待处理',
+  done: '已处理',
   abandoned: '已放弃',
 }
 
@@ -151,7 +151,9 @@ export interface ReportedHandoff { item: WorkItem; session?: Session; owner: Bri
 
 // Explicit next_owner=user is a reported handoff, never a tool permission grant.
 export function reportedHandoffs(snap: Snapshot, w: WorkItem): ReportedHandoff[] {
-  if (attentionManaged(w) || ['done', 'abandoned'].includes(w.status)) return []
+  // Routine routing reports are not decisions. Questions and failures have
+  // formal requests / automatic_issue, each with its own lifecycle.
+  if (w.completion_policy === 'auto_history' || attentionManaged(w) || ['done', 'abandoned'].includes(w.status)) return []
   const live = (value?: BriefField) => value && !value.flagged && value.text ? value : undefined
   const sources = w.brief?.by_session ? Object.values(w.brief.by_session) : w.brief ? [w.brief] : []
   const out: ReportedHandoff[] = []

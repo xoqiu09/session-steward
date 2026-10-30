@@ -31,7 +31,7 @@ export function HooksSettings({ onClose }: { onClose: () => void }) {
     <div className="row wrap"><h2>会话事件</h2><button className="btn small" onClick={() => void load()} disabled={busy}>{busy ? '正在检查…' : '刷新'}</button></div>
     {coverage?.map(row => <HooksCoverage key={row.provider} row={row} />)}
     {coverage?.length === 0 && <p className="hint">当前服务未提供事件覆盖信息。</p>}
-    <p className="hint">版本检测缓存一分钟。已安装的条目和其他工具的设置保持原样；这里只查看状态。</p>
+    <p className="hint">版本检测缓存一分钟。这里只查看状态；重新安装会补齐事件并更新 Steward 的运行设置，其他工具的设置保持原样。</p>
   </dialog>
 }
 

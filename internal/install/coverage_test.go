@@ -3,6 +3,7 @@ package install
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -104,12 +105,12 @@ func TestCompatibilityDoesNotGuessUnknownOrOldClients(t *testing.T) {
 	target := ClaudeTarget(t.TempDir())
 	for _, raw := range []string{"", "not a version", "2.1.310-preview"} {
 		plan := ForVersion(target, raw)
-		if plan.VersionKnown || len(plan.Target.Events) != 0 || plan.Target.Async {
+		if plan.VersionKnown || len(plan.Target.Events) != 12 || len(plan.Skipped) != 5 || plan.Target.Async {
 			t.Fatalf("Unsafe unknown client: %+v", plan)
 		}
 	}
 	old := ForVersion(target, "2.1.75")
-	for _, name := range []string{"PermissionDenied", "CwdChanged", "PostCompact", "StopFailure"} {
+	for _, name := range []string{"PermissionDenied", "CwdChanged", "PostCompact"} {
 		if contains(old.Target.Events, name) || !contains(old.Skipped, name) {
 			t.Fatalf("Old client contains %s: %+v", name, old)
 		}
@@ -117,8 +118,60 @@ func TestCompatibilityDoesNotGuessUnknownOrOldClients(t *testing.T) {
 	if !contains(old.Target.Events, "TaskCompleted") || !contains(old.Target.Events, "PreCompact") {
 		t.Fatal("Known supported older events were lost")
 	}
+	if !contains(old.Target.Events, "StopFailure") || !contains(old.Target.Events, "PostToolUseFailure") {
+		t.Fatal("基础事件不应受版本门影响")
+	}
 	if ForVersion(CodexTarget(t.TempDir()), "0.163.0").Target.Async {
 		t.Fatal("Unverified old Codex enabled async")
+	}
+}
+
+func TestMissingClaudeCLIStillInstallsTwelveBaseHooks(t *testing.T) {
+	t.Setenv("PATH", t.TempDir())
+	dir := t.TempDir()
+	version, err := ResolveVersion(context.Background(), "claude", "", nil, nil)
+	if err == nil || version != "" {
+		t.Fatalf("expected missing CLI, got %q %v", version, err)
+	}
+	target := ClaudeTarget(dir)
+	plan := ForVersion(target, version)
+	installer := &Installer{StateDir: filepath.Join(dir, "state"), HookBinary: "/synthetic/steward-hook", PermWait: 60}
+	if _, err := installer.Install(plan.Target); err != nil {
+		t.Fatal(err)
+	}
+	if got := hookGroups(t, target); len(got) != 12 {
+		t.Fatalf("基础十二类丢失：%d", len(got))
+	}
+	coverage := (&Monitor{Targets: []Target{target}}).Snapshot(context.Background())[0]
+	if len(coverage.Installed) != 12 || len(coverage.Missing) != 0 || len(coverage.Skipped) != 5 || !strings.Contains(coverage.Reason, "版本未核实，已保留基础 12 种") {
+		t.Fatalf("coverage=%+v", coverage)
+	}
+}
+
+func TestResolveClaudeVersionPriority(t *testing.T) {
+	for _, tc := range []struct {
+		name, explicit, recorded, cli, want string
+		reads, probes                       int
+	}{
+		{"explicit wins", "2.1.33", "2.1.310", "2.1.310", "2.1.33", 0, 0},
+		{"recorded wins", "", "2.1.83", "2.1.310", "2.1.83", 1, 0},
+		{"PATH fallback", "", "", "2.1.310", "2.1.310", 1, 1},
+		{"invalid record fallback", "", "unknown", "2.1.310", "2.1.310", 1, 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			reads, probes := 0, 0
+			got, err := ResolveVersion(context.Background(), "claude", tc.explicit, func(context.Context) (string, error) { reads++; return tc.recorded, nil }, func(context.Context, string) (string, error) { probes++; return tc.cli, nil })
+			if err != nil || got != tc.want || reads != tc.reads || probes != tc.probes {
+				t.Fatalf("got=%s err=%v reads=%d probes=%d", got, err, reads, probes)
+			}
+		})
+	}
+	probe := func(context.Context, string) (string, error) { return "2.1.310", nil }
+	if _, err := ResolveVersion(context.Background(), "claude", "invalid", nil, probe); err == nil {
+		t.Fatal("显式错误版本应报错，不能静默改用其他来源")
+	}
+	if got, err := ResolveVersion(context.Background(), "claude", "", func(context.Context) (string, error) { return "", errors.New("synthetic unavailable database") }, probe); err != nil || got != "2.1.310" {
+		t.Fatalf("数据库异常未降级：%q %v", got, err)
 	}
 }
 

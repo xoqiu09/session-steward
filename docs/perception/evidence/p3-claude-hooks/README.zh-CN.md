@@ -1,7 +1,8 @@
 # P3：Claude hooks 覆盖与验收依据
 
 2026-10-30；实现分支 `feat/claude-hooks-coverage`，基于 main `48078ae`。
-这是草稿实现的合成验证记录，未合并、未发布、未替换正式 App，未在本机启动真实 Claude 对话或安装用户 hooks。
+这是草稿实现的合成验证记录，未合并 PR、未发布、未替换正式 App，未在本机启动真实 Claude 对话或安装用户 hooks。
+本轮按 [Claude 审查](https://github.com/xoqiu09/session-steward/pull/38#issuecomment-6517558378) 修正安装回归，并通过 merge 合入 main `ee4d590`；没有合入 #37，后续来源整合仍归 F0。
 
 ## 官方依据和版本范围
 
@@ -21,11 +22,13 @@
 | Claude command hook async | 2.1.23 修复记录已证明支持；首发未知 | 以此为保守启用下界 |
 | Codex command hook async | 当前官方文档支持，本轮核实 CLI 0.164.0；首发未知 | 以 0.164.0 为保守启用下界 |
 
-原有事件的版本门：SessionStart 1.0.62、UserPromptSubmit 1.0.54、Stop/SubagentStop 1.0.41、
-SubagentStart 2.0.43、SessionEnd 1.0.85、PermissionRequest 2.0.45、StopFailure 2.1.78，来自官方 changelog。
-PreToolUse/PostToolUse/Notification 以官方 npm 发布包 1.0.85 的 `sdk.d.ts` 类型为保守下界，未声称首发版本。
-PostToolUseFailure 首发无法确认，以本机官方 2.1.310 包为保守下界。过旧版本可能少装这个原有事件，已有条目始终不动。
-无法识别 Claude 版本时不新增任何条目；无法核实 Codex 异步能力时保持同步。
+main 原有的基础十二类事件保持无条件安装：SessionStart、UserPromptSubmit、PreToolUse、PostToolUse、PostToolUseFailure、PermissionRequest、Notification、Stop、StopFailure、SubagentStart、SubagentStop、SessionEnd。
+仅新增五类和 async 需要核实版本。原版本资料保留为研究依据，不再对基础事件设置安装门槛。
+
+Claude 版本来源按优先级为：`--claude-version x.y.z` → SS 已记录的最近一条非空 Claude `sessions.version` → PATH 的 `claude --version`。
+CLI 以 SQLite `mode=ro` 读取已有库，不创建、迁移或扫描历史；服务中的 Monitor 直接查询 Core 的现有只读连接。
+全部无法确认时，基础十二类照装，仅跳过新增五类、保持新条目同步，并在输出及设置中显示“版本未核实，已保留基础 12 种”。
+无法核实 Codex 异步能力时保持同步。
 
 [OpenAI hooks 文档](https://learn.chatgpt.com/docs/hooks) 明确支持 `async: true`，同时规定 **SessionEnd 始终同步**。
 因此 Codex SessionEnd 与 SessionStart、UserPromptSubmit、PermissionRequest 一起保持同步。
@@ -45,23 +48,25 @@ PostToolUseFailure 首发无法确认，以本机官方 2.1.310 包为保守下�
 
 | 任务书标准 | 结论 | 证据 |
 | --- | --- | --- |
-| 旧 12 项＋其他工具保持原样，补装 5 项 | 满足（合成测试） | `internal/install/coverage_test.go`；复装幂等、卸载恢复、再安装 |
+| 旧 12 项＋其他工具保留、补装 5 项 | 满足（合成测试） | 原命令／超时不变时全部保留；设置变更时仅原位更新自有命令／超时，第三方、顺序、async 与其他字段不变 |
 | 新事件和 Notification 规范化 | 满足（合成测试） | `internal/event/perception_hooks_test.go`、共享 JSON 展示合同 |
 | TaskCompleted/agent_completed 不推进工作状态 | 满足（合成测试） | `internal/core/perception_hooks_test.go`；无新增审批、运行或交付 |
 | CwdChanged 未关联改项目，明确关联保留并提示 | 满足（合成测试）；真实界面待验 | core 合成两个仓库＋前端提示测试 |
 | 版本门与跳过原因 | 满足（合成测试） | 旧版／未知版本安全计划、设置缺项和读失败展示 |
-| Go 普通／race／vet | 满足 | 产品实现完整运行 617 通过、0 失败、2 跳过；新增手动 fixture 后 server 普通／race 各 57 通过、1 默认跳过 |
+| Go 普通／race／vet | 满足 | 本轮审查修正后完整普通／race 各 646 通过、0 失败、3 跳过；vet 通过 |
 | MacBook 真实 Claude：cd、压缩、自动拒绝、无明显变慢 | 无法验证 | 本机未启动真实 Claude；见下方隔离步骤 |
-| 设置入口及会话提示真实 GUI | 无法验证 | 浏览器工具被 Work 设置禁用；56 个前端测试文件、429 项测试通过，构建通过 |
+| 设置入口及会话提示真实 GUI | 无法验证 | 没有把本轮自动测试当成 GUI／用户验收；56 个前端测试文件、434 项测试通过，连续两次构建产物一致 |
 
 新元信息不会把 idle/ended 回放成 running；活动时间与状态时间分开计算。旧结束事件即使超出活跃窗口仍保留状态。
 设置接口仅面板鉴权可读，不返回命令、配置路径或第三方条目；版本命令最长 2 秒、缓存 1 分钟，设置刷新立即重读条目。
-设置查询不持有 Core 锁；慢查询不阻塞快照。GUI 进程若 PATH 中没有客户端，则显示版本未知而不猜测安装状态。
+设置查询不持有 Core 锁；慢查询不阻塞快照。GUI 进程若 PATH 中没有客户端，可使用已记录的会话版本；都没有时仍显示基础十二类覆盖和受控原因。
+
+重新安装会原位更新 Steward 条目的命令路径和超时，不重排组或第三方 hook、不强制修改既有 async。Codex 内容有变化时会提示信任指纹可能改变，要求在 Codex 内重新确认；安装器不改信任配置。
 
 ## 与任务书的差异
 
 - 不能把全部 quota_auto_resume_* 记为“等待额度恢复”：已恢复的 fired 应为 running，stale 需要输入，disabled／未知只记录；否则会制造错误阻塞。
-- 升级旧配置只给新补条目加 async，旧 12 项完全保留。全新安装才会把全部已核实支持的非阻塞条目设为异步。
+- 升级旧配置只给新补条目加 async；按最新审查，既有自有命令／超时需要能原位更新，其余字段和第三方保留。全新安装才会把全部已核实支持的非阻塞条目设为异步。
 - Codex SessionEnd 按官方约束同步。未知的首发版本用已核实保守下界，未伪称最低首发版本。
 - P1 尚未在此分支合并，保留 hook 渠道 TODO；时间和原有 provider 来源已保留。
 - 没有新增自动安装或升级修改 hooks 的入口；只读设置卡片提供缺项说明。
@@ -77,9 +82,12 @@ PostToolUseFailure 首发无法确认，以本机官方 2.1.310 包为保守下�
 P3_BUILD=$(mktemp -d /Volumes/LocalDevData/Codex/Scratch/ss-p3-build-XXXXXX)
 ~/.local/share/mac-ssd-dev/bin/go build -o "$P3_BUILD/steward" ./cmd/steward
 ~/.local/share/mac-ssd-dev/bin/go build -o "$P3_BUILD/steward-hook" ./cmd/steward-hook
+P3_ENV=$(mktemp -d /Volumes/LocalDevData/Codex/Scratch/ss-p3-env-XXXXXX)
+mkdir -p "$P3_ENV/home" "$P3_ENV/codex"
 P3_ROOT=$(mktemp -d /Volumes/LocalDevData/Codex/Scratch/ss-p3-acceptance-XXXXXX)
-printf '%s\n%s\n' "$P3_BUILD" "$P3_ROOT"
-SS_P3_MANUAL_TEST_DIR="$P3_ROOT" SS_P3_MANUAL_TEST_LISTEN=127.0.0.1:24873 \
+printf '%s\n%s\n%s\n' "$P3_BUILD" "$P3_ENV" "$P3_ROOT"
+env HOME="$P3_ENV/home" CODEX_HOME="$P3_ENV/codex" \
+  SS_P3_MANUAL_TEST_DIR="$P3_ROOT" SS_P3_MANUAL_TEST_LISTEN=127.0.0.1:24873 \
   ~/.local/share/mac-ssd-dev/bin/go test ./internal/server \
   -run '^TestP3ManualAcceptanceFixture$' -count=1 -timeout=30m -v
 ```
@@ -89,18 +97,22 @@ SS_P3_MANUAL_TEST_DIR="$P3_ROOT" SS_P3_MANUAL_TEST_LISTEN=127.0.0.1:24873 \
 生成两个合成仓库、P3-1/P3-2 工作项和标记 `.ss-p3-acceptance.json`；凭据只留在测试数据目录的 0600 文件中，不打印 token。
 hook 输入的 cwd、project_path、new_cwd 均须解析到测试目录内；没有任何可核验目录的输入被拒绝。
 
-终端 B，先手动把上一终端打印的两个**目录路径**赋给同名变量，再执行：
+终端 B，先手动把上一终端打印的三个**目录路径**赋给同名变量，再执行：
 
 ```sh
-STEWARD_HOME="$P3_ROOT/ss-home" "$P3_BUILD/steward" install claude --project "$P3_ROOT/repo-a"
-STEWARD_HOME="$P3_ROOT/ss-home" "$P3_BUILD/steward" install claude --project "$P3_ROOT/repo-b"
+env HOME="$P3_ENV/home" CODEX_HOME="$P3_ENV/codex" STEWARD_HOME="$P3_ROOT/ss-home" "$P3_BUILD/steward" install claude --project "$P3_ROOT/repo-a" --claude-version 2.1.310
+env HOME="$P3_ENV/home" CODEX_HOME="$P3_ENV/codex" STEWARD_HOME="$P3_ROOT/ss-home" "$P3_BUILD/steward" install claude --project "$P3_ROOT/repo-b" --claude-version 2.1.310
 cd "$P3_ROOT/repo-a"
-STEWARD_HOME="$P3_ROOT/ss-home" claude --setting-sources project,local
+env HOME="$P3_ENV/home" CODEX_HOME="$P3_ENV/codex" STEWARD_HOME="$P3_ROOT/ss-home" claude --setting-sources project,local
 ```
 
-`--setting-sources project,local` 排除用户级设置，依据 [官方 CLI 参考](https://code.claude.com/docs/en/cli-reference)。
+上面的版本参数只是示例，必须换成执行设备上人工确认的真实版本，不据此假定桌面版有 CLI。
+MacBook 只有 Claude 桌面入口而没有命令时，可以完成项目级安装检查；真实会话需由该机 Claude 确认项目 hooks 与测试 `STEWARD_HOME` 能正确传递后再进行。
+如果无法证明桌面会话连接到测试数据目录，停止并记“无法验证”，不能运行可能连向正式服务的测试。当前没有实现新的桌面启动／配置机制。
+
+有 CLI 时，`--setting-sources project,local` 排除用户级设置，依据 [官方 CLI 参考](https://code.claude.com/docs/en/cli-reference)。
 如果因此没有认证或既有自定义接口环境，**停止该步并记“未验证”**；不改账号、代理、全局配置，不把凭据贴进报告。
-不更改 HOME/CODEX_HOME，不开启任何新的权限绕过，不在正式项目触发 hook。
+HOME、STEWARD_HOME、CODEX_HOME 只在这些测试子进程中指向临时目录，不修改真实目录或全局环境，不开启任何新的权限绕过，不在正式项目触发 hook。
 
 使用独立／隐私浏览器会话手动访问 `http://127.0.0.1:24873/login?t=<测试 panel.token>`。
 测试 token 由验收者仅在本机从 `$P3_ROOT/ss-home/panel.token` 取用；不运行 `steward open` 唤起正式 App，不在聊天、PR、截图或报告中保留 token／带 token 的链接。
@@ -118,8 +130,8 @@ STEWARD_HOME="$P3_ROOT/ss-home" claude --setting-sources project,local
 结束时先退出这次合成 Claude 会话，再对终端 A 的测试进程 Ctrl+C（或等 25 分钟自动退出）。仅卸载两个测试目录：
 
 ```sh
-STEWARD_HOME="$P3_ROOT/ss-home" "$P3_BUILD/steward" uninstall claude --project "$P3_ROOT/repo-a"
-STEWARD_HOME="$P3_ROOT/ss-home" "$P3_BUILD/steward" uninstall claude --project "$P3_ROOT/repo-b"
+env HOME="$P3_ENV/home" CODEX_HOME="$P3_ENV/codex" STEWARD_HOME="$P3_ROOT/ss-home" "$P3_BUILD/steward" uninstall claude --project "$P3_ROOT/repo-a"
+env HOME="$P3_ENV/home" CODEX_HOME="$P3_ENV/codex" STEWARD_HOME="$P3_ROOT/ss-home" "$P3_BUILD/steward" uninstall claude --project "$P3_ROOT/repo-b"
 ```
 
 核对标记文件、测试端口已退出，保留或按既有工作树／归档规则处理整个测试目录。不得以此步骤清理真实应用数据。

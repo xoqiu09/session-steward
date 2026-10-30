@@ -28,6 +28,14 @@ describe('Claude 采集设置', () => {
     expect(error).not.toContain('均已接入')
     expect(error).toContain('配置无法读取')
   })
+  it('无命令的桌面版明确保留基础十二种，只列新增五种待核实', () => {
+    const row = { provider: 'claude', version: '', installed: Array.from({ length: 12 }, (_, i) => `base-${i}`), missing: [], skipped: ['PermissionDenied', 'CwdChanged', 'PreCompact', 'PostCompact', 'TaskCompleted'], reason: '版本未核实，已保留基础 12 种；仅跳过新增 5 种，新增条目保持同步' }
+    const html = renderToStaticMarkup(<HooksCoverage row={row} />)
+    expect(html).toContain('已接入 12 种事件')
+    expect(html).toContain('版本未核实，已保留基础 12 种')
+    expect(html).toContain('PermissionDenied、CwdChanged、PreCompact、PostCompact、TaskCompleted')
+    expect(html).not.toContain('均已接入')
+  })
 })
 
 describe('Claude 观察展示', () => {

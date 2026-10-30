@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-// Compatibility 是只读的安装计划。无法确认版本时不新增 Claude 条目。
+// Compatibility 是只读的安装计划。基础十二类保持 main 的安装行为。
 type Compatibility struct {
 	Target       Target   `json:"-"`
 	Version      string   `json:"version"`
@@ -51,13 +51,8 @@ func atLeast(version [3]int, required string) bool {
 	return true
 }
 
-// 官方 CHANGELOG 的明确新增版本；没有首发记录的旧事件，以本机官方
-// 2.1.310 发布包已核实的支持作为保守下界，不声称它们在此版本首次出现。
+// 只门控本次新增的五类事件；原基础十二类不依赖版本探测。
 var claudeVerifiedFloors = map[string]string{
-	"PreToolUse": "1.0.85", "PostToolUse": "1.0.85", "Notification": "1.0.85", "Stop": "1.0.41",
-	"SessionStart": "1.0.62", "UserPromptSubmit": "1.0.54",
-	"SubagentStart": "2.0.43", "SubagentStop": "1.0.41", "SessionEnd": "1.0.85",
-	"PermissionRequest": "2.0.45", "StopFailure": "2.1.78",
 	"PreCompact": "1.0.48", "PostCompact": "2.1.76", "TaskCompleted": "2.1.33",
 	"CwdChanged": "2.1.83", "PermissionDenied": "2.1.89",
 }
@@ -71,24 +66,16 @@ func ForVersion(t Target, raw string) Compatibility {
 	}
 	if t.Provider == "claude" {
 		plan.Target.Events = nil
-		if !known {
-			plan.Skipped = append(plan.Skipped, t.Events...)
-			plan.Reason = "未能核实 Claude Code 版本，本次不新增条目；已有 hooks 保留"
-			return plan
-		}
 		for _, event := range t.Events {
 			floor := claudeVerifiedFloors[event]
-			if floor == "" {
-				floor = "2.1.310"
-			}
-			if atLeast(version, floor) {
+			if floor == "" || (known && atLeast(version, floor)) {
 				plan.Target.Events = append(plan.Target.Events, event)
 			} else {
 				plan.Skipped = append(plan.Skipped, event)
 			}
 		}
 		// 2.1.23 的官方修复记录已能证实 async 支持；这是已验证下界。
-		plan.Target.Async = atLeast(version, "2.1.23")
+		plan.Target.Async = known && atLeast(version, "2.1.23")
 	} else if t.Provider == "codex" {
 		// 当前官方文档支持 async；仅在本轮核实的 CLI 0.164.0 及以后启用。
 		// 老版本仍按原十类事件同步安装，不猜测未知版本的字段兼容。
@@ -98,9 +85,40 @@ func ForVersion(t Target, raw string) Compatibility {
 		}
 	}
 	if len(plan.Skipped) > 0 {
-		plan.Reason = "部分事件在此版本的支持尚未核实，已跳过；已有条目不改动"
+		plan.Reason = "部分新增事件在此版本的支持尚未核实，已跳过；基础 12 种照常安装"
+	}
+	if t.Provider == "claude" && !known {
+		plan.Reason = "版本未核实，已保留基础 12 种；仅跳过新增 5 种，新增条目保持同步"
 	}
 	return plan
+}
+
+// ResolveVersion 优先采用显式参数、已记录的 Claude 会话版本，最后才执行 PATH CLI。
+// 不扫描历史文件；记录查询失败或无有效版本时，继续以 CLI 探测降级。
+func ResolveVersion(ctx context.Context, provider, explicit string, recorded func(context.Context) (string, error), probe func(context.Context, string) (string, error)) (string, error) {
+	canonical := func(raw string) (string, bool) {
+		v, ok := parseVersion(raw)
+		return fmt.Sprintf("%d.%d.%d", v[0], v[1], v[2]), ok
+	}
+	if provider == "claude" {
+		if explicit != "" {
+			if version, ok := canonical(explicit); ok {
+				return version, nil
+			}
+			return "", fmt.Errorf("--claude-version 必须是明确的 x.y.z 版本")
+		}
+		if recorded != nil {
+			if raw, err := recorded(ctx); err == nil {
+				if version, ok := canonical(raw); ok {
+					return version, nil
+				}
+			}
+		}
+	}
+	if probe == nil {
+		probe = DetectVersion
+	}
+	return probe(ctx, provider)
 }
 
 // DetectVersion 只执行版本查询，不读取会话、配置、账号或 transcript。
@@ -161,11 +179,14 @@ func CheckCoverage(t Target, rawVersion string) Coverage {
 // Monitor 缓存版本查询一分钟；刷新设置只读配置，不反复启动客户端。
 // 它的锁不涉及 Core、数据库或快照处理。
 type Monitor struct {
-	Targets  []Target
-	Probe    func(context.Context, string) (string, error)
-	Now      func() time.Time
-	mu       sync.Mutex
-	versions map[string]versionCache
+	Targets []Target
+	Probe   func(context.Context, string) (string, error)
+	// 服务注入 Core 的只读查询，不重新打开数据库或扫描 transcript。
+	ClaudeVersion         func(context.Context) (string, error)
+	ExplicitClaudeVersion string
+	Now                   func() time.Time
+	mu                    sync.Mutex
+	versions              map[string]versionCache
 }
 
 type versionCache struct {
@@ -191,7 +212,7 @@ func (m *Monitor) Snapshot(ctx context.Context) []Coverage {
 	for _, target := range m.Targets {
 		cached, ok := m.versions[target.Provider]
 		if !ok || now.Sub(cached.at) >= time.Minute {
-			version, _ := probe(ctx, target.Provider)
+			version, _ := ResolveVersion(ctx, target.Provider, m.ExplicitClaudeVersion, m.ClaudeVersion, probe)
 			cached = versionCache{value: version, at: now}
 			m.versions[target.Provider] = cached
 		}

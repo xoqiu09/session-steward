@@ -59,7 +59,7 @@ func TestNotifierSkipsHandoffsBeforeReopenBoundary(t *testing.T) {
 	freshFound := false
 	for _, a := range alerts {
 		got = append(got, a.Title+"@"+a.Link)
-		if a.Title == "交付待你验收" && a.Link == "http://127.0.0.1:1/#item=RO-1" {
+		if a.Title == "交付待你处理" && a.Link == "http://127.0.0.1:1/#item=RO-1" {
 			freshFound = true
 		}
 	}

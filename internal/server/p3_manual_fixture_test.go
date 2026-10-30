@@ -118,7 +118,7 @@ func TestP3ManualAcceptanceFixture(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	monitor := &install.Monitor{Targets: []install.Target{install.ClaudeProjectTarget(filepath.Join(root, "repo-a"))}}
+	monitor := &install.Monitor{Targets: []install.Target{install.ClaudeProjectTarget(filepath.Join(root, "repo-a"))}, ClaudeVersion: c.LatestClaudeVersion}
 	s := &Server{Core: c, IngestToken: ingest, PanelToken: panel, PermWait: 10 * time.Second, Static: static, Listen: listen, BuildCommit: "P3-synthetic-acceptance", HookCoverage: monitor.Snapshot}
 	handler := p3SyntheticHooksOnly(root, s.Handler())
 	server := &http.Server{Handler: handler, ReadHeaderTimeout: 5 * time.Second}

@@ -59,7 +59,7 @@ export function ItemDetail({ snap, id, onClose, onSelectSession, onSelectItem = 
           {item.automatic_history && <section className="delivery-review" aria-label="自动任务归档"><h3>本轮已自动归档</h3><p>Agent 已回报完成，按例行整理规则收进历史，无需你逐轮验收。可以在这里查看本轮来源；发现问题时可重新开始。</p></section>}
           {item.status === 'review' && item.completion_policy !== 'auto_history' && <DeliveryReview snap={snap} item={item} onSelectSession={onSelectSession} actions={<>
             {remote ? <p className="hint">远程只读，请在本机面板验收。</p> : <div className="row wrap">
-              <button className="btn primary" disabled={act.busy} onClick={() => set('done')}>验收通过</button>
+              <button className="btn primary" disabled={act.busy} onClick={() => set('done')}>已处理</button>
               <button className="btn" disabled={act.busy} onClick={() => set('in_progress')}>退回修改</button>
             </div>}
             <ErrorLine msg={act.error} />
@@ -110,7 +110,7 @@ export function ItemDetail({ snap, id, onClose, onSelectSession, onSelectItem = 
       {!remote && <form className="row" onSubmit={(e) => { e.preventDefault(); if (dep) act.run(() => api.addDep(dep.toUpperCase(), id, cond).then(() => setDep(''))) }}>
         <input value={dep} onChange={(e) => setDep(e.target.value)} placeholder="上游编号，如 QM-012" aria-label="上游编号" list="item-ids" />
         <select value={cond} onChange={(e) => setCond(e.target.value as 'accepted' | 'merged')} aria-label="依赖条件">
-          <option value="accepted">上游已验收</option>
+          <option value="accepted">上游已处理</option>
           <option value="merged">上游已合并</option>
         </select>
         <button className="btn small" type="submit">添加</button>
