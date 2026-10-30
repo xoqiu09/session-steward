@@ -36,7 +36,7 @@ describe('历史日历', () => {
   })
 
   it('状态变化翻成人话', () => {
-    expect(changeText({ from: 'review', to: 'done', at: '' }).text).toBe('你验收通过')
+    expect(changeText({ from: 'review', to: 'done', at: '' }).text).toBe('你标记已处理')
     expect(changeText({ from: 'review', to: 'in_progress', at: '' }).text).toBe('你退回修改')
     expect(changeText({ from: 'in_progress', to: 'review', at: '' }).text).toBe('交付，等你验收')
   })

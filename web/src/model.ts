@@ -7,8 +7,8 @@ export const itemStatusLabel: Record<ItemStatus, string> = {
   todo: '待开始',
   in_progress: '执行中',
   blocked: '阻塞',
-  review: '待验收',
-  done: '已完成',
+  review: '交付待处理',
+  done: '已处理',
   abandoned: '已放弃',
 }
 

@@ -40,7 +40,7 @@ describe('project core feature progress', () => {
     const html = render([{ ...feature, conflict: true, implementation: 'conflict', validation: 'failed' }])
     expect(html).toContain('会话候选或实现回报不一致')
     expect(html).toContain('Agent 回报验证失败')
-    expect(html).not.toContain('确认此功能候选验收通过')
+    expect(html).not.toContain('确认此功能符合要求')
   })
   it('routes feature handoffs to the queue until the agent reports a new owner', () => {
     const f = { ...feature, contributions: feature.contributions.map(p => ({ ...p, next_owner: 'user' })) }

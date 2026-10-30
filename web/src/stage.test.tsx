@@ -39,6 +39,6 @@ describe('evidence-aware stage track', () => {
     expect(nextOwner(snap, item({ status: 'review' }))).toBe('你')
   })
   it('aggregates stage counts without inventing a project percentage', () => {
-    expect(stageSummary([item(), item({ brief: brief({ stage: f('validating') }) }), item({ status: 'review' })])).toBe('验证 1 · 待验收 1 · 待同步 1')
+    expect(stageSummary([item(), item({ brief: brief({ stage: f('validating') }) }), item({ status: 'review' })])).toBe('验证 1 · 交付待处理 1 · 待同步 1')
   })
 })

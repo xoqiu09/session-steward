@@ -4,16 +4,16 @@ import { providerLabel, sessionBuckets } from './model'
 
 export const stages = [
   { key: 'planning', label: '准备' }, { key: 'implementing', label: '实施' },
-  { key: 'validating', label: '验证' }, { key: 'review', label: '待验收' }, { key: 'accepted', label: '已验收' },
+  { key: 'validating', label: '验证' }, { key: 'review', label: '交付待处理' }, { key: 'accepted', label: '已处理' },
 ] as const
 export type Stage = typeof stages[number]['key'] | 'unknown'
 
 export function stageView(w: WorkItem): { key: Stage; label: string; basis: string } {
-  if (w.status === 'done') return { key: 'accepted', label: '已验收', basis: '工作项已由用户标记完成' }
+  if (w.status === 'done') return { key: 'accepted', label: '已处理', basis: '用户已将工作项标记为已处理' }
   if (w.status === 'abandoned') return { key: 'unknown', label: '已放弃', basis: '不计为完成' }
   const value = field(w, 'stage')
   const step = stages.find((s) => s.key === value?.text && ['planning', 'implementing', 'validating'].includes(s.key))
-  if (w.status === 'review' && (!step || value!.at <= w.updated_at)) return { key: 'review', label: '等你验收', basis: '已提交交付，等待用户验收' }
+  if (w.status === 'review' && (!step || value!.at <= w.updated_at)) return { key: 'review', label: '等你处理', basis: '已提交交付，等待用户处理' }
   if (step) return { key: step.key, label: { planning: '准备中', implementing: '实施中', validating: '验证中', review: '', accepted: '' }[step.key], basis: value!.kind === 'user' ? '阶段更正' : 'Agent 回报，尚未替代服务校验或用户验收' }
   if (w.status === 'todo') return { key: 'planning', label: '尚未开始', basis: '工作项待开始' }
   return { key: 'unknown', label: '阶段待同步', basis: '没有有效阶段回报；不按运行时长或工具数量猜测' }

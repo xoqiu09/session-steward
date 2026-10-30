@@ -83,7 +83,7 @@ const STATUS: Record<string, string> = { todo: '待开始', in_progress: '进行
 
 /** 状态变化翻成人话。 */
 export function changeText(c: DayChange): { text: string; tone: 'good' | 'warn' | 'bad' | 'plain' } {
-  if (c.to === 'done') return { text: c.from === 'review' ? '你验收通过' : '标为完成', tone: 'good' }
+  if (c.to === 'done') return { text: c.from === 'review' ? '你标记已处理' : '标为完成', tone: 'good' }
   if (c.to === 'review') return { text: '交付，等你验收', tone: 'plain' }
   if (c.from === 'review' && c.to === 'in_progress') return { text: '你退回修改', tone: 'warn' }
   if (c.to === 'blocked') return { text: '受阻', tone: 'bad' }

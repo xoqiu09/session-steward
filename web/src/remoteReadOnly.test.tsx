@@ -31,7 +31,7 @@ describe('remote read-only controls', () => {
     remote()
     const html = renderToStaticMarkup(<ItemDetail snap={snap} id={item.id} onClose={() => {}} onSelectSession={() => {}} />)
     expect(html).toContain('Synthetic acceptance')
-    expect(html).not.toContain('>验收通过<')
+    expect(html).not.toContain('>已处理<')
     expect(html).not.toContain('>修改标题 / 项目<')
     expect(html).not.toContain('aria-label="上游编号"')
     expect(html).toMatch(/<button(?![^>]*disabled)[^>]*aria-label="关闭工作详情"/)
