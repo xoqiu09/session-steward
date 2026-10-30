@@ -579,7 +579,14 @@ func (m *Manager) Handoff(client string, epoch int) error {
 func (m *Manager) OwnsApproval(id string) bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	return m.ownedApprovals[id]
+	if m.ownedApprovals[id] {
+		return true
+	}
+	// Core commits the approval before ready can publish its ID. The ordinary
+	// panel must also reject that short interval and approvals left after restart.
+	var n int
+	err := m.Core.St.R().QueryRow(`SELECT count(*) FROM approvals WHERE id=? AND kind='permission' AND tool_name='NativeCodexControl'`, id).Scan(&n)
+	return err != nil || n != 0
 }
 func (m *Manager) Decide(client string, epoch int, id, fp, decision string) error {
 	m.mu.Lock()

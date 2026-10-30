@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { NativeSummary, type NativeState } from './NativeControl'
+import { NativeApprovalCard, NativeSummary, type NativeState } from './NativeControl'
 
 const state: NativeState = { host: 'Synthetic Mac Studio', workspace: '/synthetic-project', title: '合成本机任务', thread_id: 'native-one', work_item_id: 'SYN-1', session_id: 1, turn_id: '', status: 'idle', work_status: 'in_progress', owner: '', epoch: 1, desktop_handoff: false, lease_until: '', events: [], pending: [] }
 describe('native control status semantics', () => {
@@ -22,5 +22,25 @@ describe('native control status semantics', () => {
     const html = renderToStaticMarkup(<NativeSummary state={{ ...state, status: 'running', turn_id: 'new-turn', work_status: 'review' }} />)
     expect(html).toContain('正在这台 Mac 执行')
     expect(html).not.toContain('Agent 已交付，等你处理')
+  })
+})
+
+describe('native approval access', () => {
+  const pending = { id: 'synthetic-approval', fingerprint: 'synthetic-fp', details: '合成命令', turn: 'synthetic-turn', approvable: true }
+  it.each([false, undefined])('remote or unverified access never renders an allow button (%s)', canApprove => {
+    const html = renderToStaticMarkup(<NativeApprovalCard pending={pending} canApprove={canApprove} disabled={false} onDecide={() => {}} />)
+    expect(html).not.toContain('仅允许这一次')
+    expect(html).toContain('拒绝这一次')
+    expect(html).toContain('请回到执行电脑的本机入口')
+  })
+  it('a server-verified local entry retains single-use command approval', () => {
+    const html = renderToStaticMarkup(<NativeApprovalCard pending={pending} canApprove={true} disabled={false} onDecide={() => {}} />)
+    expect(html).toContain('仅允许这一次')
+    expect(html).toContain('拒绝这一次')
+  })
+  it('local access still cannot approve an unsupported file request', () => {
+    const html = renderToStaticMarkup(<NativeApprovalCard pending={{ ...pending, approvable: false }} canApprove={true} disabled={false} onDecide={() => {}} />)
+    expect(html).not.toContain('仅允许这一次')
+    expect(html).toContain('本原型只支持拒绝')
   })
 })

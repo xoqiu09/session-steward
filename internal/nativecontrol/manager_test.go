@@ -752,3 +752,120 @@ func TestOldReaderDisconnectDoesNotRewriteSuccessorLease(t *testing.T) {
 		t.Fatal("old native response admitted")
 	}
 }
+
+func TestNativeApprovalRemoteDenyOnlyAndLocalAllow(t *testing.T) {
+	for _, tc := range []struct {
+		name, host, peer, decision, forwarded string
+		want                                  int
+		canApprove                            bool
+	}{
+		{"local command allow", "localhost:18790", "127.0.0.1:4000", "allow", "", 200, true},
+		{"local ipv6 command allow", "[::1]:18790", "[::1]:4000", "allow", "", 200, true},
+		{"remote allow forbidden", "studio.synthetic.ts.net", "100.64.0.2:4000", "allow", "", 403, false},
+		{"private proxy remains remote", "studio.synthetic.ts.net", "127.0.0.1:4000", "allow", "", 403, false},
+		{"remote peer cannot spoof localhost", "localhost:18790", "100.64.0.2:4000", "allow", "", 403, false},
+		{"forwarded localhost remains remote", "localhost:18790", "127.0.0.1:4000", "allow", "X-Forwarded-For", 403, false},
+		{"forwarded header remains remote", "localhost:18790", "127.0.0.1:4000", "allow", "Forwarded", 403, false},
+		{"tailscale proxy remains remote", "localhost:18790", "127.0.0.1:4000", "allow", "Tailscale-User-Login", 403, false},
+		{"unknown peer cannot allow", "localhost:18790", "invalid-peer", "allow", "", 403, false},
+		{"remote deny remains available", "studio.synthetic.ts.net", "100.64.0.2:4000", "deny", "", 200, false},
+		{"proxy deny remains available", "studio.synthetic.ts.net", "127.0.0.1:4000", "deny", "", 200, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m, f, _ := fixture(t)
+			s, epoch := start(t, m)
+			f.emit("item/commandExecution/requestApproval", map[string]string{"threadId": s.ThreadID, "turnId": s.Turn, "itemId": "scoped-command", "command": "synthetic command"}, "97")
+			eventually(t, func() bool { return len(m.Snapshot().Pending) == 1 })
+			pending := m.Snapshot().Pending[0]
+			h := (&HTTP{Manager: m, Token: "synthetic-native-token", Hosts: []string{"studio.synthetic.ts.net"}}).Handler(http.NotFoundHandler())
+			makeRequest := func(method, path string, body []byte) *http.Request {
+				r := httptest.NewRequest(method, "http://"+tc.host+path, strings.NewReader(string(body)))
+				r.RemoteAddr = tc.peer
+				r.Header.Set("Authorization", "Bearer synthetic-native-token")
+				r.Header.Set("X-Steward-Native", "1")
+				if tc.forwarded != "" {
+					r.Header.Set(tc.forwarded, "synthetic forwarded marker")
+				}
+				return r
+			}
+			w := httptest.NewRecorder()
+			h.ServeHTTP(w, makeRequest("GET", "/native/api/state", nil))
+			var view struct {
+				CanApprove bool `json:"can_approve"`
+			}
+			if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &view) != nil || view.CanApprove != tc.canApprove {
+				t.Fatalf("incorrect server-provided approval view: %d %s", w.Code, w.Body.String())
+			}
+			before := m.Snapshot()
+			body, _ := json.Marshal(map[string]any{"client": "controller-one", "epoch": epoch, "approval": pending.ID, "fingerprint": pending.Fingerprint, "decision": tc.decision})
+			w = httptest.NewRecorder()
+			h.ServeHTTP(w, makeRequest("POST", "/native/api/decide", body))
+			if w.Code != tc.want {
+				t.Fatalf("code=%d body=%s", w.Code, w.Body.String())
+			}
+			if tc.want == 403 {
+				if after := m.Snapshot(); !reflect.DeepEqual(before, after) {
+					t.Fatal("remote allow changed pending approval or lease")
+				}
+				f.mu.Lock()
+				reply := string(f.replies["97"])
+				f.mu.Unlock()
+				if reply != "" {
+					t.Fatalf("forbidden allow consumed approval: %s", reply)
+				}
+				return
+			}
+			eventually(t, func() bool { return len(m.Snapshot().Pending) == 0 })
+			f.mu.Lock()
+			reply := string(f.replies["97"])
+			f.mu.Unlock()
+			wantReply := `"decline"`
+			if tc.decision == "allow" {
+				wantReply = `"accept"`
+			}
+			if !strings.Contains(reply, wantReply) {
+				t.Fatalf("wrong native decision: %s", reply)
+			}
+		})
+	}
+}
+
+func TestForwardedLocalPairCannotObtainPanelCookie(t *testing.T) {
+	m, _, _ := fixture(t)
+	h := (&HTTP{Manager: m, Token: "synthetic-token", PanelToken: "synthetic-panel"}).Handler(http.NotFoundHandler())
+	r := httptest.NewRequest("POST", "http://localhost/native/local-pair", strings.NewReader(`{}`))
+	r.RemoteAddr = "127.0.0.1:4000"
+	r.Header.Set("Authorization", "Bearer synthetic-token")
+	r.Header.Set("X-Steward-Native", "1")
+	r.Header.Set("X-Forwarded-For", "100.64.0.2")
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	if w.Code != 403 || len(w.Result().Cookies()) != 0 {
+		t.Fatalf("proxy obtained local panel access: %d %s", w.Code, w.Body.String())
+	}
+}
+
+func TestCommittedNativeApprovalBlockedBeforeReadyRegistration(t *testing.T) {
+	m, f, _ := fixture(t)
+	s, _ := start(t, m)
+	f.emit("item/commandExecution/requestApproval", map[string]string{"threadId": s.ThreadID, "turnId": s.Turn, "itemId": "synthetic-command", "command": "synthetic command"}, "98")
+	eventually(t, func() bool { return len(m.Snapshot().Pending) == 1 })
+	pending := m.Snapshot().Pending[0]
+	// Model the committed row before its ready observer (or after restart):
+	// guarding the ordinary endpoint cannot depend on only an in-memory ID map.
+	m.mu.Lock()
+	delete(m.ownedApprovals, pending.ID)
+	m.mu.Unlock()
+	h := (&HTTP{Manager: m, Token: "synthetic-token"}).Handler((&server.Server{Core: m.Core, PanelToken: "synthetic-panel"}).Handler())
+	for _, action := range []string{"decide", "dismiss"} {
+		r := httptest.NewRequest("POST", "http://localhost/api/approvals/"+pending.ID+"/"+action, strings.NewReader(`{}`))
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		if w.Code != 409 {
+			t.Fatalf("committed native approval escaped scoped guard: %s %d", action, w.Code)
+		}
+	}
+	if len(m.Snapshot().Pending) != 1 {
+		t.Fatal("ordinary panel consumed native approval")
+	}
+}

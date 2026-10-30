@@ -4,6 +4,7 @@ import './native-control.css'
 export interface NativeState {
   host: string; workspace: string; title: string; thread_id: string; work_item_id: string; session_id: number; turn_id: string
   status: string; work_status: string; owner: string; epoch: number; desktop_handoff: boolean; lease_until: string; last_error?: string; delivery_summary?: string
+  can_approve?: boolean
   events: { seq: number; kind: string; at: string; turn?: string }[]
   pending: { id: string; fingerprint: string; details: string; turn: string; approvable: boolean }[] | null
 }
@@ -20,6 +21,18 @@ export function NativeSummary({ state }: { state: NativeState }) {
     {state.work_status === 'review' && <p>交付已回到小镇。是否已处理、功能是否符合要求，由你另外确认。</p>}
     {state.last_error && <p role="alert">{state.last_error}</p>}
     <dl><div><dt>执行电脑</dt><dd>{state.host}</dd></div><div><dt>项目位置</dt><dd className="nc-path">{state.workspace}</dd></div>{state.work_item_id && <div><dt>小镇工作项</dt><dd>{state.work_item_id}</dd></div>}</dl>
+  </section>
+}
+
+export function NativeApprovalCard({ pending, canApprove, disabled, onDecide }: {
+  pending: NonNullable<NativeState['pending']>[number]; canApprove?: boolean; disabled: boolean; onDecide: (decision: 'allow' | 'deny') => void
+}) {
+  return <section className="nc-card nc-approval"><p className="nc-eyebrow">需要你决定</p><h2>Codex 请求执行一项操作</h2><pre>{pending.details}</pre>
+    <p className="muted">此决定只对应当前会话、本轮和这一项请求，不授予后续自动批准。</p>
+    <div className="nc-actions">{canApprove === true && pending.approvable && <button className="btn primary" disabled={disabled} onClick={() => onDecide('allow')}>仅允许这一次</button>}
+      <button className="btn" disabled={disabled} onClick={() => onDecide('deny')}>拒绝这一次</button></div>
+    {pending.approvable && canApprove !== true && <p>此入口只支持拒绝。需要批准时，请回到执行电脑的本机入口。</p>}
+    {!pending.approvable && <p>这类请求需回原生界面完整核对，本原型只支持拒绝。</p>}
   </section>
 }
 
@@ -83,7 +96,8 @@ export function NativeControl() {
           </form><p className="muted">停止只中断本轮，不代表工作已处理。模型继续使用本机 Codex 的既有配置。</p>
           {state.status === 'needs_reconcile' && !state.turn_id && <button className="btn" disabled={busy || !owns} onClick={() => void act('resume')}>恢复同一条原生会话</button>}
         </section>
-        {(state.pending || []).map(p => <section className="nc-card nc-approval" key={p.id}><p className="nc-eyebrow">需要你决定</p><h2>Codex 请求执行一项操作</h2><pre>{p.details}</pre><p className="muted">此决定只对应当前会话、本轮和这一项请求，不授予后续自动批准。</p><div className="nc-actions">{p.approvable && <button className="btn primary" disabled={busy || !owns} onClick={() => void act('decide', { approval: p.id, fingerprint: p.fingerprint, decision: 'allow' })}>仅允许这一次</button>}<button className="btn" disabled={busy || !owns} onClick={() => void act('decide', { approval: p.id, fingerprint: p.fingerprint, decision: 'deny' })}>拒绝这一次</button></div>{!p.approvable && <p>这类请求需回原生界面完整核对，本原型只支持拒绝。</p>}</section>)}
+        {(state.pending || []).map(p => <NativeApprovalCard key={p.id} pending={p} canApprove={state.can_approve} disabled={busy || !owns}
+          onDecide={decision => void act('decide', { approval: p.id, fingerprint: p.fingerprint, decision })} />)}
       </div><aside>
         <section className="nc-card"><h2>回电脑继续</h2><p>先释放小镇写入权，再在这台 Mac 打开原来的 Codex 会话。</p><button className="btn" disabled={busy || !owns || !state.thread_id || (!!state.turn_id && state.status !== 'needs_reconcile') || !!state.pending?.length} onClick={() => void act('handoff')}>交给电脑接着做</button>
           {state.desktop_handoff && <><p>已释放写入权，手机不会继续向它发任务。</p><a className="btn" href={`codex://threads/${encodeURIComponent(state.thread_id)}`}>尝试在 Codex 打开</a><p className="muted">官方桌面 App 原位续接尚未验证。CLI 可按原生 ID 恢复，不会新开摘要聊天。</p><code className="nc-command">codex resume {state.thread_id}</code></>}

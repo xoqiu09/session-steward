@@ -24,6 +24,31 @@ func host(h string) string {
 	return strings.Trim(h, "[]")
 }
 func loopback(h string) bool { return h == "localhost" || h == "127.0.0.1" || h == "::1" }
+
+// Both the peer and the access path must be local. A private reverse proxy can
+// connect from loopback; forwarded requests must still remain deny-only.
+func localControlRequest(r *http.Request) bool {
+	addr, _, err := net.SplitHostPort(r.RemoteAddr)
+	ip := net.ParseIP(addr)
+	if err != nil || ip == nil || !ip.IsLoopback() || !loopback(host(r.Host)) {
+		return false
+	}
+	for name := range r.Header {
+		name = strings.ToLower(name)
+		if name == "forwarded" || strings.HasPrefix(name, "x-forwarded-") || strings.HasPrefix(name, "tailscale-") {
+			return false
+		}
+	}
+	return true
+}
+
+func nativeView(s State, r *http.Request) any {
+	return struct {
+		State
+		CanApprove bool `json:"can_approve"`
+	}{s, localControlRequest(r)}
+}
+
 func (h *HTTP) Handler(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !strings.HasPrefix(r.URL.Path, "/native/") {
@@ -70,9 +95,7 @@ func (h *HTTP) Handler(next http.Handler) http.Handler {
 			return
 		}
 		if r.URL.Path == "/native/local-pair" && r.Method == "POST" {
-			addr, _, _ := net.SplitHostPort(r.RemoteAddr)
-			ip := net.ParseIP(addr)
-			if !loopback(host(r.Host)) || ip == nil || !ip.IsLoopback() {
+			if !localControlRequest(r) {
 				nativeJSON(w, 403, map[string]string{"error": "手机配对需由本机提供项目控制密钥"})
 				return
 			}
@@ -83,7 +106,7 @@ func (h *HTTP) Handler(next http.Handler) http.Handler {
 			return
 		}
 		if r.URL.Path == "/native/api/state" && r.Method == "GET" {
-			nativeJSON(w, 200, h.Manager.Snapshot())
+			nativeJSON(w, 200, nativeView(h.Manager.Snapshot(), r))
 			return
 		}
 		if r.Method != "POST" {
@@ -123,6 +146,10 @@ func (h *HTTP) Handler(next http.Handler) http.Handler {
 			err = h.Manager.Handoff(b.Client, b.Epoch)
 			state = h.Manager.Snapshot()
 		case "/native/api/decide":
+			if b.Decision == "allow" && !localControlRequest(r) {
+				nativeJSON(w, 403, map[string]string{"error": "此入口只支持拒绝；请在执行电脑的本机入口批准"})
+				return
+			}
 			err = h.Manager.Decide(b.Client, b.Epoch, b.Approval, b.Fingerprint, b.Decision)
 			state = h.Manager.Snapshot()
 		default:
@@ -137,7 +164,7 @@ func (h *HTTP) Handler(next http.Handler) http.Handler {
 			nativeJSON(w, code, map[string]string{"error": err.Error()})
 			return
 		}
-		nativeJSON(w, 200, state)
+		nativeJSON(w, 200, nativeView(state, r))
 	})
 }
 func nativeJSON(w http.ResponseWriter, status int, v any) {
