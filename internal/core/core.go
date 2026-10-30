@@ -21,7 +21,8 @@ type Core struct {
 	Loc Locator
 
 	// StaleAfter：运行中但超过该时长没有事件，界面显示“长时间无活动”。
-	StaleAfter time.Duration
+	StaleAfter     time.Duration
+	SignalGapAfter time.Duration // 仅供快照展示信息缺口阈值
 	// 简报“可能过期”：最近进展之后的工具事件数或持续时长超过阈值。
 	BriefStaleEvents int
 	BriefStaleAfter  time.Duration
@@ -61,6 +62,7 @@ func New(st *store.Store, loc Locator) *Core {
 		St:               st,
 		Loc:              loc,
 		StaleAfter:       10 * time.Minute,
+		SignalGapAfter:   30 * time.Minute,
 		BriefStaleEvents: 20,
 		BriefStaleAfter:  60 * time.Minute,
 		waiters:          map[string]chan Decision{},

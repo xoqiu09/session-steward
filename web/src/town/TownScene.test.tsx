@@ -4,6 +4,7 @@ import TownScene, { TownChips, TownLegend, buildingColors, type Selection } from
 import { buildTown } from './townModel'
 import { demoSnapshot, fakeSession } from './fixtures'
 import type { Snapshot } from '../types'
+import { HUB_STRIDE } from '../hub/ids'
 
 const render = (snap: Snapshot, opts: { selected?: Selection | null; offline?: boolean; changed?: Set<string> } = {}) =>
   renderToStaticMarkup(<TownScene model={buildTown(snap)} selected={opts.selected ?? null} highlight={null} onSelect={() => {}} offline={opts.offline} changed={opts.changed} />)
@@ -31,6 +32,15 @@ describe('TownScene', () => {
     expect(html).not.toContain('Codex #52，')
     expect(html).toContain('另有 1 位')
     expect(html).toContain('另有 1 个会话不在画面中')
+  })
+
+  test('其他设备的会话胸前号码去掉偏移，和名牌一致', () => {
+    const remote = fakeSession({ id: 3 * HUB_STRIDE + 7, provider: 'claude', state: 'running', repo_id: 1 })
+    const html = render({ ...demoSnapshot, sessions: [...demoSnapshot.sessions!, remote] })
+    const jerseys = [...html.matchAll(/<text y="-18.3"[^>]*>([^<]*)<\/text>/g)].map((m) => m[1])
+    expect(jerseys).toContain('7')
+    expect(html).toContain('Claude #7，')
+    expect(html).not.toContain(String(remote.id))
   })
 
   test('超过 3 个项目时提示去列表视图', () => {

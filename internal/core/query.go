@@ -20,32 +20,33 @@ type Repo struct {
 }
 
 type Session struct {
-	ID                int64  `json:"id"`
-	HostID            string `json:"host_id"`
-	Provider          string `json:"provider"`
-	ProviderSessionID string `json:"provider_session_id"`
-	Client            string `json:"client"`
-	Version           string `json:"version"`
-	Cwd               string `json:"cwd"`
-	Worktree          string `json:"worktree"`
-	Branch            string `json:"branch"`
-	RepoID            *int64 `json:"repo_id"`
-	State             string `json:"state"`
-	StateReason       string `json:"state_reason"`
-	DataSource        string `json:"data_source"` // live | history
-	Freshness         string `json:"freshness"`   // live | history | stale
-	SuggestedWorkItem string `json:"suggested_work_item"`
-	FirstSeenAt       string `json:"first_seen_at"`
-	LastActivityAt    string `json:"last_activity_at"`
-	LastProgressAt    string `json:"last_progress_at"`
-	WorkItemID        string `json:"work_item_id"`
-	Binding           string `json:"binding"`
-	WorktreeConflict  bool   `json:"worktree_conflict"`
-	ResumeCommand     string `json:"resume_command"`
-	Title             string `json:"title"`
-	TitleSource       string `json:"title_source"`
-	LastToolPreview   string `json:"last_tool_preview"`
-	LastToolAt        string `json:"last_tool_at"`
+	ID                int64   `json:"id"`
+	HostID            string  `json:"host_id"`
+	Provider          string  `json:"provider"`
+	ProviderSessionID string  `json:"provider_session_id"`
+	Client            string  `json:"client"`
+	Version           string  `json:"version"`
+	Cwd               string  `json:"cwd"`
+	Worktree          string  `json:"worktree"`
+	Branch            string  `json:"branch"`
+	RepoID            *int64  `json:"repo_id"`
+	State             string  `json:"state"`
+	StateReason       string  `json:"state_reason"`
+	DataSource        string  `json:"data_source"` // live | history
+	Freshness         string  `json:"freshness"`   // live | history | stale
+	SuggestedWorkItem string  `json:"suggested_work_item"`
+	FirstSeenAt       string  `json:"first_seen_at"`
+	LastActivityAt    string  `json:"last_activity_at"`
+	LastProgressAt    string  `json:"last_progress_at"`
+	WorkItemID        string  `json:"work_item_id"`
+	Binding           string  `json:"binding"`
+	WorktreeConflict  bool    `json:"worktree_conflict"`
+	ResumeCommand     string  `json:"resume_command"`
+	Title             string  `json:"title"`
+	TitleSource       string  `json:"title_source"`
+	LastToolPreview   string  `json:"last_tool_preview"`
+	LastToolAt        string  `json:"last_tool_at"`
+	Signal            *Signal `json:"signal,omitempty"`
 }
 
 type Run struct {
@@ -93,6 +94,7 @@ type WorkItem struct {
 	AutomaticIssue        string          `json:"automatic_issue,omitempty"`
 	AutomaticIssueKind    string          `json:"automatic_issue_kind,omitempty"`
 	AutomaticIssueAt      string          `json:"automatic_issue_at,omitempty"`
+	Signal                *Signal         `json:"signal,omitempty"`
 }
 
 type Approval struct {
@@ -118,25 +120,26 @@ type Approval struct {
 }
 
 type Snapshot struct {
-	Cursor       int64            `json:"cursor"`
-	Now          string           `json:"now"`
-	Repos        []Repo           `json:"repos"`
-	Sessions     []Session        `json:"sessions"`
-	WorkItems    []WorkItem       `json:"work_items"`
-	Deps         []Dep            `json:"deps"`
-	Runs         []Run            `json:"runs"`
-	Approvals    []Approval       `json:"approvals"`
-	Attributions []Attribution    `json:"attributions"`
-	Features     []ProjectFeature `json:"features"`
-	Managed      []ManagedSession `json:"managed"`
-	Agents       []string         `json:"agents"`
-	AgentInfo    []AgentInfo      `json:"agent_info"`
-	MergeJobs    []MergeJob       `json:"merge_jobs"`
-	CheckedRepos []int64          `json:"checked_repos"`
-	SessionUsage []SessionUsage   `json:"session_usage"`
-	ItemUsage    []ItemUsage      `json:"item_usage"`
-	Handoffs     []Handoff        `json:"handoffs"`
-	SummaryRepos []int64          `json:"summary_repos"`
+	SignalGapAfterMin int              `json:"signal_gap_after_min,omitempty"`
+	Cursor            int64            `json:"cursor"`
+	Now               string           `json:"now"`
+	Repos             []Repo           `json:"repos"`
+	Sessions          []Session        `json:"sessions"`
+	WorkItems         []WorkItem       `json:"work_items"`
+	Deps              []Dep            `json:"deps"`
+	Runs              []Run            `json:"runs"`
+	Approvals         []Approval       `json:"approvals"`
+	Attributions      []Attribution    `json:"attributions"`
+	Features          []ProjectFeature `json:"features"`
+	Managed           []ManagedSession `json:"managed"`
+	Agents            []string         `json:"agents"`
+	AgentInfo         []AgentInfo      `json:"agent_info"`
+	MergeJobs         []MergeJob       `json:"merge_jobs"`
+	CheckedRepos      []int64          `json:"checked_repos"`
+	SessionUsage      []SessionUsage   `json:"session_usage"`
+	ItemUsage         []ItemUsage      `json:"item_usage"`
+	Handoffs          []Handoff        `json:"handoffs"`
+	SummaryRepos      []int64          `json:"summary_repos"`
 	// ReplayAt 非空表示这是回放快照（小镇时间条），只读。
 	ReplayAt string `json:"replay_at,omitempty"`
 	// Devices 只在“全部设备”合并视图里有。
@@ -153,7 +156,7 @@ func (c *Core) Snapshot(ctx context.Context) (*Snapshot, error) {
 		return nil, err
 	}
 	defer tx.Rollback()
-	snap := &Snapshot{Now: c.St.NowTS()}
+	snap := &Snapshot{Now: c.St.NowTS(), SignalGapAfterMin: int(c.SignalGapAfter / time.Minute)}
 	tx.QueryRow(`SELECT COALESCE(MAX(seq),0) FROM changes`).Scan(&snap.Cursor)
 
 	rows, err := tx.Query(`SELECT id, name, common_dir, is_git, target_ref FROM repos WHERE id NOT IN (SELECT repo_id FROM repo_aliases) ORDER BY name`)
@@ -363,6 +366,9 @@ func (c *Core) Snapshot(ctx context.Context) (*Snapshot, error) {
 		if len(c.ChecksFor(r.Name, r.CommonDir)) > 0 {
 			snap.CheckedRepos = append(snap.CheckedRepos, r.ID)
 		}
+	}
+	if err := readSignals(tx, snap); err != nil {
+		return nil, err
 	}
 	if c.Term != nil {
 		snap.Agents, snap.AgentInfo = c.AgentNames(), c.AgentInfos()

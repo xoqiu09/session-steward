@@ -129,6 +129,8 @@ describe('TodayView', () => {
   it('每件交付旁边直接能标记已处理和退回，证据和 Agent 说的分开写', () => {
     const html = renderToStaticMarkup(<TodayView snap={snap} onSelectItem={() => {}} onOpenTown={() => {}} />)
     expect(html).toContain('要你决定')
+    expect(html).toContain('有交付，等你处理')
+    expect(html).not.toContain('做完了，等你验收')
     expect(html).toContain('npm publish --tag beta')
     expect(html).toContain('允许这一次')
     expect((html.match(/>已处理</g) ?? []).length).toBe(3)

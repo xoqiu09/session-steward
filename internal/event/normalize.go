@@ -71,6 +71,7 @@ func Normalize(raw []byte, opt Options) (*Event, *HookInput, error) {
 		OccurredAt:    opt.Now().UTC(),
 		Source: Source{
 			Provider: opt.Provider,
+			Channel:  "hook",
 			HostID:   opt.HostID,
 		},
 		RawName:    in.HookEventName,
@@ -81,6 +82,7 @@ func Normalize(raw []byte, opt Options) (*Event, *HookInput, error) {
 		TurnID:     in.TurnID,
 		ToolUseID:  in.ToolUseID,
 	}
+	e.Source.Ref = e.EventID
 	e.Kind = classify(opt.Provider, &in)
 	transcript := in.TranscriptPath
 	if perceptionObservation(&in) {
@@ -88,7 +90,6 @@ func Normalize(raw []byte, opt Options) (*Event, *HookInput, error) {
 		transcript = ""
 	}
 	e.Source.Client, e.Source.Version, e.Source.Originator = detectClient(opt, transcript)
-	// TODO(P1): P1 合并后由统一入口给这些信号补 hook 渠道。
 	if e.Kind == KindCwdChanged {
 		e.Cwd = firstNonEmpty(in.NewCwd, in.Cwd)
 	}

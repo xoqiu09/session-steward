@@ -227,7 +227,7 @@ func (c *Core) ApproveMerge(ctx context.Context, id, sourceSHA, targetSHA string
 	c.mergeMu.Lock()
 	defer c.mergeMu.Unlock()
 	now := c.St.NowTS()
-	err := c.St.Tx(ctx, func(tx *sql.Tx) error {
+	err := c.panelTx(ctx, func(tx *sql.Tx) error {
 		members, err := mergeMembers(tx, id)
 		if err != nil {
 			return err
@@ -273,7 +273,7 @@ func (c *Core) RejectMerge(ctx context.Context, id, reason string) error {
 	c.mergeMu.Lock()
 	defer c.mergeMu.Unlock()
 	now := c.St.NowTS()
-	err := c.St.Tx(ctx, func(tx *sql.Tx) error {
+	err := c.panelTx(ctx, func(tx *sql.Tx) error {
 		members, err := mergeMembers(tx, id)
 		if errors.Is(err, ErrNotFound) {
 			return ErrConflict

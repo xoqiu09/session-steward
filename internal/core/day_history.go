@@ -94,7 +94,7 @@ func (c *Core) History(ctx context.Context, days int, tokensEnabled bool) (Histo
 	r := c.St.R()
 	rows, err := r.QueryContext(ctx, `SELECT date(substr(occurred_at,1,19), ?) AS d, COUNT(DISTINCT session_id),
 		SUM(kind='prompt'), SUM(kind='tool_post' OR kind='tool_fail'), SUM(kind='subagent_start')
-		FROM events WHERE occurred_at >= ? GROUP BY d`, mod, since)
+		FROM events WHERE occurred_at >= ? AND kind<>'user_action' GROUP BY d`, mod, since)
 	if err != nil {
 		return History{}, err
 	}
@@ -253,7 +253,7 @@ func (c *Core) HistoryDay(ctx context.Context, day string, tokensEnabled bool) (
 	rows, err = r.QueryContext(ctx, `SELECT e.session_id, s.provider, s.repo_id, COALESCE((SELECT r.work_item_id FROM runs r WHERE r.session_id=s.id ORDER BY r.started_at DESC LIMIT 1),''), MIN(e.occurred_at), MAX(e.occurred_at),
 		SUM(e.kind='prompt'), SUM(e.kind='tool_post' OR e.kind='tool_fail'), SUM(e.kind='tool_fail'), SUM(e.kind='subagent_start')
 		FROM events e JOIN sessions s ON s.id=e.session_id
-		WHERE e.occurred_at >= ? AND e.occurred_at < ? AND date(substr(e.occurred_at,1,19), ?) = ?
+		WHERE e.kind<>'user_action' AND e.occurred_at >= ? AND e.occurred_at < ? AND date(substr(e.occurred_at,1,19), ?) = ?
 		GROUP BY e.session_id ORDER BY MAX(e.occurred_at) DESC`, lo, hi, mod, day)
 	if err != nil {
 		return DayDetail{}, err
