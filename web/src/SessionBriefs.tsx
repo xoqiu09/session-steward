@@ -23,7 +23,7 @@ function ReporterBrief({ snap, item, session, onSelect }: { snap: Snapshot; item
   const next = field(own, 'next')
   const signal = sessionSignal(snap, session)
   return <li className="session-brief" aria-label={`会话 #${shownNo(session.id)} 的独立简报`}>
-    <div className="session-brief-head"><AgentBadge provider={session.provider} /><button className="link" onClick={() => onSelect?.(session.id)} disabled={!onSelect} title={session.provider_session_id}>会话 #{session.id}</button><strong>{stage.label}</strong></div>
+    <div className="session-brief-head"><AgentBadge provider={session.provider} /><button className="link" onClick={() => onSelect?.(session.id)} disabled={!onSelect} title={session.provider_session_id}>会话 #{shownNo(session.id)}</button><strong>{stage.label}</strong></div>
     {session.title && <small className="muted session-brief-title">{session.title}</small>}
     {(session.state === 'ended' || session.freshness === 'stale') && <small className="muted">{session.state === 'ended' ? '会话已结束，保留最后回报' : '长时间无活动，保留最后回报'}</small>}
     <p className={headline ? 'session-brief-summary' : 'muted'} title={headline?.text}>{headline ? legacyBrief(headline) ? '旧格式回报，需该会话更新；不能把命令参数当作业务结论。' : shortText(headline.text, 80) : '此会话尚未回报进展，阶段无法判断。'}</p>

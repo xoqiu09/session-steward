@@ -87,7 +87,7 @@ export function RunDesk({ snap, item, remote, onClose, onSelectSession, attentio
                       <li key={g.sessionId}>
                         <button className="rd-tree-run" onClick={() => onSelectSession(g.sessionId)} title={`会话 #${shownNo(g.sessionId)} 在这项工作上的 ${g.runs.length} 段运行：\n${spans}`}>
                           <AgentBadge provider={g.provider} />
-                          <span>#{g.sessionId}</span>
+                          <span>#{shownNo(g.sessionId)}</span>
                           <StatusChip state={current?.state ?? sessionRunState(s)} label={current?.statusLabel ?? (s ? sessionStateLabel[s.state] : '未知')} />
                           {g.runs.length > 1 && <small>{g.runs.length} 段运行</small>}
                           {!g.open && <small>{outcomeLabel[g.outcome] ?? g.outcome}</small>}
@@ -127,7 +127,7 @@ export function RunDesk({ snap, item, remote, onClose, onSelectSession, attentio
             {writers.map((w) => (
               <div key={w.session.id} className="rd-alert" role="note">
                 <strong><span aria-hidden="true">⚠</span> {w.reason}</strong>
-                <p>会话 #{w.session.id}（{providerLabel(w.session.provider)}）仍处于“{sessionStateLabel[w.session.state]}”，可继续写入同一仓库。Steward 不会自动停止它{remote ? '' : '；如需停止，请在该 Agent 自己的界面处理'}。</p>
+                <p>会话 #{shownNo(w.session.id)}（{providerLabel(w.session.provider)}）仍处于“{sessionStateLabel[w.session.state]}”，可继续写入同一仓库。Steward 不会自动停止它{remote ? '' : '；如需停止，请在该 Agent 自己的界面处理'}。</p>
               </div>
             ))}
             {handoffs.length ? <ul className="rd-list">

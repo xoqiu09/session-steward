@@ -48,18 +48,18 @@ function FeatureRow({ snap, feature: f, onSelectItem, onSelectSession }: { snap:
     {f.conflict && <p className="core-feature-blocker">会话候选或实现回报不一致，请执行 Agent 对齐；不合并成已完成。</p>}
     {!['documented', 'confirmed'].includes(f.scope_status) && <p className="core-feature-blocker">功能范围为 Agent 提议，依据尚待确认。</p>}
     {shown.map(p => <div className="core-feature-contribution" key={p.run_id}>
-      {shown.length > 1 && <div className="core-feature-who"><AgentBadge provider={p.provider} /> <span>#{p.session_id} · {p.validation ? validation[p.validation] : implementation[p.implementation || 'unknown']}</span></div>}
+      {shown.length > 1 && <div className="core-feature-who"><AgentBadge provider={p.provider} /> <span>#{shownNo(p.session_id)} · {p.validation ? validation[p.validation] : implementation[p.implementation || 'unknown']}</span></div>}
       {p.blocker && <p className="core-feature-blocker"><b>卡点</b> {p.blocker}</p>}
       {!p.blocker && <p className="muted">卡点：{p.blocker === undefined ? '尚未回报' : '本次未报告阻塞'}</p>}
       <p><b>下一步 · {featureOwner(snap, p)}</b> {featureOwner(snap, p).startsWith('已回应') ? '已收到同一会话回应，等待新安排。' : shortText(p.next || '具体安排待回报', 140)}</p>
-      <small className="muted">{providerLabel(p.provider)} #{p.session_id} · {p.active ? '本次执行' : '最近执行已结束'} · 最后回报 {ago(p.at, snap.now)}</small>
+      <small className="muted">{providerLabel(p.provider)} #{shownNo(p.session_id)} · {p.active ? '本次执行' : '最近执行已结束'} · 最后回报 {ago(p.at, snap.now)}</small>
     </div>)}
     <details className="core-feature-source"><summary>验证依据、来源与功能验收</summary>
       <p>范围依据：{f.scope_basis} · {f.scope_status === 'confirmed' ? '你已确认范围' : f.scope_status === 'documented' ? 'Agent 按已有需求登记' : 'Agent 提议'}</p>
       {!isRemote() && f.scope_status === 'proposed' && <button className="btn small" disabled={isRemote() || act.busy} onClick={() => act.run(() => api.confirmFeatureScope(f.repo_id, f.id, f.revision))}>确认此功能属于项目范围</button>}
       <p>验收条件：{f.acceptance || '尚未回报'}</p>
       <p className="mono">候选：{f.candidate || '未指定或多候选待对齐'}</p>
-      {f.contributions.map(p => <div key={p.run_id} className="core-feature-evidence"><p>{providerLabel(p.provider)} #{p.session_id} · {p.work_item_id} · 候选 {p.candidate || '待回报'}</p><p>实现：{implementation[p.implementation || 'unknown']} · {p.implementation_at ? ago(p.implementation_at, snap.now) : '未回报'}</p><p>{validation[p.validation || 'unknown']}：{p.evidence || '未回报验证依据'} · {p.validation_at ? ago(p.validation_at, snap.now) : '未回报'}</p>{onSelectSession && <button className="btn tiny" onClick={() => onSelectSession(p.session_id)}>会话 #{p.session_id}</button>}</div>)}
+      {f.contributions.map(p => <div key={p.run_id} className="core-feature-evidence"><p>{providerLabel(p.provider)} #{shownNo(p.session_id)} · {p.work_item_id} · 候选 {p.candidate || '待回报'}</p><p>实现：{implementation[p.implementation || 'unknown']} · {p.implementation_at ? ago(p.implementation_at, snap.now) : '未回报'}</p><p>{validation[p.validation || 'unknown']}：{p.evidence || '未回报验证依据'} · {p.validation_at ? ago(p.validation_at, snap.now) : '未回报'}</p>{onSelectSession && <button className="btn tiny" onClick={() => onSelectSession(p.session_id)}>会话 #{shownNo(p.session_id)}</button>}</div>)}
       {onSelectItem && f.work_item_ids.map(id => <button className="btn tiny" key={id} onClick={() => onSelectItem(id)}>工作项 {id}</button>)}
       {!isRemote() && !f.accepted && f.implementation === 'implemented' && !f.conflict && f.validation !== 'failed' && f.candidate && <button className="btn small" disabled={isRemote() || act.busy} onClick={() => act.run(() => api.acceptFeature(f.repo_id, f.id, f.candidate, f.revision, 'accepted'))}>确认此功能符合要求</button>}
       {f.accepted && <><p>用户验收：{f.accepted_at ? ago(f.accepted_at, snap.now) : ''}；不代表已合并或部署。</p>{!isRemote() && <button className="btn small" disabled={act.busy} onClick={() => act.run(() => api.acceptFeature(f.repo_id, f.id, f.candidate, f.revision, 'changes_requested'))}>退回此功能修改</button>}</>}

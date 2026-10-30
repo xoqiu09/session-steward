@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { api } from '../api'
 import { AgentBadge } from '../bits'
+import { shownNo } from '../hub/ids'
 import type { DayDetail, DayStat, HistoryResp, Snapshot } from '../types'
 import {
   METRIC_LABEL, changeText, dayKey, fmtNum, heatmapWeeks, levels, metricOf, parseDay, providerBars, rangeSums, streak, tokenTotal, type Metric,
@@ -185,7 +186,7 @@ function DayPanel({ day, stat, snap, tokens, onSelectSession, onSelectItem, onRe
               {detail.sessions.map((s) => (
                 <li key={s.id}>
                   <button type="button" onClick={() => onSelectSession(s.id)}>
-                    <AgentBadge provider={s.provider} /> <strong>#{s.id}</strong> <span className="ellipsis">{sessionTitle(s.id) || repoName(s.repo_id)}</span>
+                    <AgentBadge provider={s.provider} /> <strong>#{shownNo(s.id)}</strong> <span className="ellipsis">{sessionTitle(s.id) || repoName(s.repo_id)}</span>
                     <small className="muted">{hm(s.first)}–{hm(s.last)} · {repoName(s.repo_id)}{s.work_item_id ? ` · ${s.work_item_id}` : ''}</small>
                     <small>对话 {s.prompts} 轮 · 工具 {s.tools} 次{s.tool_failed ? `（失败 ${s.tool_failed}）` : ''}{s.subagents ? ` · 子 Agent ${s.subagents}` : ''}{tokens && tokenTotal(s.tokens) ? ` · ${fmtNum(tokenTotal(s.tokens))} token` : ''}</small>
                   </button>

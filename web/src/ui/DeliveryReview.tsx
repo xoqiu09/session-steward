@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 import type { Snapshot, WorkItem } from '../types'
 import { ago, providerLabel } from '../model'
 import { CopyButton } from '../bits'
+import { shownNo } from '../hub/ids'
 import { reviewGuide } from './runDeskModel'
 
 const SOURCE: Record<'session' | 'candidate' | 'item', string> = { session: '交付会话记录', candidate: '候选提交', item: '工作项记录' }
@@ -32,7 +33,7 @@ export function DeliveryReview({ snap, item, onSelectSession, actions }: { snap:
         <dt>交付会话</dt>
         <dd className="review-line">
           {s ? <>
-            <span><button type="button" className="linkish" title="查看小镇里的会话记录" onClick={() => onSelectSession(s.id)}>{providerLabel(s.provider)} 会话 #{s.id}</button>{s.cwd && <> · <code>{s.cwd}</code></>}</span>
+            <span><button type="button" className="linkish" title="查看小镇里的会话记录" onClick={() => onSelectSession(s.id)}>{providerLabel(s.provider)} 会话 #{shownNo(s.id)}</button>{s.cwd && <> · <code>{s.cwd}</code></>}</span>
             {s.resume_command ? <CopyButton text={s.resume_command} label="复制恢复命令" /> : <small className="muted">没有记下恢复命令</small>}
           </> : <span className="muted">没有找到交付会话。</span>}
         </dd>
