@@ -106,10 +106,29 @@ export function momentsWhileAway(s: Snapshot, since: number | null): TownMoment[
   return sortMoments([...items, ...decisions].filter((m) => time(m.at) > since))
 }
 
+/** 离开期间发生、而且之前没看过的动态。看过的按键排除，不靠浏览器时钟判断新旧。 */
+export function unseenWhileAway(s: Snapshot, since: number | null, seen: ReadonlySet<string>): TownMoment[] {
+  return momentsWhileAway(s, since).filter((m) => !seen.has(m.key))
+}
+
 export interface FollowPreferences { enabled: boolean; includeMerged: boolean }
 export const DEFAULT_FOLLOW: FollowPreferences = { enabled: true, includeMerged: false }
 export const FOLLOW_KEY = 'ss.town.follow.v1'
 export const LAST_SEEN_KEY = 'ss.town.lastSeen.v1'
+/** 看过的动态按键记住：刷新、重连、重开后同一条交付不再重飞，也不再出现在“你离开期间”。 */
+export const SEEN_KEY = 'ss.town.seenMoments.v1'
+const SEEN_MAX = 400
+
+export function readSeenMoments(storage: Pick<Storage, 'getItem'> | undefined = globalThis.localStorage): string[] {
+  try {
+    const value = JSON.parse(storage?.getItem(SEEN_KEY) || '[]')
+    return Array.isArray(value) ? value.filter((k): k is string => typeof k === 'string').slice(-SEEN_MAX) : []
+  } catch { return [] }
+}
+
+export function writeSeenMoments(keys: Iterable<string>, storage: Pick<Storage, 'setItem'> | undefined = globalThis.localStorage): void {
+  try { storage?.setItem(SEEN_KEY, JSON.stringify([...keys].slice(-SEEN_MAX))) } catch { /* 存不下时本次会话照常去重。 */ }
+}
 
 export function autoMoment(m: TownMoment, p: FollowPreferences): boolean {
   return p.enabled && m.local && (m.kind === 'decision' || m.kind === 'ripe' || (m.kind === 'merged' && p.includeMerged))

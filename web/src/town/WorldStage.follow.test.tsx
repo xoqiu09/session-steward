@@ -34,7 +34,7 @@ import { TownView } from './TownView'
 import { api } from '../api'
 import { buildTown } from './townModel'
 import { fakeApproval, fakeItem } from './fixtures'
-import { FOLLOW_KEY, LAST_SEEN_KEY } from './moments'
+import { FOLLOW_KEY, LAST_SEEN_KEY, SEEN_KEY } from './moments'
 
 type Node = ReactElement<any>
 const nodes = (node: any): Node[] => {
@@ -191,7 +191,11 @@ describe('WorldStage 跟随动态', () => {
     render(); hidden = true; emitVisibility(); advance(10_000); deliver(); advance(3000)
     hidden = false; emitVisibility(); render()
     expect(words(tree)).toContain('你离开期间：1 棵菜熟了，0 件要你决定'); expect(notice(tree)).toBeUndefined(); expect(requestAnimationFrame).not.toHaveBeenCalled()
+    // 重新打开：已经在“你离开期间”里看过的同一条交付不再出现
     host.reset(); storage.set(LAST_SEEN_KEY, String(Date.parse('2026-10-29T07:00:00Z'))); render(); advance(3000)
+    expect(words(tree)).not.toContain('你离开期间'); expect(requestAnimationFrame).not.toHaveBeenCalled()
+    // 浏览器存储被清掉（真的没看过）时照常补上
+    host.reset(); storage.delete(SEEN_KEY); storage.set(LAST_SEEN_KEY, String(Date.parse('2026-10-29T07:00:00Z'))); render(); advance(3000)
     expect(words(tree)).toContain('你离开期间：1 棵菜熟了'); expect(requestAnimationFrame).not.toHaveBeenCalled()
   })
   it('本地存储被拒绝时仍能检测新动态和更新设置', () => {
