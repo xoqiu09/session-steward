@@ -326,3 +326,6 @@
 @media (prefers-reduced-motion: reduce) {
   .town-view .town-cart { animation: none; transform: translate(var(--dx), var(--dy)); }
 }
+.town-view .town-desk-list .muted { color: #6b5a44; font-size: 12px; }
+.town-view .town-desk-list-foot { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+.town-view .town-desk-list-foot button { padding: 6px 10px; }

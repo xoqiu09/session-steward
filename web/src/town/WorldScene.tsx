@@ -1,6 +1,7 @@
 // 小镇世界：每个项目一个街区，中间是广场。远景只画街区名牌和计数，近景画小人、包裹和任务。只读。
 import { useEffect, useMemo, useRef, useState, type PointerEvent as RPointerEvent } from 'react'
 import { IsoBox, IsoTile, iso, type Pt } from './iso'
+import { attentionManaged } from '../workManagement'
 import { characterStatusLabel, type BuildingView, type Highlight, type ParcelView, type TownModel } from './townModel'
 import {
   Building, HOUSE_SHAPE, Character, DecisionBoard, FailRack, Parcel, Path, ReviewDesk, StatusPill, Tag, Tree,
@@ -67,6 +68,9 @@ interface SceneProps {
 
 /** 手动导航的目标：项目按稳定项目键（来源设备 + 原始项目编号），片区按片区键。 */
 export type NavTarget = { kind: 'project'; id: string } | { kind: 'area'; key: string }
+
+/** 验收台在广场上的位置（广场右后方）。 */
+const DESK = { gx: 5.0, gy: 1.2 }
 
 /** 四档建筑：占地、墙色、高度、窗户层数。占满院子后排，远看也认得出大小差别。 */
 const TIERS: Record<Tier, { shape: BuildingShape; w: number; d: number }> = {
@@ -163,7 +167,8 @@ export function WorldScene({ model, world, view, far, selected, highlight, onSel
   const fadeChar = (c: BuildingView['characters'][number]) => (focus && agentOf(c.session) !== focus ? ' is-dim' : '')
 
   const allParcels = model.buildings.flatMap((b) => b.parcels)
-  const reviewTotal = allParcels.filter(onReviewDesk).length
+  // 与顶部“待验收”同口径：按待验收的工作项计（不是按运行包裹），验收台列表里的数字也对得上。
+  const reviewTotal = model.reviewItems.length
   const failedTotal = allParcels.filter((p) => p.phase === 'failed').length
   const boardModel = { ...model, pendingApprovals: model.pendingApprovals.slice(0, BOARD_MAX) }
   const boardAt = iso(6.0, 8.0)
@@ -210,12 +215,13 @@ export function WorldScene({ model, world, view, far, selected, highlight, onSel
         if (key === '__plaza') return (
           <g key="__plaza">
             <IsoTile gx={P.ox + 0.4} gy={P.oy + 0.4} w={INNER_W - 0.4} d={INNER_D - 0.4} fill="#e9dcc2" stroke="#cdbb98" />
-            <FailRack at={{ gx: P.ox + 5.8, gy: P.oy + 1.3 }} count={failedTotal} />
-            <ReviewDesk at={{ gx: P.ox + 1.2, gy: P.oy + 2.4 }} count={reviewTotal} selected={isSel('review-desk', 'review-desk')} dimDesk={dim(highlight === 'review')} onSelect={onSelect} />
+            {/* 告示栏立在广场左前方、卡片多了会长高，验收台和退件架放到右边，不被它挡住 */}
+            <ReviewDesk at={{ gx: P.ox + DESK.gx, gy: P.oy + DESK.gy }} count={reviewTotal} selected={isSel('review-desk', 'review-desk')} dimDesk={dim(highlight === 'review')} onSelect={onSelect} />
             {/* 验收台上的箱子只是示意，数量看招牌 */}
             {Array.from({ length: Math.min(5, reviewTotal) }, (_, i) => (
-              <g key={`rd${i}`} className="town-near" aria-hidden><TownCrate at={iso(P.ox + 2.0 + (i % 3) * 0.9, P.oy + 2.95, 16 + Math.floor(i / 3) * 11)} fill="#d6b27a" tape="#5b6cd8" /></g>
+              <g key={`rd${i}`} className="town-near" aria-hidden><TownCrate at={iso(P.ox + DESK.gx + 0.8 + (i % 3) * 0.9, P.oy + DESK.gy + 0.55, 16 + Math.floor(i / 3) * 11)} fill="#d6b27a" tape="#5b6cd8" /></g>
             ))}
+            <FailRack at={{ gx: P.ox + 7.4, gy: P.oy + 5.2 }} count={failedTotal} />
             <DecisionBoard place={{ x: boardAt[0], y: boardAt[1], anchor: 'bottom', scale: 1 }} model={boardModel} isSel={(k) => isSel('approval', k)} dimClass={dim(highlight === 'waiting')} onSelect={onSelect} />
             {model.pendingApprovals.length > BOARD_MAX && <Tag at={[boardAt[0], boardAt[1] + 16]} text={`另有 ${model.pendingApprovals.length - BOARD_MAX} 条在关注队列`} bg="#fffaf0" fg="#6b5a44" small />}
           </g>
@@ -574,7 +580,15 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
   }, [inside])
   const enter = (key: string) => { stop(); lastTouch.current = Date.now(); setArrived(null); setProjectsOpen(false); setInside(key) }
   // 只有房子本体（和明确的“进入工作室”）才进室内；名牌、片区名牌走 navigate。
-  const sceneSelect = (s: Selection) => { if (s.kind === 'building') enter(s.key); else props.onSelect(s) }
+  // 验收台：只有一个项目在等就直接去它门口；几个项目在等时列出来挑；一件都没有时照旧打开关注队列。
+  const openDesk = (s: Selection) => {
+    const groups = deskProjects(world, isRemote)
+    const all = groups.flatMap((g) => g.projects)
+    if (!all.length) { props.onSelect(s); return }
+    if (all.length === 1) { navigate({ kind: 'project', id: all[0].d.id }); return }
+    setProjectsOpen(false); setDeskOpen(true)
+  }
+  const sceneSelect = (s: Selection) => { if (s.kind === 'building') enter(s.key); else if (s.kind === 'review-desk') openDesk(s); else props.onSelect(s) }
   // 位置按稳定项目键记住：状态、活动排名、设备顺序变化都不搬家，新项目往外追加。
   const selfName = props.selfDevice || props.snapshot?.devices?.find((d) => d.self)?.name || ''
   const memo = useRef<WorldMemo | null>(null)
@@ -602,6 +616,7 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
   const [arrived, setArrived] = useState<NavTarget | null>(null)
   const [navNote, setNavNote] = useState('')
   const [projectsOpen, setProjectsOpen] = useState(false)
+  const [deskOpen, setDeskOpen] = useState(false)
   const [sparks, setSparks] = useState<ReadonlySet<string>>(new Set())
   const lastFlight = useRef(-Infinity)
   const followUntil = useRef(0)
@@ -716,11 +731,11 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
     return () => window.clearTimeout(t)
   }, [navNote])
   useEffect(() => {
-    if (!projectsOpen) return
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setProjectsOpen(false) }
+    if (!projectsOpen && !deskOpen) return
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { setProjectsOpen(false); setDeskOpen(false) } }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [projectsOpen])
+  }, [projectsOpen, deskOpen])
   const visitMoment = (m: TownMoment) => {
     const d = world.districts.find((d) => d.key === m.buildingKey)
     if (!d) return
@@ -874,10 +889,12 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
           {!guideSeen && !guide && <span className="town-guide-bubble" role="note">第一次来？点这里看怎么用</span>}
         </span>
         <button type="button" aria-pressed={byAgent} className={byAgent ? 'is-on' : undefined} onClick={() => { setByAgent(!byAgent); setAgentFocus(null) }} title="按会话来自哪个 Agent 着色">按 Agent 看</button>
-        <button type="button" aria-expanded={projectsOpen} className={projectsOpen ? 'is-on' : undefined} onClick={() => setProjectsOpen(!projectsOpen)}
+        <button type="button" aria-expanded={projectsOpen} className={projectsOpen ? 'is-on' : undefined} onClick={() => { setDeskOpen(false); setProjectsOpen(!projectsOpen) }}
           title="按片区列出全部项目：点项目名去它的房子和门前花园">项目 {world.districts.length}</button>
       </div>
       {projectsOpen && <ProjectList world={world} isRemote={isRemote} onNavigate={navigate} onEnter={enter} />}
+      {deskOpen && <DeskList groups={deskProjects(world, isRemote)} onNavigate={(t) => { setDeskOpen(false); navigate(t) }}
+        onQueue={() => { setDeskOpen(false); props.onSelect({ kind: 'review-desk', key: 'review-desk' }) }} onClose={() => setDeskOpen(false)} />}
       <div className="town-moments town-world-ui" onPointerDown={(e) => e.stopPropagation()}>
         {queued.length > 0 && <button type="button" aria-expanded={showMoments} onClick={() => setShowMoments(!showMoments)}>{queued.length} 处有新动态</button>}
         {showMoments && queued.length > 0 && <ol className="town-moment-list" aria-label="新动态，按优先级排列">
@@ -925,6 +942,52 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
         onReopen={() => goHarvest(harvest.ids, harvest.index)} onEnd={() => setHarvest(null)} />}
         </>
       )}
+    </div>
+  )
+}
+
+export interface DeskGroup { device: string; remote: boolean; projects: { d: District; count: number }[] }
+
+/** 验收台上等你的项目，按电脑分组：这台在前，其他电脑的只能看。每组内等得多的在前。 */
+export function deskProjects(world: WorldLayout, isRemote: (d: District) => boolean): DeskGroup[] {
+  const groups = new Map<string, DeskGroup>()
+  for (const d of world.districts) {
+    const count = d.b.items.filter((w) => w.status === 'review' && !attentionManaged(w)).length
+    if (!count) continue
+    const remote = isRemote(d)
+    const device = remote ? d.b.repo?.device || '另一台电脑' : '这台电脑'
+    if (!groups.has(device)) groups.set(device, { device, remote, projects: [] })
+    groups.get(device)!.projects.push({ d, count })
+  }
+  const out = [...groups.values()].sort((a, b) => Number(a.remote) - Number(b.remote) || a.device.localeCompare(b.device))
+  for (const g of out) g.projects.sort((a, b) => b.count - a.count || a.d.b.name.localeCompare(b.d.b.name))
+  return out
+}
+
+/** 验收台列表：点项目去它的门口（房子和门前菜地），在那里看熟了的菜。 */
+function DeskList({ groups, onNavigate, onQueue, onClose }: { groups: DeskGroup[]; onNavigate: (t: NavTarget) => void; onQueue: () => void; onClose: () => void }) {
+  const local = groups.find((g) => !g.remote)
+  return (
+    <div className="town-projects town-desk-list town-world-ui" role="region" aria-label="验收台：等你验收的项目" onPointerDown={(e) => e.stopPropagation()}>
+      <p className="town-projects-hint">点项目去它的门口，熟了的菜在门前菜地里。</p>
+      {groups.map((g) => (
+        <section key={g.device}>
+          <h3>{g.device} · {g.projects.reduce((n, p) => n + p.count, 0)} 件{g.remote ? '（只能看，要到那台电脑上处理）' : ''}</h3>
+          <ul>
+            {g.projects.map(({ d, count }) => (
+              <li key={d.key}>
+                <button type="button" className="town-projects-name" onClick={() => onNavigate({ kind: 'project', id: d.id })} title="去它的房子和门前菜地">{d.b.name}</button>
+                <span className="muted">{count} 件</span>
+                <button type="button" onClick={() => onNavigate({ kind: 'project', id: d.id })} aria-label={`去门口：${d.b.name}`}>去门口</button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ))}
+      <div className="town-desk-list-foot">
+        {local && <button type="button" onClick={onQueue}>在关注队列里看这台的全部</button>}
+        <button type="button" onClick={onClose}>关闭</button>
+      </div>
     </div>
   )
 }
