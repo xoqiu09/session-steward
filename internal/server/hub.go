@@ -29,16 +29,24 @@ type Hub struct {
 	mu      sync.Mutex
 	lastAt  string
 	lastErr string
+	// 最近一次成功的时间和耗时、连续失败次数：界面据此分清“连不上”和“中心机回得慢”。
+	lastOKAt string
+	lastMs   int64
+	fails    int
 }
 
-func (h *Hub) record(err error) {
+func (h *Hub) record(err error, took time.Duration) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.lastAt = time.Now().UTC().Format(time.RFC3339)
+	h.lastMs = took.Milliseconds()
 	if err != nil {
 		h.lastErr = err.Error()
+		h.fails++
 	} else {
 		h.lastErr = ""
+		h.lastOKAt = h.lastAt
+		h.fails = 0
 	}
 }
 
@@ -51,15 +59,16 @@ func (h *Hub) client() *http.Client {
 
 // Push 把本机摘要推给中心（agent 用）。
 func (h *Hub) Push(ctx context.Context, c *core.Core) error {
+	start := time.Now()
 	sum, err := c.HubLocalSummary(ctx, h.SelfID, h.SelfName, true)
 	if err != nil {
-		h.record(err)
+		h.record(err, time.Since(start))
 		return err
 	}
 	b, _ := json.Marshal(sum)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(h.URL, "/")+"/api/hub/push", bytes.NewReader(b))
 	if err != nil {
-		h.record(err)
+		h.record(err, time.Since(start))
 		return err
 	}
 	req.Header.Set("Authorization", "Bearer "+h.Secret)
@@ -79,7 +88,7 @@ func (h *Hub) Push(ctx context.Context, c *core.Core) error {
 			err = errors.New("对方不像 Session Steward 中心机，检查 hub.url（含端口）")
 		}
 	}
-	h.record(err)
+	h.record(err, time.Since(start))
 	return err
 }
 
@@ -187,7 +196,8 @@ func (s *Server) handleHubStatus(w http.ResponseWriter, r *http.Request) {
 	out := map[string]any{"role": ""}
 	if s.Hub != nil && s.Hub.Role != "" {
 		s.Hub.mu.Lock()
-		out = map[string]any{"role": s.Hub.Role, "device": s.Hub.SelfName, "device_id": s.Hub.SelfID, "url": s.Hub.URL, "last_push_at": s.Hub.lastAt, "last_error": s.Hub.lastErr}
+		out = map[string]any{"role": s.Hub.Role, "device": s.Hub.SelfName, "device_id": s.Hub.SelfID, "url": s.Hub.URL, "last_push_at": s.Hub.lastAt, "last_error": s.Hub.lastErr,
+			"last_ok_at": s.Hub.lastOKAt, "last_push_ms": s.Hub.lastMs, "fail_count": s.Hub.fails}
 		s.Hub.mu.Unlock()
 	}
 	writeJSON(w, 200, out)

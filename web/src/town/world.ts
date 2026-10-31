@@ -223,13 +223,53 @@ function wildCell(taken: ReadonlySet<string>): Cell {
   return spiralCells(1, { cx: 0, cy: 0 }, taken)[0]
 }
 
-/** 按记住的位置排布；memo 为空时用 worldLayout 的分组排第一次并记下来。memo 会被更新。 */
-export function stableLayout(buildings: readonly BuildingView[], needsYou: (b: BuildingView) => boolean, plan: WorldPlan | undefined, memo: WorldMemo, idOf: (b: BuildingView) => string): WorldLayout {
-  if (!memo.places.size) {
-    const first = worldLayout(buildings, needsYou, plan, idOf)
+// ---- 按电脑分片：别的电脑的项目各住一片，片区入口挂电脑名；和本机的街区隔开，用土路连到中央广场 ----
+
+const REGION = 'device:'
+/** 一台别的电脑的片区键（和村子共用一套记忆，键带前缀不会撞名）。 */
+export const regionKey = (device: string) => `${REGION}${device}`
+export const isRegion = (village: string | undefined) => !!village?.startsWith(REGION)
+/** 片区放在本机街区外面，各占一个方向：屏幕右边、左边、下边、上边。 */
+const REGION_DIRS: Cell[] = [{ cx: 1, cy: -1 }, { cx: -1, cy: 1 }, { cx: 1, cy: 1 }, { cx: -1, cy: -1 }]
+/** 片区和已有街区之间空出的格子数。 */
+const REGION_GAP = 3
+
+function regionSquare(taken: ReadonlySet<string>, n: number): Cell {
+  const radius = Math.max(1, ...[...taken].map((k) => { const [x, y] = k.split(',').map(Number); return Math.max(Math.abs(x), Math.abs(y)) })) + REGION_GAP
+  const dir = REGION_DIRS[n % REGION_DIRS.length]
+  const far = radius + Math.floor(n / REGION_DIRS.length) * REGION_GAP
+  return { cx: dir.cx * far, cy: dir.cy * far }
+}
+
+/** 只看一台别的电脑：把它的片区挪到原点，入口当中央广场，看起来就是那台电脑自己的小镇。相对位置不变。 */
+export function regionView(layout: WorldLayout, key: string): WorldLayout {
+  const v = layout.villages.find((x) => x.key === key)
+  if (!v) return layout
+  const districts = layout.districts.filter((d) => d.village === key).map((d): District => {
+    const cell = { cx: d.cell.cx - v.square.cx, cy: d.cell.cy - v.square.cy }
+    return { ...d, cell, ox: cell.cx * CELL_W, oy: cell.cy * CELL_D, ring: cheb(cell), kind: 'central', village: undefined }
+  })
+  return finish(districts, [], [])
+}
+
+/** 按记住的位置排布；本机还没有记住的位置时用 worldLayout 的分组排第一次并记下来。memo 会被更新。
+ *  regionOf：合并视图里别的电脑的项目返回那台电脑的名字，它们只住进那台电脑的片区。 */
+export function stableLayout(buildings: readonly BuildingView[], needsYou: (b: BuildingView) => boolean, plan: WorldPlan | undefined, memo: WorldMemo, idOf: (b: BuildingView) => string,
+  regionOf: (b: BuildingView) => string | undefined = () => undefined): WorldLayout {
+  // 以前和本机混排时记下的别台电脑项目作废，重新排进它的片区。
+  for (const b of buildings) {
+    const r = regionOf(b), p = memo.places.get(idOf(b))
+    if (r && p && p.village !== regionKey(r)) memo.places.delete(idOf(b))
+  }
+  if (![...memo.places.values()].some((p) => !isRegion(p.village))) {
+    // 本机第一次排：先按分组排本机；已有的片区作废，等下在本机街区外面重新开。
+    for (const [k, p] of memo.places) if (isRegion(p.village)) memo.places.delete(k)
+    for (const k of memo.villages.keys()) if (isRegion(k)) memo.villages.delete(k)
+    const local = buildings.filter((b) => !regionOf(b))
+    const first = worldLayout(local, needsYou, plan, idOf)
     for (const d of first.districts) memo.places.set(d.id, { cell: d.cell, kind: d.kind, village: d.village })
     for (const v of first.villages) memo.villages.set(v.key, { name: v.name, square: v.square })
-    return first
+    if (local.length === buildings.length) return first
   }
   const taken = new Set<string>([keyOf({ cx: 0, cy: 0 })])
   for (const p of memo.places.values()) taken.add(keyOf(p.cell))
@@ -239,14 +279,24 @@ export function stableLayout(buildings: readonly BuildingView[], needsYou: (b: B
   for (const v of plan?.villages ?? []) for (const id of v.repoIds) villageOf.set(id, v)
   const wild = new Set(plan?.wild ?? [])
   // 新项目按现在的分组找去处：同村已有老住户就挨着它，至少两个新成员才在外圈开一个新村，不常动的去野外，其余围着中央。
-  const fresh = districtOrder(buildings.filter((b) => !memo.places.has(idOf(b))), needsYou)
+  // 本机的新项目先排，片区按排好后的范围往外开。
+  const fresh = districtOrder(buildings.filter((b) => !memo.places.has(idOf(b))), needsYou).sort((a, b) => Number(!!regionOf(a)) - Number(!!regionOf(b)))
   const freshIn = new Map<string, number>()
-  for (const b of fresh) { const v = b.repo && villageOf.get(b.repo.id); if (v) freshIn.set(v.key, (freshIn.get(v.key) ?? 0) + 1) }
+  for (const b of fresh) { const v = !regionOf(b) && b.repo && villageOf.get(b.repo.id); if (v) freshIn.set(v.key, (freshIn.get(v.key) ?? 0) + 1) }
   for (const b of fresh) {
     const pv = b.repo ? villageOf.get(b.repo.id) : undefined
-    const mate = pv?.repoIds.map((id) => byRepo.get(id)).map((m) => (m ? memo.places.get(idOf(m)) : undefined)).find((p) => p?.kind === 'village')
+    const mate = pv?.repoIds.map((id) => byRepo.get(id)).map((m) => (m ? memo.places.get(idOf(m)) : undefined)).find((p) => p?.kind === 'village' && !isRegion(p.village))
     let place: Placement
-    if (pv && (mate || (freshIn.get(pv.key) ?? 0) >= 2)) {
+    const region = regionOf(b)
+    if (region) {
+      const key = regionKey(region)
+      if (!memo.villages.has(key)) {
+        const square = regionSquare(taken, [...memo.villages.keys()].filter(isRegion).length)
+        taken.add(keyOf(square))
+        memo.villages.set(key, { name: region, square })
+      }
+      place = { cell: spiralCells(1, memo.villages.get(key)!.square, taken)[0], kind: 'village', village: key }
+    } else if (pv && (mate || (freshIn.get(pv.key) ?? 0) >= 2)) {
       let key = mate?.village
       if (!key) {
         key = pv.key
@@ -277,7 +327,7 @@ export function stableLayout(buildings: readonly BuildingView[], needsYou: (b: B
   for (const [key, v] of memo.villages) {
     const cells = districts.filter((d) => d.village === key).map((d) => d.cell)
     if (cells.length) villages.push({ key, name: v.name, square: v.square, cells: [v.square, ...cells] })
-    else emptyVillages.push({ key, name: v.name })
+    else if (!isRegion(key)) emptyVillages.push({ key, name: v.name })
   }
   return finish(districts, villages, emptyVillages)
 }

@@ -15,7 +15,7 @@ import { NewManaged } from './Managed'
 import { ReviewPanel } from './P2'
 import { isRemote, remoteReadOnlyMessage } from './access'
 import { HistoryView } from './history/HistoryView'
-import { useHub, remoteDeviceOf } from './hub/hub'
+import { useHub, remoteDeviceOf, scopeDevice, type HubScope } from './hub/hub'
 import { HubSwitch } from './hub/HubSwitch'
 import { TownView } from './town/TownView'
 import { TodayView } from './today/TodayView'
@@ -35,15 +35,17 @@ export default function App() {
 
 function PanelApp() {
   const { snap, conn } = useSnapshot()
-  // 多设备：“全部设备”时小镇画合并视图；点到别台电脑上的东西只提示去那台处理。
+  // 多设备：选别的电脑时小镇只画那台，选“全部”时画合并视图；点到别台电脑上的东西只提示去那台处理。
   const hub = useHub()
   const [hubNotice, setHubNotice] = useState('')
   useEffect(() => { if (!hubNotice) return; const t = window.setTimeout(() => setHubNotice(''), 4000); return () => window.clearTimeout(t) }, [hubNotice])
   const townItem = (id: string) => { const d = hub.merged && remoteDeviceOf(hub.merged, 'item', id); if (d) setHubNotice(d); else selectItem(id) }
   const townSession = (id: number) => { const d = hub.merged && remoteDeviceOf(hub.merged, 'session', id); if (d) setHubNotice(d); else selectSession(id) }
-  const hubSwitch = hub.enabled ? <HubSwitch scope={hub.scope} onScope={hub.setScope} merged={hub.merged} error={hub.error} now={snap?.now ?? new Date().toISOString()} status={hub.status} /> : null
+  // 只看某个项目时切到别的电脑：那个编号是本机的，换回全部项目，不画一座空镇。
+  const setHubScope = (s: HubScope) => { if (scopeDevice(s)) setRepoId('all'); hub.setScope(s) }
+  const hubSwitch = hub.enabled ? <HubSwitch scope={hub.scope} onScope={setHubScope} devices={hub.devices} error={hub.error} now={snap?.now ?? new Date().toISOString()} status={hub.status} /> : null
   // 小镇切换设备范围时不再整个重建：镜头和已排好的地块保留，“回到刚才的位置”能把范围一起切回来。
-  const townScope = { scope: hub.scope, onScope: hub.enabled ? hub.setScope : undefined, selfDevice: hub.status?.device }
+  const townScope = { scope: hub.scope, onScope: hub.enabled ? setHubScope : undefined, selfDevice: hub.status?.device }
   const hubToast = hubNotice ? <div className="hub-toast" role="status">这是「{hubNotice}」上的工作：小镇里只能看，审批、验收和详情请到那台电脑上处理。</div> : null
   const [tab, setTab] = useState<Tab>('queue')
   const [queueFocus, setQueueFocus] = useState<'action' | 'review'>('action')
@@ -141,7 +143,7 @@ function PanelApp() {
         <main className="kiosk-main">
           {hubToast}
           <TownView world={route.world} snap={hub.merged ?? snap} conn={conn} repoId={repoId} provider={provider} sel={sel} onSelectItem={townItem} onSelectSession={townSession}
-            onSelectRepo={(id) => setRepoId(id)} onAllRepos={() => setRepoId('all')} onQueue={openQueue} kiosk rotateMs={route.rotateMs} paused={drawer} noReplay={hub.scope === 'all'} {...townScope}
+            onSelectRepo={(id) => setRepoId(id)} onAllRepos={() => setRepoId('all')} onQueue={openQueue} kiosk rotateMs={route.rotateMs} paused={drawer} noReplay={hub.scope !== 'here'} {...townScope}
             bar={<span className="kiosk-tools">
               {hubSwitch}
               {projectShortcuts}
@@ -222,7 +224,7 @@ function PanelApp() {
         <div className="stage">
           {view === 'town' && hubToast}
           {view === 'town' ? <TownView world={route.world} snap={hub.merged ?? snap} conn={conn} repoId={repoId} provider={provider} sel={sel} onSelectItem={townItem} onSelectSession={townSession} replayDay={replayDay}
-            noReplay={hub.scope === 'all'} {...townScope} bar={<>{hubSwitch}{todayEntry}</>}
+            noReplay={hub.scope !== 'here'} {...townScope} bar={<>{hubSwitch}{todayEntry}</>}
             onSelectRepo={(id) => setRepoId(id)} onAllRepos={() => setRepoId('all')} onQueue={(lane) => { setSel(null); setAttributionOpen(false); setTab('queue'); setQueueFocus(lane) }} />
             : view === 'today' ? <TodayView snap={snap} onSelectItem={selectItem} onOpenTown={openTown} device={hub.enabled ? hub.status?.device ?? '' : undefined} />
             : view === 'overview' ? <Overview snap={snap} groups={groups} onSelectItem={selectItem} onSelectSession={selectSession} onOpenAttribution={openAttributions} pendingCount={counts.action} reviewCount={counts.review} expandQuiet={!!query.trim() || repoId !== 'all'} onQueue={(lane = 'action') => { setSel(null); setAttributionOpen(false); setTab('queue'); setQueueFocus(lane) }} /> : view === 'canvas' ? (
