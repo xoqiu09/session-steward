@@ -203,3 +203,18 @@ func TestSquashProofRequiresExactSourceAndTarget(t *testing.T) {
 		})
 	}
 }
+
+// 没有配置远端的仓库只按本地分支判断，核对状态是“仅本地”，不算失败，也不累计失败次数。
+func TestLocalOnlyRepoIsNotAFailedCheck(t *testing.T) {
+	c, _, _ := gateRepo(t, nil)
+	ctx := context.Background()
+	for i := 0; i < 2; i++ {
+		if err := c.SyncMerges(ctx, true); err != nil {
+			t.Fatal(err)
+		}
+	}
+	statuses, _ := c.MergeSyncStatuses(ctx)
+	if len(statuses) != 1 || statuses[0].State != "local" || statuses[0].Error != "" || statuses[0].Failures != 0 {
+		t.Fatalf("local-only repository reported as a failure: %+v", statuses)
+	}
+}

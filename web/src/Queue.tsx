@@ -210,6 +210,7 @@ export function mergeSyncText(s: MergeSyncStatus | undefined, target: string, no
     return { text: `远端核对失败${times}：${s.error || '原因不明'}。${ok}；如果已经在网页上合并，暂时还认不出来。`, warn: true }
   }
   if (s.state === 'missing') return { text: '找不到这个项目的目录，没法核对。', warn: true }
+  if (s.state === 'local') return { text: `这个仓库没有配置远端，只看本地的 ${target || '目标分支'} 是否已经包含这组改动。`, warn: false }
   return { text: `${ago(s.checked_at, now)}核对过远端：${target || '目标分支'}里还没有这组改动。`, warn: false }
 }
 

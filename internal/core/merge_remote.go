@@ -218,6 +218,11 @@ func (c *Core) syncRepoMerge(ctx context.Context, r repoRow) {
 		return
 	}
 	remoteURL, err := gitx.Run(ctx, r.commonDir, "remote", "get-url", remote)
+	if err != nil && strings.Contains(err.Error(), "No such remote") {
+		// 只在本地的仓库：没有远端可核对，只按本地目标分支判断是否已合并，不算失败。
+		s.State = "local"
+		return
+	}
 	if err != nil {
 		s.Error = "无法读取仓库远端：" + tailText([]byte(err.Error()))
 		return

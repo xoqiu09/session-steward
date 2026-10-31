@@ -23,7 +23,7 @@ export interface ProjectInfo extends Repo {
 }
 
 export interface MergeSyncStatus {
-  state?: 'idle' | 'missing' | 'checked' | 'failed'
+  state?: 'idle' | 'missing' | 'checked' | 'failed' | 'local'
   pending_items?: number
   account?: string
   repo_id: number

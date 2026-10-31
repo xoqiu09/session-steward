@@ -15,3 +15,9 @@ it('没核对过、核对成功、核对失败分别说清楚', () => {
   expect(failed.text).toContain('超时')
   expect(failed.text).toContain('上次成功')
 })
+
+it('只在本地的仓库不算核对失败', () => {
+  const local = mergeSyncText({ repo_id: 1, state: 'local', checked_at: '2026-10-31T02:58:00Z', remote: '', target_ref: 'main', target_sha: '' }, 'main', now)
+  expect(local.warn).toBe(false)
+  expect(local.text).toContain('没有配置远端')
+})
