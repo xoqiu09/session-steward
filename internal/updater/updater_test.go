@@ -373,13 +373,21 @@ func TestFetchBoundedOfficialManifestAndMissingRelease(t *testing.T) {
 		}
 		return &http.Response{StatusCode: 404, Body: io.NopCloser(strings.NewReader("missing"))}, nil
 	})}
-	if _, e := c.Fetch(context.Background()); e == nil || !strings.Contains(e.Error(), "v0.1.0") {
-		t.Fatal("old release not explained", e)
+	if _, e := c.Fetch(context.Background()); e == nil || !strings.Contains(e.Error(), "/releases") {
+		t.Fatal("missing manifest should point to the Releases page", e)
 	}
 	c.HTTP.Transport = roundTripFunc(func(r *http.Request) (*http.Response, error) {
 		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(strings.Repeat("x", (1<<20)+2)))}, nil
 	})
 	if _, e := c.Fetch(context.Background()); e == nil {
 		t.Fatal("accepted oversized manifest")
+	}
+}
+
+// 没有固定公钥的构建不能在 App 里升级：提示要说清去哪里下载，而不是讲签名细节。
+func TestManualUpdateHintPointsToReleases(t *testing.T) {
+	c := &Client{Key: ""}
+	if _, e := c.Verify([]byte(`{}`)); e == nil || e.Error() != ManualUpdateHint || !strings.Contains(e.Error(), "/releases") {
+		t.Fatal(e)
 	}
 }

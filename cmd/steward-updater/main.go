@@ -35,8 +35,10 @@ func run() error {
 		emit(map[string]any{"Version": updater.Version, "Build": build, "Arch": runtime.GOARCH, "Schema": store.SchemaVersion(), "Key": updater.PublicKey})
 		return nil
 	case "check":
-		// Fetch first so an old public release gets a truthful explanation even when
-		// this bootstrap candidate has no production public key yet.
+		// 没有固定公钥的构建（源码打包、未签名的 Release）不做 App 内升级，直接说去哪里下载新版。
+		if updater.PublicKey == "" {
+			return errors.New(updater.ManualUpdateHint)
+		}
 		raw, e := client.Fetch(context.Background())
 		if e != nil {
 			return e

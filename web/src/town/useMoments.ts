@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Snapshot } from '../types'
 import {
-  DEFAULT_FOLLOW, FOLLOW_KEY, LAST_SEEN_KEY, MOMENT_WINDOW_MS, momentCurrent, momentsBetween, momentsWhileAway, sortMoments, updateMomentQueue,
+  DEFAULT_FOLLOW, FOLLOW_KEY, LAST_SEEN_KEY, MOMENT_WINDOW_MS, momentCurrent, momentsBetween, readSeenMoments, sortMoments, unseenWhileAway, updateMomentQueue, writeSeenMoments,
   type FollowPreferences, type TownMoment,
 } from './moments'
 
@@ -30,7 +30,8 @@ export function useMoments(snapshot: Snapshot | undefined, onBatch: (moments: To
   const base = useRef(baseline)
   const latest = useRef(snapshot)
   const callbacks = useRef({ onBatch, onProgress })
-  const seen = useRef(new Set<string>())
+  const seen = useRef<Set<string> | null>(null)
+  seen.current ??= new Set(readSeenMoments())
   const lastSeen = useRef<number | null>(seenAtStart)
   const resumeAt = useRef<number | null>(null)
   const batch = useRef<TownMoment[]>([])
@@ -40,17 +41,19 @@ export function useMoments(snapshot: Snapshot | undefined, onBatch: (moments: To
   const remember = () => {
     lastSeen.current = Date.now()
     try { localStorage.setItem(LAST_SEEN_KEY, String(lastSeen.current)) } catch { /* 浏览器拒绝存储时，本次会话照常可用。 */ }
+    writeSeenMoments(seen.current!)
   }
 
   useEffect(() => {
     if (!snapshot) return
     if (base.current !== baseline) { base.current = baseline; previous.current = null }
     const first = previous.current == null
-    const fresh = momentsBetween(previous.current, snapshot).filter((m) => !seen.current.has(m.key))
+    const fresh = momentsBetween(previous.current, snapshot).filter((m) => !seen.current!.has(m.key))
     const caughtUp = first || resumeAt.current != null
-      ? momentsWhileAway(snapshot, lastSeen.current).filter((m) => first || Date.parse(m.at) <= resumeAt.current!) : []
+      ? unseenWhileAway(snapshot, lastSeen.current, seen.current!).filter((m) => first || Date.parse(m.at) <= resumeAt.current!) : []
     previous.current = snapshot
-    for (const m of [...fresh, ...caughtUp]) seen.current.add(m.key)
+    // 页面在后台时到达的动态还没被看到，不记为看过，回到前台后才进“你离开期间”。
+    for (const m of [...(document.hidden ? [] : fresh), ...caughtUp]) seen.current!.add(m.key)
     setQueue((q) => updateMomentQueue(q, [...fresh, ...caughtUp], snapshot))
     setAway((q) => updateMomentQueue(q, caughtUp, snapshot))
     const caughtKeys = new Set(caughtUp.map((m) => m.key))
@@ -76,10 +79,11 @@ export function useMoments(snapshot: Snapshot | undefined, onBatch: (moments: To
       if (document.hidden) { remember(); return }
       resumeAt.current = Date.now()
       if (latest.current) {
-        const caughtUp = momentsWhileAway(latest.current, lastSeen.current)
+        const caughtUp = unseenWhileAway(latest.current, lastSeen.current, seen.current!)
         setQueue((q) => updateMomentQueue(q, caughtUp, latest.current!))
         setAway((q) => updateMomentQueue(q, caughtUp, latest.current!))
-        caughtUp.forEach((m) => seen.current.add(m.key))
+        caughtUp.forEach((m) => seen.current!.add(m.key))
+        writeSeenMoments(seen.current!)
       }
       // 下一张刷新快照仍用离开前的时间补漏，再记为已看过。
     }

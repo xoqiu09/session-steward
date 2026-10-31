@@ -175,6 +175,38 @@ export interface WorldMemo {
 
 export const newWorldMemo = (): WorldMemo => ({ places: new Map(), villages: new Map() })
 
+/** 记住的位置存在浏览器里：刷新、重开 App 后房子还在原处。只存格子坐标和片区名，不存项目内容。 */
+export const LAYOUT_KEY = 'ss.town.layout.v1'
+const LAYOUT_MAX = 600
+
+const isCell = (c: unknown): c is Cell => !!c && Number.isInteger((c as Cell).cx) && Number.isInteger((c as Cell).cy)
+
+export function loadWorldMemo(storage: Pick<Storage, 'getItem'> | undefined = globalThis.localStorage): WorldMemo {
+  const memo = newWorldMemo()
+  try {
+    const raw = JSON.parse(storage?.getItem(LAYOUT_KEY) || 'null')
+    for (const [k, p] of Array.isArray(raw?.places) ? raw.places : []) {
+      if (typeof k === 'string' && isCell(p?.cell) && ['central', 'village', 'wild'].includes(p.kind)) {
+        memo.places.set(k, { cell: { cx: p.cell.cx, cy: p.cell.cy }, kind: p.kind, ...(typeof p.village === 'string' ? { village: p.village } : {}) })
+      }
+    }
+    for (const [k, v] of Array.isArray(raw?.villages) ? raw.villages : []) {
+      if (typeof k === 'string' && typeof v?.name === 'string' && isCell(v?.square)) memo.villages.set(k, { name: v.name, square: { cx: v.square.cx, cy: v.square.cy } })
+    }
+  } catch { /* 读不到或格式不对：当作第一次排布。 */ }
+  // 片区引用了不存在的村子时整份作废，免得排出半个村子。
+  for (const p of memo.places.values()) if (p.village && !memo.villages.has(p.village)) return newWorldMemo()
+  return memo
+}
+
+export function saveWorldMemo(memo: WorldMemo, storage: Pick<Storage, 'setItem'> | undefined = globalThis.localStorage): void {
+  // 只留最近的一部分，项目很多时也不会无限增长（Map 按插入顺序，新项目在后面）。
+  const places = [...memo.places].slice(-LAYOUT_MAX)
+  const used = new Set(places.map(([, p]) => p.village).filter(Boolean))
+  const villages = [...memo.villages].filter(([k]) => used.has(k))
+  try { storage?.setItem(LAYOUT_KEY, JSON.stringify({ places, villages })) } catch { /* 存不下时本次会话照常可用。 */ }
+}
+
 /** 野外空地：离所有占用格子至少隔一格，从内圈往外找。 */
 function wildCell(taken: ReadonlySet<string>): Cell {
   const cells = [...taken].map((k) => k.split(',').map(Number))
