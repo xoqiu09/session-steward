@@ -28,7 +28,15 @@ func Run(ctx context.Context, dir string, args ...string) (string, error) {
 
 // RunEnv uses process-local overrides; credentials never enter arguments or Git config files.
 func RunEnv(ctx context.Context, dir string, env []string, args ...string) (string, error) {
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	return RunEnvTimeout(ctx, dir, env, 10*time.Second, args...)
+}
+
+// FetchTimeout 是从远端拉取的上限：网络慢时 10 秒常常不够，拉一次大仓库会被中途杀掉。
+const FetchTimeout = 45 * time.Second
+
+// RunEnvTimeout 与 RunEnv 相同，但使用调用方给的超时。
+func RunEnvTimeout(ctx context.Context, dir string, env []string, timeout time.Duration, args ...string) (string, error) {
+	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "git", append([]string{"-C", dir}, args...)...)
 	cmd.Env = append(cmd.Environ(), env...)

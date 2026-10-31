@@ -225,6 +225,13 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/approvals/{id}/approve-merge", s.panel(s.handleApproveMerge))
 	mux.HandleFunc("POST /api/approvals/{id}/reject-merge", s.panel(s.handleRejectMerge))
 	mux.HandleFunc("POST /api/approvals/{id}/merge-instruction", s.panel(s.handleMergeInstruction))
+	mux.HandleFunc("POST /api/approvals/{id}/drop-merge", s.panel(func(w http.ResponseWriter, r *http.Request) {
+		if err := s.Core.DropMerge(r.Context(), r.PathValue("id")); err != nil {
+			writeErr(w, err)
+			return
+		}
+		writeJSON(w, 200, map[string]bool{"ok": true})
+	}))
 	mux.HandleFunc("POST /api/approvals/{id}/checked-merge", s.panel(func(w http.ResponseWriter, r *http.Request) {
 		j, err := s.Core.StartMergeGate(r.Context(), r.PathValue("id"))
 		if err != nil {

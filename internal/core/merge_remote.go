@@ -28,6 +28,32 @@ type MergeSyncStatus struct {
 	TargetSHA    string `json:"target_sha"`
 	Error        string `json:"error,omitempty"`
 	PRNote       string `json:"pr_note,omitempty"`
+	Failures     int    `json:"failures,omitempty"` // 连续失败次数，成功后清零
+	LastOK       string `json:"last_ok,omitempty"`  // 上次成功读到远端的时间
+}
+
+// mergeSyncWait：两次自动核对之间至少隔多久。连续失败时逐步拉长（1、2、4、8 分钟，最多 15 分钟），
+// 免得网络不好时每分钟都去撞；手动“立即核对”不受限制。
+func mergeSyncWait(previous MergeSyncStatus) time.Duration {
+	if previous.State != "failed" || previous.Failures < 2 {
+		return time.Minute
+	}
+	wait := time.Minute << min(previous.Failures-1, 4)
+	return min(wait, 15*time.Minute)
+}
+
+// readableFetchError 把 git 的报错翻译成用户能看懂、知道下一步做什么的话。
+func readableFetchError(err error) string {
+	msg := err.Error()
+	switch {
+	case strings.Contains(msg, "signal: killed") || strings.Contains(msg, "deadline exceeded"):
+		return fmt.Sprintf("读取远端超时（超过 %d 秒），稍后会自动重试", int(gitx.FetchTimeout.Seconds()))
+	case strings.Contains(msg, "Repository not found") || strings.Contains(msg, "Authentication failed") || strings.Contains(msg, "could not read Username") || strings.Contains(msg, "Permission denied"):
+		return "没有权限读取这个仓库：检查 gh 或 git 登录的账号能否访问它"
+	case strings.Contains(msg, "unable to access") || strings.Contains(msg, "Could not resolve host") || strings.Contains(msg, "TLS") || strings.Contains(msg, "Connection reset") || strings.Contains(msg, "timed out"):
+		return "连不上远端（网络问题），稍后会自动重试"
+	}
+	return tailText([]byte(msg))
 }
 
 type MergeEvidence struct {
@@ -117,7 +143,7 @@ func (c *Core) SyncMerges(ctx context.Context, force bool) error {
 					}
 				}
 				at, _ := time.Parse(time.RFC3339Nano, previous.CheckedAt)
-				if c.St.Now().Sub(at) < time.Minute {
+				if c.St.Now().Sub(at) < mergeSyncWait(previous) {
 					continue
 				}
 			}
@@ -140,13 +166,22 @@ func (c *Core) SyncMerges(ctx context.Context, force bool) error {
 
 func (c *Core) syncRepoMerge(ctx context.Context, r repoRow) {
 	s := MergeSyncStatus{RepoID: r.id, TargetRef: r.target, State: "checked"}
+	var previous MergeSyncStatus
+	if raw, err := c.St.Meta(ctx, remoteMergeKey(r.id)); err == nil {
+		_ = json.Unmarshal([]byte(raw), &previous)
+	}
 	defer func() {
 		if ctx.Err() != nil {
 			return
 		}
 		s.CheckedAt = c.St.NowTS()
-		if s.Error != "" {
+		s.LastOK = previous.LastOK
+		switch {
+		case s.Error != "":
 			s.State = "failed"
+			s.Failures = previous.Failures + 1
+		case s.State == "checked":
+			s.LastOK = s.CheckedAt
 		}
 		b, _ := json.Marshal(s)
 		_ = c.St.Tx(ctx, func(tx *sql.Tx) error {
@@ -189,7 +224,7 @@ func (c *Core) syncRepoMerge(ctx context.Context, r repoRow) {
 	}
 	s.Remote = remote
 	if s.Account, err = c.fetchMergeRemote(ctx, r, remote, remoteURL, ref); err != nil {
-		s.Error = "读取远端失败；没有把未确认的工作标成已合并：" + tailText([]byte(err.Error()))
+		s.Error = readableFetchError(err)
 		return
 	}
 	s.TargetSHA = gitx.RevParse(ctx, r.commonDir, remoteMergeRef(r.id))

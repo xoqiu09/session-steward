@@ -33,6 +33,8 @@ export interface MergeSyncStatus {
   target_sha: string
   error?: string
   pr_note?: string
+  failures?: number
+  last_ok?: string
 }
 
 export interface MergeEvidence {

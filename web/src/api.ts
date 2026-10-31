@@ -80,6 +80,7 @@ export const api = {
   rejectMerge: (id: string, reason: string) => call('POST', `/api/approvals/${id}/reject-merge`, { reason }),
   mergeInstruction: (id: string) => call<{ text: string }>('POST', `/api/approvals/${id}/merge-instruction`),
   scanMerges: () => call('POST', '/api/scan/merges'),
+  dropMerge: (id: string) => call('POST', `/api/approvals/${id}/drop-merge`),
   launchManaged: (b: { repo_id: number; agent: string; title: string }) => call<ManagedSession>('POST', '/api/managed', b),
   stopManaged: (id: string) => call('POST', `/api/managed/${encodeURIComponent(id)}/stop`),
   archiveManaged: (id: string, force = false) => call('POST', `/api/managed/${encodeURIComponent(id)}/archive`, { force }),
