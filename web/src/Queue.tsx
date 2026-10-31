@@ -1,5 +1,6 @@
 import { isRemote, remoteReadOnlyMessage } from './access'
-import type { Approval, MergePayload, Snapshot } from './types'
+import { useEffect, useState } from 'react'
+import type { Approval, MergePayload, MergeSyncStatus, Snapshot } from './types'
 import { api } from './api'
 import { AgentBadge, CopyButton, ErrorLine, useAction } from './bits'
 import { field, sourceTag } from './brief'
@@ -189,8 +190,45 @@ export function MergeCard({ group, snap, onSelectItem, advice, compact = false }
         )}
       </div>}
       {isRemote() && <p className="hint">{a.status === 'decided' ? '已批准。' : '待审批。'}{remoteReadOnlyMessage}</p>}
+      {!compact && <MergeSyncLine a={a} target={p.target_ref} now={snap.now} />}
       {a.status === 'decided' && <MergeGate snap={snap} a={a} />}
       {compact && <p className="hint">这里只处理代码合并，工作验收单独记录。</p>}
+      <ErrorLine msg={act.error} />
+    </div>
+  )
+}
+
+/** 挂了这么久还没合并，多半是已被别的改动取代，提示可以“不再合并”。 */
+export const STALE_MERGE_DAYS = 3
+
+/** 远端核对的结果：SS 只认 Git 证据，网页上合并后要等核对读到远端才会自动收起这张卡。 */
+export function mergeSyncText(s: MergeSyncStatus | undefined, target: string, now: string): { text: string; warn: boolean } {
+  if (!s || !s.checked_at) return { text: '还没有去远端核对过。在网页上合并后，核对读到远端才会自动收起这张卡。', warn: false }
+  if (s.state === 'failed' || s.error) {
+    const times = (s.failures ?? 0) > 1 ? `（连续 ${s.failures} 次）` : ''
+    const ok = s.last_ok ? `上次成功是${ago(s.last_ok, now)}` : '还没有成功过'
+    return { text: `远端核对失败${times}：${s.error || '原因不明'}。${ok}；如果已经在网页上合并，暂时还认不出来。`, warn: true }
+  }
+  if (s.state === 'missing') return { text: '找不到这个项目的目录，没法核对。', warn: true }
+  if (s.state === 'local') return { text: `这个仓库没有配置远端，只看本地的 ${target || '目标分支'} 是否已经包含这组改动。`, warn: false }
+  return { text: `${ago(s.checked_at, now)}核对过远端：${target || '目标分支'}里还没有这组改动。`, warn: false }
+}
+
+function MergeSyncLine({ a, target, now }: { a: Approval; target: string; now: string }) {
+  const [status, setStatus] = useState<MergeSyncStatus | undefined>()
+  const act = useAction()
+  const load = () => api.mergeSync().then((all) => setStatus(all.find((s) => s.repo_id === a.repo_id))).catch(() => { /* 读不到核对状态时只显示默认说明 */ })
+  useEffect(() => { load(); const t = window.setInterval(load, 60_000); return () => window.clearInterval(t) }, [a.repo_id]) // eslint-disable-line react-hooks/exhaustive-deps
+  const line = mergeSyncText(status, target, now)
+  const days = Math.floor((Date.parse(now) - Date.parse(a.created_at)) / 86_400_000)
+  return (
+    <div className="merge-sync">
+      <p className={line.warn ? 'warn-line' : 'hint'}>{line.text}</p>
+      {days >= STALE_MERGE_DAYS && <p className="hint">这组合并已经挂了 {days} 天。如果改动已经被别的提交取代，可以选“不再合并”：只关掉这张卡，工作项的状态和验收不变。</p>}
+      {!isRemote() && <div className="row">
+        <button className="btn small" disabled={act.busy} onClick={() => act.run(async () => { await api.scanMerges(); await load() })}>{act.busy ? '核对中…' : '立即核对'}</button>
+        <button className="btn small" disabled={act.busy} onClick={() => { if (window.confirm('不再合并这组改动？只关掉这张合并卡，工作项的状态和验收不变；之后也不会再为它生成合并审批。')) act.run(() => api.dropMerge(a.id)) }}>不再合并</button>
+      </div>}
       <ErrorLine msg={act.error} />
     </div>
   )

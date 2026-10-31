@@ -298,6 +298,40 @@ func (c *Core) RejectMerge(ctx context.Context, id, reason string) error {
 	return err
 }
 
+// DropMerge 是用户决定“这组改动不再合并”（例如已被别的改动取代）：关掉这组合并审批，
+// 工作项改为不需要合并，之后扫描不会再为它生成合并审批。工作项状态和验收记录不变。
+func (c *Core) DropMerge(ctx context.Context, id string) error {
+	c.mergeMu.Lock()
+	defer c.mergeMu.Unlock()
+	now := c.St.NowTS()
+	err := c.panelTx(ctx, func(tx *sql.Tx) error {
+		members, err := mergeMembers(tx, id)
+		if errors.Is(err, ErrNotFound) {
+			return ErrConflict
+		}
+		if err != nil {
+			return err
+		}
+		for _, m := range members {
+			if _, err = tx.Exec(`UPDATE approvals SET status='cancelled',decision='drop',close_reason='not_merging',closed_at=? WHERE id=?`, now, m.id); err != nil {
+				return err
+			}
+			if _, err = tx.Exec(`UPDATE work_items SET needs_merge=0,merge_state='none',updated_at=? WHERE id=? AND merge_state<>'merged'`, now, m.item); err != nil {
+				return err
+			}
+			if err = store.Touch(tx, now, "approval", m.id); err != nil {
+				return err
+			}
+			if err = store.Touch(tx, now, "work_item", m.item); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	c.notify()
+	return err
+}
+
 // MergeInstruction copies one instruction; neither copying nor approval executes Git.
 func (c *Core) MergeInstruction(ctx context.Context, id string) (string, error) {
 	var text string

@@ -102,7 +102,7 @@ func (c *Core) fetchMergeRemote(ctx context.Context, r repoRow, remote, remoteUR
 		}
 		helper := "!'" + strings.ReplaceAll(bin, "'", "'\"'\"'") + "' auth git-credential"
 		args := []string{"-c", "credential.helper=", "-c", "credential.https://github.com.helper=", "-c", "credential.https://github.com.helper=" + helper, "-c", "credential.https://github.com.username=" + login}
-		_, err = gitx.RunEnv(ctx, r.commonDir, env, append(args, fetchArgs("https://github.com/"+full+".git")...)...)
+		_, err = gitx.RunEnvTimeout(ctx, r.commonDir, env, gitx.FetchTimeout, append(args, fetchArgs("https://github.com/"+full+".git")...)...)
 		return err
 	}
 	if saved.Login != "" && bin != "" {
@@ -115,7 +115,7 @@ func (c *Core) fetchMergeRemote(ctx context.Context, r repoRow, remote, remoteUR
 			}
 		}
 	}
-	_, originalErr := gitx.Run(ctx, r.commonDir, fetchArgs(remote)...)
+	_, originalErr := gitx.RunEnvTimeout(ctx, r.commonDir, nil, gitx.FetchTimeout, fetchArgs(remote)...)
 	if originalErr == nil {
 		if saved.Login != "" {
 			_ = c.St.SetMeta(ctx, githubAccountKey(r.id), "")
