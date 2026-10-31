@@ -38,8 +38,8 @@ import { iso } from './iso'
 import type { WorldPlan } from './clusters'
 
 type Node = ReactElement<any>
-/** 项目列表是函数组件（无 hook），展开它的输出一起找按钮和文字。 */
-const kids = (node: Node): any => typeof node.type === 'function' && node.type.name === 'ProjectList' ? (node.type as any)(node.props) : node.props.children
+/** 项目列表、验收台列表是函数组件（无 hook），展开它们的输出一起找按钮和文字。 */
+const kids = (node: Node): any => typeof node.type === 'function' && ['ProjectList', 'DeskList'].includes(node.type.name) ? (node.type as any)(node.props) : node.props.children
 const nodes = (node: any): Node[] => {
   if (Array.isArray(node)) return node.flatMap(nodes)
   if (!node || typeof node !== 'object' || !node.props) return []
@@ -310,5 +310,26 @@ describe('导航零业务写入', () => {
     for (const c of calls) expect(c).not.toHaveBeenCalled()
     expect(fetch).not.toHaveBeenCalled(); expect(setItem).not.toHaveBeenCalled(); expect(selected).not.toHaveBeenCalled()
     expect(snap.work_items!.map((w) => w.status)).toEqual(['in_progress', 'blocked'])
+  })
+})
+
+describe('验收台去项目门口', () => {
+  const desk = () => { touch(); scene().props.onSelect({ kind: 'review-desk', key: 'review-desk' }); render() }
+  const ripe = (id: string, repo: number) => fakeItem({ id, repo_id: repo, title: `合成交付${id}`, status: 'review', updated_at: snap.now })
+  it('只有一个项目在等：点验收台直接飞到它门口，不开队列', () => {
+    snap = { ...snap, work_items: [...snap.work_items!, ripe('SYN-R1', 4)] }
+    render(); desk()
+    expect(gardenInView('self#4')).toBe(true); expect(inside()).toBe(false); expect(selected).not.toHaveBeenCalled()
+  })
+  it('几个项目在等：列出来，点“去门口”飞过去，列表收起', () => {
+    snap = { ...snap, work_items: [...snap.work_items!, ripe('SYN-R1', 4), ripe('SYN-R2', 4), ripe('SYN-R3', 6)] }
+    render(); desk()
+    expect(words(tree)).toContain('这台电脑 · 3 件')
+    press('去门口：合成片区项目5'); expect(gardenInView('self#6')).toBe(true); expect(inside()).toBe(false)
+    expect(button(tree, '去门口：合成片区项目5')).toBeUndefined(); expect(selected).not.toHaveBeenCalled()
+  })
+  it('没有待验收时照旧打开关注队列', () => {
+    render(); desk()
+    expect(selected).toHaveBeenCalledWith({ kind: 'review-desk', key: 'review-desk' })
   })
 })
