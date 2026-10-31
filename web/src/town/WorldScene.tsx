@@ -8,8 +8,8 @@ import {
   type BuildingShape, type Plot, type Selection,
 } from './TownScene'
 import {
-  CELL_D, CELL_W, FAR_W, INNER_D, INNER_W, areaBox, cellBox, clampCamera, fitCamera, lerpCamera, newWorldMemo, stableLayout, tourStops, viewBoxOf, zoomAt,
-  type Box, type Camera, type Cell, type District, type Tier, type WorldLayout,
+  CELL_D, CELL_W, FAR_W, INNER_D, INNER_W, areaBox, cellBox, clampCamera, fitCamera, lerpCamera, loadWorldMemo, saveWorldMemo, stableLayout, tourStops, viewBoxOf, zoomAt,
+  type Box, type Camera, type Cell, type District, type Tier, type WorldLayout, type WorldMemo,
 } from './world'
 import type { WorldPlan } from './clusters'
 import { InteriorScene } from './InteriorScene'
@@ -577,11 +577,13 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
   const sceneSelect = (s: Selection) => { if (s.kind === 'building') enter(s.key); else props.onSelect(s) }
   // 位置按稳定项目键记住：状态、活动排名、设备顺序变化都不搬家，新项目往外追加。
   const selfName = props.selfDevice || props.snapshot?.devices?.find((d) => d.self)?.name || ''
-  const memo = useRef(newWorldMemo())
+  const memo = useRef<WorldMemo | null>(null)
+  memo.current ??= loadWorldMemo()
   const world = useMemo(() => {
     const ids = identityKeys(model.buildings, selfName)
-    return stableLayout(model.buildings, needsYou, plan, memo.current, (b) => ids.get(b.key)!)
+    return stableLayout(model.buildings, needsYou, plan, memo.current!, (b) => ids.get(b.key)!)
   }, [model, needsYou, plan, selfName])
+  useEffect(() => { if (memo.current) saveWorldMemo(memo.current) }, [world])
   const isRemote = (d: District) => !!d.b.repo && projectIdentity(d.b.repo, selfName).device !== 'self'
   const box = useRef<HTMLDivElement>(null)
   const [aspect, setAspect] = useState(1.6)
