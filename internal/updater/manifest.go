@@ -24,6 +24,10 @@ const Repository = "https://github.com/xoqiu09/session-steward"
 const Latest = Repository + "/releases/latest/download/update-manifest.json"
 
 var PublicKey string // pinned base64 Ed25519 public key, set at build time; empty fails closed
+
+// ManualUpdateHint 是没有固定公钥（不支持 App 内升级）时给用户的说明。
+const ManualUpdateHint = "这个版本不支持在 App 里升级。有新版本时，到 https://github.com/xoqiu09/session-steward/releases 下载新的 App，替换“应用程序”里的旧版即可；数据在 ~/.steward，不受影响。"
+
 var Version = "0.2.0-dev.1"
 var Build = "2026102901" // independent, monotonically increasing release ordinal; never a commit hash
 
@@ -87,7 +91,7 @@ func (c *Client) get(ctx context.Context, address string) (*http.Response, error
 	if r.StatusCode != 200 {
 		r.Body.Close()
 		if r.StatusCode == 404 && address == Latest {
-			return nil, errors.New("最新公开版本尚未提供签名更新清单。当前安装保持原样；不会回退到旧 v0.1.0")
+			return nil, errors.New("最新版本没有提供 App 内升级。当前安装保持原样；新版本请到 https://github.com/xoqiu09/session-steward/releases 下载")
 		}
 		return nil, fmt.Errorf("更新服务器返回 HTTP %d，请稍后重试", r.StatusCode)
 	}
@@ -110,7 +114,7 @@ func (c *Client) Verify(raw []byte) (Manifest, error) {
 	var m Manifest
 	key, e := base64.StdEncoding.DecodeString(c.Key)
 	if e != nil || len(key) != ed25519.PublicKeySize {
-		return m, errors.New("此 App 尚未配置更新签名公钥。请发布者接入签名后重新提供首个 App；当前安装保持原样")
+		return m, errors.New(ManualUpdateHint)
 	}
 	var env Envelope
 	if e = json.Unmarshal(raw, &env); e != nil {
