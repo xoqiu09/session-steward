@@ -15,6 +15,7 @@ import { relaysOf } from './relays'
 import type { BuildingView } from './townModel'
 import { buildTown, type Highlight, type TownModel } from './townModel'
 import { acceptSnapshot } from './feed'
+import type { HubScope } from '../hub/hub'
 import { clampPage, needsYou, pageBuildings, pageOfCharacter } from './paging'
 import { DEFAULT_ROTATE_S } from './route'
 import './town.css'
@@ -107,7 +108,8 @@ function useChanged(model: TownModel | null, source: string): ReadonlySet<string
 }
 
 /** 合并视图带设备列表，本机快照没有。 */
-const sourceOf = (s: Snapshot): 'here' | 'all' => (s.devices?.length ? 'all' : 'here')
+/** 快照来自哪个范围：本机、全部，或某一台别的电脑。换了范围就整张接受、新动态重新起算。 */
+const sourceOf = (s: Snapshot): string => s.view ?? (s.devices?.length ? 'all' : 'here')
 
 /** 手机竖屏宽度以下换成一栋一页的竖版小镇。 */
 export const PORTRAIT_QUERY = '(max-width: 640px)'
@@ -155,9 +157,9 @@ export function TownView({ snap, conn, repoId, provider, sel, onSelectItem, onSe
   replayDay?: string
   /** 看“全部设备”时不能回放（回放只有本机的记录）。 */
   noReplay?: boolean
-  /** 设备范围（这台 / 全部设备）；“回到刚才的位置”用 onScope 恢复。 */
-  scope?: 'here' | 'all'
-  onScope?: (s: 'here' | 'all') => void
+  /** 设备范围（这台 / 某台别的电脑 / 全部）；“回到刚才的位置”用 onScope 恢复。 */
+  scope?: HubScope
+  onScope?: (s: HubScope) => void
   /** 本机设备名，合并视图里认出本机项目，两种范围下同一项目落在同一块地。 */
   selfDevice?: string
 }) {
@@ -256,7 +258,7 @@ export function TownView({ snap, conn, repoId, provider, sel, onSelectItem, onSe
     setHighlight(c.highlight)
     if (c.scope !== scope) {
       if (onScope) onScope(c.scope)
-      else lost.push(`设备范围已经不能切回「${c.scope === 'all' ? '全部设备' : '这台'}」`)
+      else lost.push(`设备范围已经不能切回「${c.scope === 'all' ? '全部设备' : c.scope === 'here' ? '这台' : '那台电脑'}」`)
     }
     if (c.repoId !== repoId) {
       if (c.repoId === 'all') { if (onAllRepos) onAllRepos(); else lost.push('没法恢复显示全部项目') }

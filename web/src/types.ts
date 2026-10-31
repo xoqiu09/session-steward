@@ -202,6 +202,8 @@ export interface Snapshot {
   relays?: import('./town/relays').Relay[]
   /** 只在“全部设备”合并视图里有。 */
   devices?: HubDevice[]
+  /** 只在前端：合并视图按哪个范围切出来的（'all' 或 'device:<设备编号>'），小镇据此认出换了范围。 */
+  view?: string
   /** 回放快照（小镇时间条）才有：那一刻的时间。只读。 */
   replay_at?: string
 	features?: ProjectFeature[] | null
@@ -329,4 +331,6 @@ export interface SessionUsageDetail {
 
 // ---- 多设备 ----
 export interface HubDevice { id: string; name: string; self: boolean; received_at: string; online: boolean }
-export interface HubStatus { role: '' | 'hub' | 'agent'; device?: string; device_id?: string; url?: string; last_push_at?: string; last_error?: string }
+export interface HubStatus { role: '' | 'hub' | 'agent'; device?: string; device_id?: string; url?: string; last_push_at?: string; last_error?: string
+  /** 其他设备：最近一次推送成功的时间、最近一次推送的耗时（毫秒）、连续失败次数。 */
+  last_ok_at?: string; last_push_ms?: number; fail_count?: number }

@@ -3,7 +3,7 @@ import type { Repo, Snapshot } from '../types'
 import { buildTown } from './townModel'
 import { fakeItem } from './fixtures'
 import { identityKeys, projectIdentity } from './identity'
-import { newWorldMemo, stableLayout, worldLayout, type WorldLayout } from './world'
+import { newWorldMemo, regionKey, regionView, stableLayout, worldLayout, type WorldLayout } from './world'
 import type { WorldPlan } from './clusters'
 
 // 全部是合成项目：编号、名字、设备名都是虚构的。
@@ -11,11 +11,14 @@ const repo = (id: number, name: string, device?: string): Repo => ({ id, name, d
 const snapOf = (repos: Repo[], items: Snapshot['work_items'] = []): Snapshot => ({ cursor: 1, now: '2026-10-30T08:00:00Z', repos, sessions: [], work_items: items, runs: [], approvals: [], deps: [] })
 const plan = (central: number[], villages: { key: string; name: string; ids: number[] }[] = [], wild: number[] = []): WorldPlan =>
   ({ central, villages: villages.map((v) => ({ key: v.key, name: v.name, repoIds: v.ids, activity: 1 })), wild, activity: new Map() })
-const lay = (snap: Snapshot, p: WorldPlan, memo = newWorldMemo(), self = '', needsYou = (b: { items: { status: string }[] }) => b.items.some((w) => w.status === 'review')) => {
+const lay = (snap: Snapshot, p: WorldPlan, memo = newWorldMemo(), self = '', needsYou = (b: { items: { status: string }[] }) => b.items.some((w) => w.status === 'review'), regions = false) => {
   const model = buildTown(snap, snap.now)
   const ids = identityKeys(model.buildings, self)
-  return stableLayout(model.buildings, needsYou, p, memo, (b) => ids.get(b.key)!)
+  const regionOf = regions ? (b: (typeof model.buildings)[number]) => { const d = b.repo && projectIdentity(b.repo, self).device; return d && d !== 'self' ? d : undefined } : undefined
+  return stableLayout(model.buildings, needsYou, p, memo, (b) => ids.get(b.key)!, regionOf)
 }
+/** 按电脑分片排布（“全部”和只看一台别的电脑时）。 */
+const layRegions = (snap: Snapshot, p: WorldPlan, memo: ReturnType<typeof newWorldMemo>, self: string) => lay(snap, p, memo, self, () => false, true)
 const cells = (w: WorldLayout) => new Map(w.districts.map((d) => [d.id, `${d.cell.cx},${d.cell.cy}`]))
 
 describe('项目稳定身份', () => {
@@ -85,5 +88,69 @@ describe('稳定位置', () => {
     const next = lay(snapOf([repo(1, '同名花园'), repo(2, '合成乙'), repo(1_000_000_001, '同名花园 · 远方演示机', '远方演示机')]),
       plan([2], [{ key: 'v-1', name: '同名花园 村', ids: [1, 1_000_000_001] }]), memo)
     expect(next.villages).toEqual([]); expect(next.districts.find((d) => d.id === '远方演示机#1')!.kind).toBe('central')
+  })
+})
+
+describe('按电脑分片', () => {
+  const self = '本机演示'
+  const local = [repo(1, '合成甲', self), repo(2, '合成乙', self), repo(3, '合成丙', self)]
+  const remote = [repo(1_000_000_001, '合成甲 · 远方演示机', '远方演示机'), repo(1_000_000_002, '远方的合成丁', '远方演示机')]
+  const third = [repo(2_000_000_001, '第三台的合成戊', '第三台演示机')]
+  const cheb = (c: string) => Math.max(...c.split(',').map((n) => Math.abs(Number(n))))
+
+  it('别的电脑的项目住进它自己的片区，片区名是电脑名，和本机街区隔开；本机项目不动', () => {
+    const memo = newWorldMemo()
+    const here = cells(lay(snapOf(local), plan([1, 2, 3]), memo, self))
+    const all = layRegions(snapOf([...local, ...remote, ...third]), plan([1, 2, 3, 1_000_000_001, 1_000_000_002, 2_000_000_001]), memo, self)
+    const at = cells(all)
+    for (const [id, c] of here) expect(at.get(id)).toBe(c)
+    expect(all.villages.map((v) => [v.key, v.name, v.cells.length - 1])).toEqual([[regionKey('远方演示机'), '远方演示机', 2], [regionKey('第三台演示机'), '第三台演示机', 1]])
+    expect(all.districts.filter((d) => d.id.startsWith('远方演示机#')).every((d) => d.village === regionKey('远方演示机'))).toBe(true)
+    const farthestLocal = Math.max(...[...here.values()].map(cheb))
+    for (const d of all.districts.filter((x) => x.village)) expect(cheb(`${d.cell.cx},${d.cell.cy}`)).toBeGreaterThan(farthestLocal + 1)
+    // 同名项目（合成甲）也不会被拉进本机的村子：两台各住各的。
+    expect(at.get('远方演示机#1')).not.toBe(at.get('self#1'))
+  })
+
+  it('以前和本机混排时记下的别台项目搬进片区；之后再看位置不变', () => {
+    const memo = newWorldMemo()
+    lay(snapOf([...local, ...remote]), plan([1, 2, 3, 1_000_000_001, 1_000_000_002]), memo, self)
+    expect(memo.places.get('远方演示机#1')!.kind).toBe('central')
+    const first = cells(layRegions(snapOf([...local, ...remote]), plan([1, 2, 3, 1_000_000_001, 1_000_000_002]), memo, self))
+    expect(memo.places.get('远方演示机#1')!.village).toBe(regionKey('远方演示机'))
+    const again = cells(layRegions(snapOf([...local, ...remote]), plan([1_000_000_002, 3, 2, 1, 1_000_000_001]), memo, self))
+    expect(again).toEqual(first)
+  })
+
+  it('“这台”视图里看不到别台电脑时，不把它的片区报成空片区', () => {
+    const memo = newWorldMemo()
+    layRegions(snapOf([...local, ...remote]), plan([1, 2, 3]), memo, self)
+    expect(lay(snapOf(local), plan([1, 2, 3]), memo, self).emptyVillages).toEqual([])
+  })
+
+  it('只看一台别的电脑：它的片区挪到中间，相对位置不变，不带别人的街区', () => {
+    const memo = newWorldMemo()
+    const all = layRegions(snapOf([...local, ...remote]), plan([1, 2, 3]), memo, self)
+    const only = regionView(layRegions(snapOf(remote), plan([]), memo, self), regionKey('远方演示机'))
+    expect(only.villages).toEqual([])
+    expect(only.districts.map((d) => d.id).sort()).toEqual(['远方演示机#1', '远方演示机#2'])
+    const sq = all.villages[0].square
+    for (const d of only.districts) {
+      const was = all.districts.find((x) => x.id === d.id)!.cell
+      expect([d.cell.cx, d.cell.cy]).toEqual([was.cx - sq.cx, was.cy - sq.cy])
+      expect(d.kind).toBe('central')
+    }
+  })
+
+  it('先看了别的电脑、本机还没排过：本机按分组排在中间，片区重新开在外面', () => {
+    const memo = newWorldMemo()
+    layRegions(snapOf(remote), plan([]), memo, self)
+    const p = plan([1, 2, 3])
+    const all = layRegions(snapOf([...local, ...remote]), p, memo, self)
+    const model = buildTown(snapOf(local), '2026-10-30T08:00:00Z')
+    const fresh = worldLayout(model.buildings, () => false, p)
+    const at = cells(all)
+    for (const d of fresh.districts) expect(at.get(d.key.replace('repo-', 'self#'))).toBe(`${d.cell.cx},${d.cell.cy}`)
+    expect(new Set(at.values()).size).toBe(at.size)
   })
 })

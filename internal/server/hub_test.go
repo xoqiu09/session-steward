@@ -142,3 +142,52 @@ func TestHubPushRejectsOtherService(t *testing.T) {
 		t.Fatalf("应提示检查 hub.url：%v", err)
 	}
 }
+
+// 推送状态分清“连不上”和“回得慢”：记下最近一次成功的时间、这次的耗时和连续失败次数，成功后清零。
+func TestHubPushStatusKeepsLastSuccess(t *testing.T) {
+	hubSrv := &Server{Core: hubCore(t, "hub"), IngestToken: "ing", PanelToken: "pan", PermWait: time.Second,
+		Hub: &Hub{Role: "hub", Secret: hubSecret, SelfID: "dev-hub", SelfName: "台式机"}}
+	ts := httptest.NewServer(hubSrv.Handler())
+	defer ts.Close()
+	agentC := hubCore(t, "agent")
+	agent := &Hub{Role: "agent", URL: ts.URL, Secret: hubSecret, SelfID: "dev-nb", SelfName: "笔记本"}
+	agentSrv := &Server{Core: agentC, IngestToken: "ing", PanelToken: "pan", PermWait: time.Second, Hub: agent}
+	status := func() map[string]any {
+		t.Helper()
+		w := httptest.NewRecorder()
+		agentSrv.handleHubStatus(w, httptest.NewRequest("GET", "/api/hub/status", nil))
+		var out map[string]any
+		if err := json.Unmarshal(w.Body.Bytes(), &out); err != nil {
+			t.Fatal(err)
+		}
+		if _, ok := out["secret"]; ok {
+			t.Fatal("状态里不能带密钥")
+		}
+		return out
+	}
+	ctx := context.Background()
+	if err := agent.Push(ctx, agentC); err != nil {
+		t.Fatal(err)
+	}
+	ok := status()
+	if ok["last_ok_at"] == "" || ok["last_ok_at"] != ok["last_push_at"] || ok["fail_count"].(float64) != 0 {
+		t.Fatalf("成功后应记下成功时间：%v", ok)
+	}
+	agent.URL = "http://127.0.0.1:1"
+	for i := 0; i < 2; i++ {
+		if err := agent.Push(ctx, agentC); err == nil {
+			t.Fatal("地址不对应失败")
+		}
+	}
+	bad := status()
+	if bad["last_ok_at"] != ok["last_ok_at"] || bad["fail_count"].(float64) != 2 || bad["last_error"] == "" {
+		t.Fatalf("失败时保留上次成功时间并累计次数：%v", bad)
+	}
+	agent.URL = ts.URL
+	if err := agent.Push(ctx, agentC); err != nil {
+		t.Fatal(err)
+	}
+	if again := status(); again["fail_count"].(float64) != 0 || again["last_error"] != "" {
+		t.Fatalf("恢复后清零：%v", again)
+	}
+}

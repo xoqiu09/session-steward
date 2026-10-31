@@ -640,5 +640,6 @@ select.outcome { font-size: 12px; margin: 2px 0 4px; }
 .hub-switch button.on{background:#2f3a8f;border-color:#2f3a8f;color:#fff}
 .hub-dev{display:inline-flex;align-items:center;gap:4px;padding:1px 8px;border-radius:10px;background:#f2ede3;font-size:12px;color:#7a6a55}
 .hub-dev i{width:7px;height:7px;border-radius:50%;background:#b8ad9a}.hub-dev.is-on{color:#2e5d2c}.hub-dev.is-on i{background:#3f8f4f}
-.hub-err{font-size:12px;color:#a33a2f}
+.hub-switch button.hub-dev{border-radius:8px}.hub-switch button.on.hub-dev i{background:#9fe0a8}.hub-switch button.on.hub-dev:not(.is-on) i{background:#d8d0c2}
+.hub-err{font-size:12px;color:#a33a2f}.hub-ok{font-size:12px;color:#7a8a72}.hub-slow{font-size:12px;color:#a8701c}
 .hub-toast{position:fixed;z-index:50;left:50%;bottom:24px;transform:translateX(-50%);max-width:min(560px,90vw);padding:10px 14px;border-radius:10px;background:#2f3a8f;color:#fff;font-size:13px;box-shadow:0 6px 20px rgba(0,0,0,.18)}

@@ -9,10 +9,11 @@ import {
   type BuildingShape, type Plot, type Selection,
 } from './TownScene'
 import {
-  CELL_D, CELL_W, FAR_W, INNER_D, INNER_W, areaBox, cellBox, clampCamera, fitCamera, lerpCamera, loadWorldMemo, saveWorldMemo, stableLayout, tourStops, viewBoxOf, zoomAt,
+  CELL_D, CELL_W, FAR_W, INNER_D, INNER_W, areaBox, cellBox, clampCamera, fitCamera, isRegion, lerpCamera, loadWorldMemo, regionKey, regionView, saveWorldMemo, stableLayout, tourStops, viewBoxOf, zoomAt,
   type Box, type Camera, type Cell, type District, type Tier, type WorldLayout, type WorldMemo,
 } from './world'
 import type { WorldPlan } from './clusters'
+import type { HubScope } from '../hub/hub'
 import { InteriorScene } from './InteriorScene'
 import { TownGuide } from './TownGuide'
 import { Bush, Campfire, Fence, Flowers, Lakes, Mound, Pine, Pond, Reeds, Rock, Windmill, YARD_TINT, terrainOf, type Terrain } from './scenery'
@@ -539,14 +540,14 @@ function attentionOf(d: District, needsYou: (b: BuildingView) => boolean) {
 }
 
 /** 手动导航前的显示范围：设备范围、项目筛选、Agent 筛选、状态高亮。“回到刚才的位置”连同镜头一起恢复。 */
-export interface ViewContext { scope: 'here' | 'all'; repoId: number | 'all'; provider: string; highlight: Highlight | null }
+export interface ViewContext { scope: HubScope; repoId: number | 'all'; provider: string; highlight: Highlight | null }
 
 /** 第一次手动导航或自动跟随之前的完整位置；连续导航沿用它，返回或手动拖动缩放后清空。 */
 interface NavBack { camera: Camera; context?: ViewContext; byAgent: boolean; agentFocus: Agent | null }
 
 export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'onNavigate' | 'focusArea'> & { kiosk?: boolean; rotateMs?: number; paused?: boolean; focusKey?: string; plan?: WorldPlan; replaying?: boolean; snapshot?: Snapshot
-  /** 画的是本机快照还是全部设备的合并视图；切换时保持镜头，新动态从这一张重新起算。 */
-  source?: 'here' | 'all'
+  /** 画的是本机快照、某台别的电脑还是全部（'here'、'device:…'、'all'）；切换时保持镜头，新动态从这一张重新起算。 */
+  source?: string
   /** 本机设备名：合并视图里认出哪些项目是本机的。 */
   selfDevice?: string
   context?: ViewContext
@@ -593,10 +594,19 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
   const selfName = props.selfDevice || props.snapshot?.devices?.find((d) => d.self)?.name || ''
   const memo = useRef<WorldMemo | null>(null)
   memo.current ??= loadWorldMemo()
+  // 合并视图里别的电脑的项目各住一片；只看一台别的电脑时把它那片挪到中间，像那台自己的小镇。
+  const devices = props.snapshot?.devices
   const world = useMemo(() => {
     const ids = identityKeys(model.buildings, selfName)
-    return stableLayout(model.buildings, needsYou, plan, memo.current!, (b) => ids.get(b.key)!)
-  }, [model, needsYou, plan, selfName])
+    const remoteOf = (b: BuildingView) => { const d = b.repo && projectIdentity(b.repo, selfName).device; return d && d !== 'self' ? d : undefined }
+    const regionOf = source === 'here' ? undefined : remoteOf
+    const layout = stableLayout(model.buildings, needsYou, plan, memo.current!, (b) => ids.get(b.key)!, regionOf)
+    const only = source.startsWith('device:') ? model.buildings.map(remoteOf).find(Boolean) : undefined
+    const shown = only ? regionView(layout, regionKey(only)) : layout
+    // 片区名牌写电脑名，离线的标出来：画的是它最后一次推送的样子。
+    const offline = new Set((devices ?? []).filter((d) => !d.self && !d.online).map((d) => d.name))
+    return { ...shown, villages: shown.villages.map((v) => (isRegion(v.key) && offline.has(v.name) ? { ...v, name: `${v.name}（离线）` } : v)) }
+  }, [model, needsYou, plan, selfName, source, devices])
   useEffect(() => { if (memo.current) saveWorldMemo(memo.current) }, [world])
   const isRemote = (d: District) => !!d.b.repo && projectIdentity(d.b.repo, selfName).device !== 'self'
   const box = useRef<HTMLDivElement>(null)
