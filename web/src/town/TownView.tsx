@@ -7,7 +7,7 @@ import { queueLanes } from '../workbench'
 import { orderedProjects } from '../projectActivity'
 import { resolveDeepLink } from '../live'
 import TownScene, { type LayoutName, type Selection } from './TownScene'
-import { WorldStage } from './WorldScene'
+import { WorldStage, type ViewContext } from './WorldScene'
 import { ReplayBar, minuteLabel, replayISO, startPos, type ReplayPos } from './ReplayBar'
 import { api } from '../api'
 import { planWorld } from './clusters'
@@ -87,22 +87,27 @@ function signature(model: TownModel): Map<string, string> {
   return out
 }
 
-// 和上一版相比状态变了或新出现的对象，闪一下。
-function useChanged(model: TownModel | null): ReadonlySet<string> {
+// 和上一版相比状态变了或新出现的对象，闪一下。切换本机 / 全部设备那一版不算变化。
+function useChanged(model: TownModel | null, source: string): ReadonlySet<string> {
   const prev = useRef<Map<string, string> | null>(null)
+  const seen = useRef(source)
   const [changed, setChanged] = useState<ReadonlySet<string>>(new Set())
   useEffect(() => {
     if (!model) return
     const sig = signature(model)
-    const before = prev.current
+    const before = seen.current === source ? prev.current : null
     prev.current = sig
+    seen.current = source
     if (!before) return
     setChanged(new Set([...sig].filter(([k, v]) => before.get(k) !== v).map(([k]) => k)))
     const t = window.setTimeout(() => setChanged(new Set()), 2600)
     return () => window.clearTimeout(t)
-  }, [model])
+  }, [model, source])
   return changed
 }
+
+/** 合并视图带设备列表，本机快照没有。 */
+const sourceOf = (s: Snapshot): 'here' | 'all' => (s.devices?.length ? 'all' : 'here')
 
 /** 手机竖屏宽度以下换成一栋一页的竖版小镇。 */
 export const PORTRAIT_QUERY = '(max-width: 640px)'
@@ -123,7 +128,7 @@ function useMedia(query: string): boolean {
 
 const PER_PAGE: Record<LayoutName, number> = { wide: 3, portrait: 1 }
 
-export function TownView({ snap, conn, repoId, provider, sel, onSelectItem, onSelectSession, onSelectRepo, onAllRepos, onQueue, kiosk = false, rotateMs = DEFAULT_ROTATE_S * 1000, paused = false, layout, bar, world = false, replayDay, noReplay = false }: {
+export function TownView({ snap, conn, repoId, provider, sel, onSelectItem, onSelectSession, onSelectRepo, onAllRepos, onQueue, kiosk = false, rotateMs = DEFAULT_ROTATE_S * 1000, paused = false, layout, bar, world = false, replayDay, noReplay = false, scope = 'here', onScope, selfDevice }: {
   snap: Snapshot
   conn: Conn
   repoId: number | 'all'
@@ -150,13 +155,20 @@ export function TownView({ snap, conn, repoId, provider, sel, onSelectItem, onSe
   replayDay?: string
   /** 看“全部设备”时不能回放（回放只有本机的记录）。 */
   noReplay?: boolean
+  /** 设备范围（这台 / 全部设备）；“回到刚才的位置”用 onScope 恢复。 */
+  scope?: 'here' | 'all'
+  onScope?: (s: 'here' | 'all') => void
+  /** 本机设备名，合并视图里认出本机项目，两种范围下同一项目落在同一块地。 */
+  selfDevice?: string
 }) {
   // 旧快照（慢请求迟到）不覆盖新画面；同一版重复到达不重画。
   // cursor 只在数据库被替换时才会变小，那时服务端时间是新的，按重置接受。
+  // 本机快照和全部设备的合并视图共用本机 cursor：换了来源就直接接受，不当成重复。
   const [shown, setShown] = useState<Snapshot>(snap)
   useEffect(() => {
-    setShown(prev => acceptSnapshot(prev, snap, snap.cursor < prev.cursor && Date.parse(snap.now) > Date.parse(prev.now)).snap)
+    setShown(prev => acceptSnapshot(prev, snap, sourceOf(prev) !== sourceOf(snap) || (snap.cursor < prev.cursor && Date.parse(snap.now) > Date.parse(prev.now))).snap)
   }, [snap])
+  const source = sourceOf(shown)
   const [clientNow, setClientNow] = useState(() => new Date().toISOString())
   useEffect(() => {
     const t = window.setInterval(() => setClientNow(new Date().toISOString()), 30_000)
@@ -168,6 +180,8 @@ export function TownView({ snap, conn, repoId, provider, sel, onSelectItem, onSe
   const [replaySnap, setReplaySnap] = useState<Snapshot | null>(null)
   const [replayLoading, setReplayLoading] = useState(false)
   useEffect(() => { if (replayDay) { setReplay(startPos(replayDay)); setPlaying(false) } }, [replayDay])
+  // 切到全部设备时不能回放：收起时间条（以前切换范围会重建整个小镇）。
+  useEffect(() => { if (noReplay) { setReplay(null); setPlaying(false) } }, [noReplay])
   useEffect(() => {
     if (!replay) { setReplaySnap(null); return }
     let live = true
@@ -181,7 +195,7 @@ export function TownView({ snap, conn, repoId, provider, sel, onSelectItem, onSe
   const [highlight, setHighlight] = useState<Highlight | null>(null)
   const slice = useMemo(() => townSlice(view, repoId, provider), [view, repoId, provider])
   const model = useMemo(() => buildTown(slice, replay && replaySnap ? replaySnap.now : clientNow), [slice, clientNow, replay, replaySnap])
-  const changed = useChanged(model)
+  const changed = useChanged(model, source)
   const offline = conn === 'offline'
 
   const narrow = useMedia(PORTRAIT_QUERY)
@@ -235,6 +249,24 @@ export function TownView({ snap, conn, repoId, provider, sel, onSelectItem, onSe
     }
   }
 
+  // 手动导航前的显示范围；返回时逐项恢复，恢复不了的说明原因。
+  const context: ViewContext = { scope, repoId, provider, highlight }
+  const restoreContext = (c: ViewContext): string[] => {
+    const lost: string[] = []
+    setHighlight(c.highlight)
+    if (c.scope !== scope) {
+      if (onScope) onScope(c.scope)
+      else lost.push(`设备范围已经不能切回「${c.scope === 'all' ? '全部设备' : '这台'}」`)
+    }
+    if (c.repoId !== repoId) {
+      if (c.repoId === 'all') { if (onAllRepos) onAllRepos(); else lost.push('没法恢复显示全部项目') }
+      else if ((shown.repos ?? []).some((r) => r.id === c.repoId)) onSelectRepo(c.repoId)
+      else lost.push('刚才只看的那个项目已不在（可能已归档），没有换成别的项目')
+    }
+    if (c.provider !== provider) lost.push('Agent 来源筛选在小镇外改过，请在顶部筛选里改回')
+    return lost
+  }
+
   const pinned = pages.length > 1 ? pages[0].filter((b) => pages.every((pg) => pg.includes(b))).length : 0
   // 点建筑或项目卡片后整个面板只看这个项目：在小镇里写明，一键回到全部，不然像是别的项目都不见了。
   const scopedRepo = repoId === 'all' ? null : (shown.repos ?? []).find((r) => r.id === repoId)?.name ?? `项目 #${repoId}`
@@ -282,7 +314,8 @@ export function TownView({ snap, conn, repoId, provider, sel, onSelectItem, onSe
         </div>}
         {asWorld
           ? <WorldStage model={model} needsYou={urgent} selected={selected} highlight={highlight} onSelect={onSelect} changed={changed} offline={offline}
-              kiosk={kiosk} rotateMs={rotateMs} paused={paused || sel != null} focusKey={selKey} plan={plan} replaying={!!replay} snapshot={shown} />
+              kiosk={kiosk} rotateMs={rotateMs} paused={paused || sel != null} focusKey={selKey} plan={plan} replaying={!!replay} snapshot={shown}
+              source={source} selfDevice={selfDevice} context={context} onRestoreContext={restoreContext} />
           : <TownScene model={model} buildings={pages[page]} layout={shape} selected={selected} highlight={highlight} onSelect={onSelect} changed={changed} offline={offline} />}
         <ul className="town-legend" aria-label="图例">
           <li><i className="lg-building" />建筑 = 项目</li>

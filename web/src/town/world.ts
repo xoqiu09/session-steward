@@ -1,7 +1,7 @@
 // 小镇世界：每个项目一个街区，围绕中央广场一圈圈排开；相机可拖动、缩放、巡游。纯函数，便于测试。
 import { iso, type Pt } from './iso'
 import type { BuildingView } from './townModel'
-import type { WorldPlan } from './clusters'
+import type { Village, WorldPlan } from './clusters'
 import { attentionManaged } from '../workManagement'
 
 /** 一个街区占的格子（含右侧和前方的道路）。 */
@@ -17,6 +17,8 @@ export type DistrictKind = 'central' | 'village' | 'wild'
 
 export interface District {
   key: string
+  /** 稳定项目键（来源设备 + 原始项目编号），定位和记住位置都用它。 */
+  id: string
   b: BuildingView
   cell: Cell
   /** 街区左上角的格子坐标。 */
@@ -56,6 +58,8 @@ export interface WorldLayout {
   tiles: { gx0: number; gy0: number; gx1: number; gy1: number }
   /** 屏幕坐标下的世界范围。 */
   bounds: Box
+  /** 记得的片区里，当前显示范围一个项目都没有的（已归档、被筛选或来源设备不在）。 */
+  emptyVillages: { key: string; name: string }[]
 }
 
 export interface Box { x: number; y: number; w: number; h: number }
@@ -97,13 +101,13 @@ function boxOfTiles(gx0: number, gy0: number, gx1: number, gy1: number, top = 14
 const DIRS: Cell[] = [{ cx: 1, cy: 0 }, { cx: 0, cy: 1 }, { cx: -1, cy: 0 }, { cx: 0, cy: -1 }, { cx: 1, cy: 1 }, { cx: -1, cy: 1 }, { cx: 1, cy: -1 }, { cx: -1, cy: -1 }]
 
 /** 分组排布。没有 plan 时（测试、旧数据）全部围着中央广场。 */
-export function worldLayout(buildings: readonly BuildingView[], needsYou: (b: BuildingView) => boolean, plan?: WorldPlan): WorldLayout {
+export function worldLayout(buildings: readonly BuildingView[], needsYou: (b: BuildingView) => boolean, plan?: WorldPlan, idOf: (b: BuildingView) => string = (b) => b.key): WorldLayout {
   const taken = new Set<string>([keyOf({ cx: 0, cy: 0 })])
   const districts: District[] = []
   const place = (b: BuildingView, cell: Cell, kind: DistrictKind, village?: string) => {
     taken.add(keyOf(cell))
     const tier = buildingTier(b, b.repo ? plan?.activity.get(b.repo.id) ?? 0 : 0)
-    districts.push({ key: b.key, b, cell, ox: cell.cx * CELL_W, oy: cell.cy * CELL_D, ring: cheb(cell), kind, village, tier })
+    districts.push({ key: b.key, id: idOf(b), b, cell, ox: cell.cx * CELL_W, oy: cell.cy * CELL_D, ring: cheb(cell), kind, village, tier })
   }
   const byRepo = new Map(buildings.filter((b) => b.repo).map((b) => [b.repo!.id, b]))
   const inPlan = new Set<number>(plan ? [...plan.central, ...plan.villages.flatMap((v) => v.repoIds), ...plan.wild] : [])
@@ -148,11 +152,108 @@ export function worldLayout(buildings: readonly BuildingView[], needsYou: (b: Bu
     }
   }
 
+  return finish(districts, villages, [])
+}
+
+function finish(districts: District[], villages: VillageArea[], emptyVillages: WorldLayout['emptyVillages']): WorldLayout {
   const all = [{ cx: 0, cy: 0 }, ...districts.map((d) => d.cell), ...villages.map((v) => v.square)]
   // 外面再留一圈空地（树林），世界不是刚好卡在最后一栋房子边上。
   const gx0 = (Math.min(...all.map((c) => c.cx)) - 0.35) * CELL_W, gy0 = (Math.min(...all.map((c) => c.cy)) - 0.35) * CELL_D
   const gx1 = (Math.max(...all.map((c) => c.cx)) + 1.25) * CELL_W, gy1 = (Math.max(...all.map((c) => c.cy)) + 1.25) * CELL_D
-  return { districts, plaza: { ox: 0, oy: 0 }, villages, tiles: { gx0, gy0, gx1, gy1 }, bounds: boxOfTiles(gx0, gy0, gx1, gy1) }
+  return { districts, plaza: { ox: 0, oy: 0 }, villages, tiles: { gx0, gy0, gx1, gy1 }, bounds: boxOfTiles(gx0, gy0, gx1, gy1), emptyVillages }
+}
+
+// ---- 稳定位置：第一次按分组排好后记住每个项目的格子；之后状态、排名、设备顺序变了也不搬家，新项目往外追加 ----
+
+export interface Placement { cell: Cell; kind: DistrictKind; village?: string }
+
+/** 记住的位置，按稳定项目键。不在当前显示范围的项目也保留格子，回来时还在原处。 */
+export interface WorldMemo {
+  places: Map<string, Placement>
+  villages: Map<string, { name: string; square: Cell }>
+}
+
+export const newWorldMemo = (): WorldMemo => ({ places: new Map(), villages: new Map() })
+
+/** 野外空地：离所有占用格子至少隔一格，从内圈往外找。 */
+function wildCell(taken: ReadonlySet<string>): Cell {
+  const cells = [...taken].map((k) => k.split(',').map(Number))
+  const start = Math.max(1, ...cells.map(([x, y]) => Math.max(Math.abs(x), Math.abs(y))))
+  for (let r = start; r < start + 40; r++) {
+    const ring: Cell[] = []
+    for (let cx = -r; cx <= r; cx++) for (let cy = -r; cy <= r; cy++) {
+      if (Math.max(Math.abs(cx), Math.abs(cy)) !== r || (cx + cy) % 2 !== 0) continue
+      if (!cells.some(([x, y]) => Math.max(Math.abs(x - cx), Math.abs(y - cy)) < 2)) ring.push({ cx, cy })
+    }
+    ring.sort((a, b) => Math.atan2(a.cy, a.cx) - Math.atan2(b.cy, b.cx))
+    if (ring.length) return ring[0]
+  }
+  return spiralCells(1, { cx: 0, cy: 0 }, taken)[0]
+}
+
+/** 按记住的位置排布；memo 为空时用 worldLayout 的分组排第一次并记下来。memo 会被更新。 */
+export function stableLayout(buildings: readonly BuildingView[], needsYou: (b: BuildingView) => boolean, plan: WorldPlan | undefined, memo: WorldMemo, idOf: (b: BuildingView) => string): WorldLayout {
+  if (!memo.places.size) {
+    const first = worldLayout(buildings, needsYou, plan, idOf)
+    for (const d of first.districts) memo.places.set(d.id, { cell: d.cell, kind: d.kind, village: d.village })
+    for (const v of first.villages) memo.villages.set(v.key, { name: v.name, square: v.square })
+    return first
+  }
+  const taken = new Set<string>([keyOf({ cx: 0, cy: 0 })])
+  for (const p of memo.places.values()) taken.add(keyOf(p.cell))
+  for (const v of memo.villages.values()) taken.add(keyOf(v.square))
+  const byRepo = new Map(buildings.filter((b) => b.repo).map((b) => [b.repo!.id, b]))
+  const villageOf = new Map<number, Village>()
+  for (const v of plan?.villages ?? []) for (const id of v.repoIds) villageOf.set(id, v)
+  const wild = new Set(plan?.wild ?? [])
+  // 新项目按现在的分组找去处：同村已有老住户就挨着它，至少两个新成员才在外圈开一个新村，不常动的去野外，其余围着中央。
+  const fresh = districtOrder(buildings.filter((b) => !memo.places.has(idOf(b))), needsYou)
+  const freshIn = new Map<string, number>()
+  for (const b of fresh) { const v = b.repo && villageOf.get(b.repo.id); if (v) freshIn.set(v.key, (freshIn.get(v.key) ?? 0) + 1) }
+  for (const b of fresh) {
+    const pv = b.repo ? villageOf.get(b.repo.id) : undefined
+    const mate = pv?.repoIds.map((id) => byRepo.get(id)).map((m) => (m ? memo.places.get(idOf(m)) : undefined)).find((p) => p?.kind === 'village')
+    let place: Placement
+    if (pv && (mate || (freshIn.get(pv.key) ?? 0) >= 2)) {
+      let key = mate?.village
+      if (!key) {
+        key = pv.key
+        for (let n = 2; memo.villages.has(key); n++) key = `${pv.key}~${n}`
+        const radius = Math.max(1, ...[...taken].map((k) => { const [x, y] = k.split(',').map(Number); return Math.max(Math.abs(x), Math.abs(y)) })) + 2
+        const dir = DIRS[memo.villages.size % DIRS.length]
+        let square = { cx: dir.cx * radius, cy: dir.cy * radius }
+        while (taken.has(keyOf(square))) square = { cx: square.cx + dir.cx, cy: square.cy + dir.cy }
+        taken.add(keyOf(square))
+        memo.villages.set(key, { name: pv.name, square })
+      }
+      place = { cell: spiralCells(1, memo.villages.get(key)!.square, taken)[0], kind: 'village', village: key }
+    } else if (b.repo && wild.has(b.repo.id)) {
+      place = { cell: wildCell(taken), kind: 'wild' }
+    } else {
+      place = { cell: spiralCells(1, { cx: 0, cy: 0 }, taken)[0], kind: 'central' }
+    }
+    taken.add(keyOf(place.cell))
+    memo.places.set(idOf(b), place)
+  }
+  const districts: District[] = buildings.map((b) => {
+    const id = idOf(b), p = memo.places.get(id)!
+    return { key: b.key, id, b, cell: p.cell, ox: p.cell.cx * CELL_W, oy: p.cell.cy * CELL_D, ring: cheb(p.cell), kind: p.kind, village: p.village,
+      tier: buildingTier(b, b.repo ? plan?.activity.get(b.repo.id) ?? 0 : 0) }
+  })
+  const villages: VillageArea[] = []
+  const emptyVillages: WorldLayout['emptyVillages'] = []
+  for (const [key, v] of memo.villages) {
+    const cells = districts.filter((d) => d.village === key).map((d) => d.cell)
+    if (cells.length) villages.push({ key, name: v.name, square: v.square, cells: [v.square, ...cells] })
+    else emptyVillages.push({ key, name: v.name })
+  }
+  return finish(districts, villages, emptyVillages)
+}
+
+/** 一个片区全部成员（含村口广场）的屏幕框。 */
+export function areaBox(cells: readonly Cell[]): Box {
+  const xs = cells.map((c) => c.cx), ys = cells.map((c) => c.cy)
+  return boxOfTiles(Math.min(...xs) * CELL_W - 0.5, Math.min(...ys) * CELL_D - 0.5, Math.max(...xs) * CELL_W + INNER_W + 0.5, Math.max(...ys) * CELL_D + INNER_D + 0.5, 150, 30)
 }
 
 /** 一个街区（或广场）在屏幕上的框，用来让相机对准它。 */
