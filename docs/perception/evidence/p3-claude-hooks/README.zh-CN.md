@@ -79,16 +79,16 @@ CLI 以 SQLite `mode=ro` 读取已有库，不创建、迁移或扫描历史；�
 终端 A，先构建，再创建单独的空验收目录：
 
 ```sh
-P3_BUILD=$(mktemp -d /Volumes/LocalDevData/Codex/Scratch/ss-p3-build-XXXXXX)
-~/.local/share/mac-ssd-dev/bin/go build -o "$P3_BUILD/steward" ./cmd/steward
-~/.local/share/mac-ssd-dev/bin/go build -o "$P3_BUILD/steward-hook" ./cmd/steward-hook
-P3_ENV=$(mktemp -d /Volumes/LocalDevData/Codex/Scratch/ss-p3-env-XXXXXX)
+P3_BUILD=$(mktemp -d "${TMPDIR:-/tmp}/ss-p3-build-XXXXXX")
+go build -o "$P3_BUILD/steward" ./cmd/steward
+go build -o "$P3_BUILD/steward-hook" ./cmd/steward-hook
+P3_ENV=$(mktemp -d "${TMPDIR:-/tmp}/ss-p3-env-XXXXXX")
 mkdir -p "$P3_ENV/home" "$P3_ENV/codex"
-P3_ROOT=$(mktemp -d /Volumes/LocalDevData/Codex/Scratch/ss-p3-acceptance-XXXXXX)
+P3_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/ss-p3-acceptance-XXXXXX")
 printf '%s\n%s\n%s\n' "$P3_BUILD" "$P3_ENV" "$P3_ROOT"
 env HOME="$P3_ENV/home" CODEX_HOME="$P3_ENV/codex" \
   SS_P3_MANUAL_TEST_DIR="$P3_ROOT" SS_P3_MANUAL_TEST_LISTEN=127.0.0.1:24873 \
-  ~/.local/share/mac-ssd-dev/bin/go test ./internal/server \
+  go test ./internal/server \
   -run '^TestP3ManualAcceptanceFixture$' -count=1 -timeout=30m -v
 ```
 
