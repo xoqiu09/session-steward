@@ -8,7 +8,7 @@ import {
   type BuildingShape, type Plot, type Selection,
 } from './TownScene'
 import {
-  CELL_D, CELL_W, FAR_W, INNER_D, INNER_W, cellBox, clampCamera, fitCamera, lerpCamera, tourStops, viewBoxOf, worldLayout, zoomAt,
+  CELL_D, CELL_W, FAR_W, INNER_D, INNER_W, areaBox, cellBox, clampCamera, fitCamera, lerpCamera, newWorldMemo, stableLayout, tourStops, viewBoxOf, zoomAt,
   type Box, type Camera, type Cell, type District, type Tier, type WorldLayout,
 } from './world'
 import type { WorldPlan } from './clusters'
@@ -25,6 +25,7 @@ import type { Snapshot } from '../types'
 import { autoMoment, canAutoFollow, localMoment, type TownMoment } from './moments'
 import { useMoments } from './useMoments'
 import { MomentCard } from './MomentCard'
+import { identityKeys, projectIdentity } from './identity'
 
 /** 每个街区的退件筐最多摆几个箱子，其余只计数。 */
 const BIN_MAX = 2
@@ -58,7 +59,14 @@ interface SceneProps {
   agents?: { focus: Agent | null } | null
   momentGlow?: string
   progressSparks?: ReadonlySet<string>
+  /** 项目名牌、片区名牌的导航意图：只移动镜头，不进室内、不开详情。 */
+  onNavigate?: (t: NavTarget) => void
+  /** 刚按片区取景的片区：地图远景下也显示它每个成员的名牌，村名牌让位。 */
+  focusArea?: string | null
 }
+
+/** 手动导航的目标：项目按稳定项目键（来源设备 + 原始项目编号），片区按片区键。 */
+export type NavTarget = { kind: 'project'; id: string } | { kind: 'area'; key: string }
 
 /** 四档建筑：占地、墙色、高度、窗户层数。占满院子后排，远看也认得出大小差别。 */
 const TIERS: Record<Tier, { shape: BuildingShape; w: number; d: number }> = {
@@ -73,7 +81,7 @@ function districtPlot(d: District): Plot {
   return { gx: d.ox + 0.8, gy: d.oy + 0.5, w: t.w, d: t.d, facing: 'x', ...buildingColors(d.b.repo?.id) }
 }
 
-export function WorldScene({ model, world, view, far, selected, highlight, onSelect, changed = new Set(), offline = false, needsYou, agents = null, momentGlow, progressSparks }: SceneProps) {
+export function WorldScene({ model, world, view, far, selected, highlight, onSelect, changed = new Set(), offline = false, needsYou, agents = null, momentGlow, progressSparks, onNavigate, focusArea = null }: SceneProps) {
   const isSel = (kind: Selection['kind'], key: string) => selected?.kind === kind && selected.key === key
   const dim = (match: boolean) => (highlight && !match ? ' is-dim' : '')
   const flash = (key: string) => (changed.has(key) ? ' is-changed' : '')
@@ -316,8 +324,10 @@ export function WorldScene({ model, world, view, far, selected, highlight, onSel
           const members = world.districts.filter((d) => d.village === v.key)
           const st = sumStatus(members.map((d) => statusAt.get(d.key)!))
           const ag = sumAgents(members.map((d) => agentAt.get(d.key)!))
+          if (v.key === focusArea) return null
           return (
-            <g key={`fv-${v.key}`} className={`town-map-only${focus && ag[focus] === 0 ? ' is-dim' : ''}`}>
+            <g key={`fv-${v.key}`} className={`town-map-only${onNavigate ? ' town-obj' : ''}${focus && ag[focus] === 0 ? ' is-dim' : ''}`}
+              {...(onNavigate ? { ...activate(() => onNavigate({ kind: 'area', key: v.key })), 'aria-label': `看片区「${v.name}」的 ${members.length} 个项目` } : {})}>
               <FarPlate k={plateK * 1.2} at={iso(v.square.cx * CELL_W + INNER_W / 2, v.square.cy * CELL_D + INNER_D / 2, villageLift(v.square, plateK))} title={v.name} sub={`${members.length} 个项目`}
                 tone={toneOf(st, 'plaza')} chips={agents ? withWaiting(agentChips(ag), st) : plateChips(st, 0)} note={agents ? '村里没有会话' : '村里很安静'} />
             </g>
@@ -330,8 +340,9 @@ export function WorldScene({ model, world, view, far, selected, highlight, onSel
           const chips = agents ? withWaiting(agentChips(agentAt.get(d.key)!), st) : plateChips(st, failed)
           const note = agents ? '没有会话' : open ? `${open} 项未完成 · 没人在干活` : '安静'
           return (
-            <g key={`far-${d.key}`} className={`town-obj${d.village ? ' town-hide-on-map' : ''}${fadeDistrict(d.key)}`} {...activate(() => onSelect({ kind: 'building', key: d.b.key }))}
-              aria-label={`${d.b.name}：${chips.length ? chips.map((c) => c.text).join('，') : note}`}>
+            <g key={`far-${d.key}`} className={`town-obj${d.village && d.village !== focusArea ? ' town-hide-on-map' : ''}${fadeDistrict(d.key)}`}
+              {...(onNavigate ? activate(() => onNavigate({ kind: 'project', id: d.id })) : {})}
+              aria-label={`${onNavigate ? '去门前花园：' : ''}${d.b.name}：${chips.length ? chips.map((c) => c.text).join('，') : note}`}>
               <FarPlate k={plateK * (d.kind === 'wild' ? 0.85 : 1)} at={plateAt(d)} title={d.b.name}
                 tone={toneOf(st, 'calm')} chips={chips} note={note} accent={buildingColors(d.b.repo?.id).accent} />
             </g>
@@ -521,8 +532,22 @@ function attentionOf(d: District, needsYou: (b: BuildingView) => boolean) {
   return needsYou(d.b) || d.b.characters.some((c) => c.status === 'working') || d.b.parcels.some(onReviewDesk) || d.b.items.some((w) => w.status === 'blocked' || w.status === 'review')
 }
 
-export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far'> & { kiosk?: boolean; rotateMs?: number; paused?: boolean; focusKey?: string; plan?: WorldPlan; replaying?: boolean; snapshot?: Snapshot }) {
-  const { model, needsYou, kiosk = false, rotateMs = 20_000, paused = false, focusKey, plan } = props
+/** 手动导航前的显示范围：设备范围、项目筛选、Agent 筛选、状态高亮。“回到刚才的位置”连同镜头一起恢复。 */
+export interface ViewContext { scope: 'here' | 'all'; repoId: number | 'all'; provider: string; highlight: Highlight | null }
+
+/** 第一次手动导航或自动跟随之前的完整位置；连续导航沿用它，返回或手动拖动缩放后清空。 */
+interface NavBack { camera: Camera; context?: ViewContext; byAgent: boolean; agentFocus: Agent | null }
+
+export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'onNavigate' | 'focusArea'> & { kiosk?: boolean; rotateMs?: number; paused?: boolean; focusKey?: string; plan?: WorldPlan; replaying?: boolean; snapshot?: Snapshot
+  /** 画的是本机快照还是全部设备的合并视图；切换时保持镜头，新动态从这一张重新起算。 */
+  source?: 'here' | 'all'
+  /** 本机设备名：合并视图里认出哪些项目是本机的。 */
+  selfDevice?: string
+  context?: ViewContext
+  /** 恢复返回点里的显示范围；返回恢复不了的原因（例如设备视图已不可用）。 */
+  onRestoreContext?: (c: ViewContext) => string[]
+}) {
+  const { model, needsYou, kiosk = false, rotateMs = 20_000, paused = false, focusKey, plan, source = 'here' } = props
   // 走进某栋建筑：显示它的室内；拖动、缩放、巡游都暂停。
   const [inside, setInside] = useState<string | null>(null)
   const [byAgent, setByAgent] = useState(false)
@@ -547,8 +572,17 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far'> & {
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [inside])
-  const sceneSelect = (s: Selection) => { if (s.kind === 'building') { stop(); lastTouch.current = Date.now(); setInside(s.key) } else props.onSelect(s) }
-  const world = useMemo(() => worldLayout(model.buildings, needsYou, plan), [model, needsYou, plan])
+  const enter = (key: string) => { stop(); lastTouch.current = Date.now(); setArrived(null); setProjectsOpen(false); setInside(key) }
+  // 只有房子本体（和明确的“进入工作室”）才进室内；名牌、片区名牌走 navigate。
+  const sceneSelect = (s: Selection) => { if (s.kind === 'building') enter(s.key); else props.onSelect(s) }
+  // 位置按稳定项目键记住：状态、活动排名、设备顺序变化都不搬家，新项目往外追加。
+  const selfName = props.selfDevice || props.snapshot?.devices?.find((d) => d.self)?.name || ''
+  const memo = useRef(newWorldMemo())
+  const world = useMemo(() => {
+    const ids = identityKeys(model.buildings, selfName)
+    return stableLayout(model.buildings, needsYou, plan, memo.current, (b) => ids.get(b.key)!)
+  }, [model, needsYou, plan, selfName])
+  const isRemote = (d: District) => !!d.b.repo && projectIdentity(d.b.repo, selfName).device !== 'self'
   const box = useRef<HTMLDivElement>(null)
   const [aspect, setAspect] = useState(1.6)
   const [compact, setCompact] = useState(() => typeof window !== 'undefined' && window.innerWidth < 760)
@@ -560,7 +594,12 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far'> & {
   const [reducedMotion, setReducedMotion] = useState(() => !!globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches)
   const [moment, setMoment] = useState<TownMoment | null>(null)
   const [showMoments, setShowMoments] = useState(false)
-  const [returnCamera, setReturnCamera] = useState<Camera | null>(null)
+  const [back, setBack] = useState<NavBack | null>(null)
+  // 片区取景后让它的成员名牌显示；到达后的提示和“进入工作室”入口；导航说明（找不到目标、返回点作废等）。
+  const [focusArea, setFocusArea] = useState<string | null>(null)
+  const [arrived, setArrived] = useState<NavTarget | null>(null)
+  const [navNote, setNavNote] = useState('')
+  const [projectsOpen, setProjectsOpen] = useState(false)
   const [sparks, setSparks] = useState<ReadonlySet<string>>(new Set())
   const lastFlight = useRef(-Infinity)
   const followUntil = useRef(0)
@@ -581,7 +620,16 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far'> & {
   }, [])
 
   const fitAll = () => fitCamera(world.bounds, aspect, 1.02)
-  const camera = cam ?? fitAll()
+  // 切换本机 / 全部设备时世界范围会变；还没手动移动过镜头也停在原处，不跟着新全景跳。
+  const seenSource = useRef(source)
+  const shownCam = useRef<Camera | null>(null)
+  const camera = cam ?? (seenSource.current !== source && shownCam.current ? shownCam.current : fitAll())
+  useEffect(() => {
+    if (seenSource.current === source) return
+    seenSource.current = source
+    if (!cam && shownCam.current) setCam(shownCam.current)
+  }, [source])
+  useEffect(() => { shownCam.current = camera })
   const stop = () => { if (anim.current != null) cancelAnimationFrame(anim.current); anim.current = null }
   const flyTo = (to: Camera, ms = 900) => {
     stop()
@@ -624,10 +672,57 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far'> & {
     props.onSelect({ kind: 'item', key: id })
   }
   const startHarvest = () => { if (!ripe.length) return; setInside(null); goHarvest(ripe.map((r) => r.item.id), 0) }
+  const remember = () => setBack((saved) => saved ?? { camera, context: props.context, byAgent, agentFocus })
+  // 手动导航：立即飞（不进新动态的 3 秒归并），记下返回点，并按用户操作算 30 秒保护。只改镜头，不写任何东西。
+  const navigate = (t: NavTarget) => {
+    if (t.kind === 'project') {
+      const d = world.districts.find((x) => x.id === t.id)
+      if (!d) { setNavNote('这个项目不在当前显示范围：可能已归档、被筛选，或来源设备暂时不在。没有换去别的项目。'); return }
+      stop(); lastTouch.current = Date.now(); remember()
+      setMoment(null); setShowMoments(false); setProjectsOpen(false); setNavNote(''); setFocusArea(null); setArrived(t)
+      flyTo(fitCamera(cellBox(d.ox, d.oy), aspect, 1.15))
+      return
+    }
+    const v = world.villages.find((x) => x.key === t.key)
+    const members = v ? world.districts.filter((d) => d.village === v.key) : []
+    if (!v || !members.length) {
+      const name = v?.name ?? world.emptyVillages.find((x) => x.key === t.key)?.name ?? '这个片区'
+      setNavNote(`「${name}」现在没有可看的项目：成员都不在当前显示范围（已归档、被筛选，或来源设备不在）。`)
+      return
+    }
+    stop(); lastTouch.current = Date.now(); remember()
+    setMoment(null); setShowMoments(false); setProjectsOpen(false); setNavNote(''); setFocusArea(v.key); setArrived(t)
+    // 框住全部成员；至少拉到远景宽度，名牌才画出来。比地图模式还宽时 focusArea 让成员名牌照常显示。
+    const fit = fitCamera(areaBox(v.cells), aspect, 1.1)
+    flyTo({ ...fit, w: Math.max(fit.w, FAR_W * 1.15) })
+  }
+  const goBack = () => {
+    if (!back) return
+    stop(); lastTouch.current = Date.now()
+    setBack(null); setMoment(null); setArrived(null); setFocusArea(null)
+    setByAgent(back.byAgent); setAgentFocus(back.agentFocus)
+    const lost = back.context && props.onRestoreContext ? props.onRestoreContext(back.context) : []
+    setNavNote(lost.length ? `镜头已回到刚才的位置，但${lost.join('；')}。` : '')
+    flyTo(back.camera)
+  }
+  // 手动拖动、缩放后返回点作废，并说一声。
+  const dropBack = () => { if (back) setNavNote('你手动移动了地图，“回到刚才的位置”已作废。'); setBack(null) }
+  const leaveNav = () => { dropBack(); setArrived(null); setFocusArea(null) }
+  useEffect(() => {
+    if (!navNote) return
+    const t = window.setTimeout(() => setNavNote(''), 6000)
+    return () => window.clearTimeout(t)
+  }, [navNote])
+  useEffect(() => {
+    if (!projectsOpen) return
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setProjectsOpen(false) }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [projectsOpen])
   const visitMoment = (m: TownMoment) => {
     const d = world.districts.find((d) => d.key === m.buildingKey)
     if (!d) return
-    setReturnCamera((saved) => saved ?? camera)
+    remember()
     lastFlight.current = Date.now()
     followUntil.current = Date.now() + 20_000
     // 和收菜一样把目标放在卡片旁；整块院子（房子和菜地）一起取景。
@@ -642,7 +737,7 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far'> & {
     if (first) visitMoment(first)
   }, (progress) => {
     if (!reducedMotion && !props.replaying && !inside && !guide) setSparks(new Set(progress.map((m) => m.buildingKey)))
-  })
+  }, source)
   useEffect(() => {
     if (!sparks.size) return
     const timer = window.setTimeout(() => setSparks(new Set()), 2200)
@@ -712,7 +807,7 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far'> & {
       // 说明面板里滚轮是翻页，不缩放地图。
       if (inside || (e.target as Element | null)?.closest?.('.town-guide, .town-world-ui, .town-harvest-bar')) return
       e.preventDefault()
-      stop(); lastTouch.current = Date.now(); setReturnCamera(null)
+      stop(); lastTouch.current = Date.now(); leaveNav()
       const r = el.getBoundingClientRect()
       setCam((c) => clampCamera(zoomAt(c ?? camera, Math.exp(e.deltaY * 0.0015), (e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height, aspect), world.bounds))
     }
@@ -729,7 +824,7 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far'> & {
     if (!d || d.id !== e.pointerId) return
     const dx = e.clientX - d.x, dy = e.clientY - d.y
     if (!d.moved && Math.hypot(dx, dy) < 5) return
-    if (!d.moved) { d.moved = true; stop(); setReturnCamera(null); box.current?.setPointerCapture(e.pointerId) }
+    if (!d.moved) { d.moved = true; stop(); dropBack(); box.current?.setPointerCapture(e.pointerId) }
     lastTouch.current = Date.now()
     const r = box.current!.getBoundingClientRect()
     const k = d.cam.w / r.width
@@ -740,10 +835,13 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far'> & {
     drag.current = null
     if (d?.moved) { swallowClick.current = true; box.current?.releasePointerCapture(e.pointerId) }
   }
-  const zoomBy = (f: number) => { lastTouch.current = Date.now(); setReturnCamera(null); flyTo(clampCamera(zoomAt(camera, f, 0.5, 0.5, aspect), world.bounds), 350) }
+  const zoomBy = (f: number) => { lastTouch.current = Date.now(); leaveNav(); flyTo(clampCamera(zoomAt(camera, f, 0.5, 0.5, aspect), world.bounds), 350) }
 
   const view = viewBoxOf(camera, aspect)
   const far = camera.w > FAR_W
+  const arrivedAt = arrived?.kind === 'project'
+    ? (() => { const d = world.districts.find((x) => x.id === arrived.id); return d ? { kind: 'project' as const, d } : null })()
+    : arrived ? (() => { const v = world.villages.find((x) => x.key === arrived.key); return v ? { kind: 'area' as const, name: v.name, count: v.cells.length - 1 } : null })() : null
   return (
     <div className={`town-world${moment ? ' has-moment' : ''}`} ref={box} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp}
       onPointerDownCapture={() => { lastTouch.current = Date.now(); stop() }} onKeyDownCapture={() => { lastTouch.current = Date.now(); stop() }}
@@ -760,13 +858,13 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far'> & {
         </>
       ) : (
         <>
-      <WorldScene {...props} onSelect={sceneSelect} world={world} view={view} far={far} agents={byAgent ? { focus: agentFocus } : null}
+      <WorldScene {...props} onSelect={sceneSelect} onNavigate={navigate} focusArea={focusArea} world={world} view={view} far={far} agents={byAgent ? { focus: agentFocus } : null}
         momentGlow={!reducedMotion && !props.replaying ? moment?.buildingKey : undefined} progressSparks={reducedMotion ? undefined : sparks} />
       <div className="town-world-tools" onPointerDown={(e) => e.stopPropagation()}>
         <button type="button" onClick={() => zoomBy(0.7)} aria-label="放大" title="放大（也可以滚动滚轮）">＋</button>
         <button type="button" onClick={() => zoomBy(1.4)} aria-label="缩小" title="缩小">－</button>
-        <button type="button" onClick={() => { lastTouch.current = Date.now(); setReturnCamera(null); flyTo(fitAll()) }} title="看全部街区">全景</button>
-        <button type="button" onClick={() => { lastTouch.current = Date.now(); setReturnCamera(null); flyTo(fitCamera(cellBox(world.plaza.ox, world.plaza.oy), aspect, 1.1)) }} title="回到中央广场">广场</button>
+        <button type="button" onClick={() => { lastTouch.current = Date.now(); leaveNav(); flyTo(fitAll()) }} title="看全部街区">全景</button>
+        <button type="button" onClick={() => { lastTouch.current = Date.now(); leaveNav(); flyTo(fitCamera(cellBox(world.plaza.ox, world.plaza.oy), aspect, 1.1)) }} title="回到中央广场">广场</button>
         {!props.replaying && <button type="button" className={`town-basket${ripe.length ? ' has-ripe' : ''}`} onClick={startHarvest} disabled={!ripe.length && !harvest}
           title={ripe.length ? `熟了 ${ripe.length} 棵：一棵一棵打开验收卡片，收下或退回` : '现在没有熟了的菜（没有待验收的工作项）'}>收菜 {ripe.length}</button>}
         <span className="town-guide-anchor">
@@ -774,7 +872,10 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far'> & {
           {!guideSeen && !guide && <span className="town-guide-bubble" role="note">第一次来？点这里看怎么用</span>}
         </span>
         <button type="button" aria-pressed={byAgent} className={byAgent ? 'is-on' : undefined} onClick={() => { setByAgent(!byAgent); setAgentFocus(null) }} title="按会话来自哪个 Agent 着色">按 Agent 看</button>
+        <button type="button" aria-expanded={projectsOpen} className={projectsOpen ? 'is-on' : undefined} onClick={() => setProjectsOpen(!projectsOpen)}
+          title="按片区列出全部项目：点项目名去它的房子和门前花园">项目 {world.districts.length}</button>
       </div>
+      {projectsOpen && <ProjectList world={world} isRemote={isRemote} onNavigate={navigate} onEnter={enter} />}
       <div className="town-moments town-world-ui" onPointerDown={(e) => e.stopPropagation()}>
         {queued.length > 0 && <button type="button" aria-expanded={showMoments} onClick={() => setShowMoments(!showMoments)}>{queued.length} 处有新动态</button>}
         {showMoments && queued.length > 0 && <ol className="town-moment-list" aria-label="新动态，按优先级排列">
@@ -793,8 +894,15 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far'> & {
           onHarvest={() => { const ids = [visibleMoment.itemId!, ...ripe.map((r) => r.item.id).filter((id) => id !== visibleMoment.itemId)]; setMoment(null); goHarvest(ids, 0) }}
           onLater={() => setMoment(null)} onAcknowledge={() => { feed.acknowledge(visibleMoment.key); setMoment(null) }} />
       </div>}
-      {returnCamera && <button type="button" className="town-moment-return town-world-ui" disabled={paused || !!harvest || !!props.replaying || guide}
-        onPointerDown={(e) => e.stopPropagation()} onClick={() => { flyTo(returnCamera); setReturnCamera(null); setMoment(null) }}>回到刚才的位置</button>}
+      {(arrivedAt || navNote) && <div className="town-arrived town-world-ui" role="status" onPointerDown={(e) => e.stopPropagation()}>
+        {navNote ? <span>{navNote}</span>
+          : arrivedAt?.kind === 'project' ? <>
+            <span>已到「{arrivedAt.d.b.name}」的房子和门前花园{isRemote(arrivedAt.d) ? ' · 另一台电脑，仅查看' : ''}</span>
+            <button type="button" onClick={() => enter(arrivedAt.d.key)}>进入工作室</button>
+          </> : arrivedAt ? <span>「{arrivedAt.name}」· {arrivedAt.count} 个项目：点名牌去它的门前花园</span> : null}
+      </div>}
+      {back && <button type="button" className="town-moment-return town-world-ui" disabled={paused || !!harvest || !!props.replaying || guide}
+        onPointerDown={(e) => e.stopPropagation()} onClick={goBack}>回到刚才的位置</button>}
       {byAgent && (
         <div className="town-agent-legend" role="group" aria-label="按 Agent 筛选" onPointerDown={(e) => e.stopPropagation()}>
           <button type="button" aria-pressed={agentFocus == null} onClick={() => setAgentFocus(null)}>全部</button>
@@ -806,7 +914,7 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far'> & {
           ))}
         </div>
       )}
-      <MiniMap world={world} view={view} needsYou={needsYou} pending={model.pendingApprovals} onJump={(p) => { lastTouch.current = Date.now(); setReturnCamera(null); flyTo(clampCamera({ cx: p[0], cy: p[1], w: Math.min(camera.w, 1500) }, world.bounds), 600) }} />
+      <MiniMap world={world} view={view} needsYou={needsYou} pending={model.pendingApprovals} onJump={(p) => { lastTouch.current = Date.now(); leaveNav(); flyTo(clampCamera({ cx: p[0], cy: p[1], w: Math.min(camera.w, 1500) }, world.bounds), 600) }} />
       <p className="town-world-hint">拖动地图移动 · 滚轮缩放 · 拉远看全部项目</p>
       {guide && <TownGuide onClose={() => setGuide(false)} follow={feed.preferences} onFollowChange={feed.savePreferences} />}
       {harvest && !props.replaying && <HarvestBar ids={harvest.ids} index={harvest.index} results={results} model={model}
@@ -815,6 +923,38 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far'> & {
         onReopen={() => goHarvest(harvest.ids, harvest.index)} onEnd={() => setHarvest(null)} />}
         </>
       )}
+    </div>
+  )
+}
+
+/** 项目列表：按片区列出全部项目。项目名 / “去花园”和名牌同一个导航入口；“工作室”才进室内。 */
+function ProjectList({ world, isRemote, onNavigate, onEnter }: { world: WorldLayout; isRemote: (d: District) => boolean; onNavigate: (t: NavTarget) => void; onEnter: (key: string) => void }) {
+  const groups = [
+    { key: '', title: '中央广场一带', area: false, members: world.districts.filter((d) => d.kind === 'central') },
+    ...world.villages.map((v) => ({ key: v.key, title: v.name, area: true, members: world.districts.filter((d) => d.village === v.key) })),
+    { key: '', title: '野外', area: false, members: world.districts.filter((d) => d.kind === 'wild') },
+  ].filter((g) => g.members.length)
+  return (
+    <div className="town-projects town-world-ui" role="region" aria-label="项目列表" onPointerDown={(e) => e.stopPropagation()}>
+      <p className="town-projects-hint">点项目名去它的房子和门前花园；“工作室”走进项目内部。</p>
+      {groups.map((g) => (
+        <section key={`${g.title}-${g.key}`}>
+          <h3>{g.area
+            ? <button type="button" onClick={() => onNavigate({ kind: 'area', key: g.key })} title="把这一带的全部项目框进画面">{g.title} · {g.members.length} 个项目</button>
+            : `${g.title} · ${g.members.length} 个项目`}</h3>
+          <ul>
+            {g.members.map((d) => (
+              <li key={d.key}>
+                <button type="button" className="town-projects-name" onClick={() => onNavigate({ kind: 'project', id: d.id })} title="去它的房子和门前花园">{d.b.name}</button>
+                {isRemote(d) && <small>另一台电脑 · 仅查看</small>}
+                <button type="button" onClick={() => onNavigate({ kind: 'project', id: d.id })} aria-label={`去花园：${d.b.name}`}>去花园</button>
+                <button type="button" onClick={() => onEnter(d.key)} aria-label={`进入工作室：${d.b.name}`}>工作室</button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ))}
+      {world.emptyVillages.map((v) => <p key={v.key} className="town-projects-empty">「{v.name}」：当前显示范围里没有项目（可能已归档、被筛选，或来源设备不在）。</p>)}
     </div>
   )
 }

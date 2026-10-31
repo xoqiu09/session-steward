@@ -19,13 +19,15 @@ function readLastSeen(): number | null {
   } catch { return null }
 }
 
-/** 生命周期、存储和 3 秒归并在这里；相机仍由 WorldStage 的 flyTo 驱动。 */
-export function useMoments(snapshot: Snapshot | undefined, onBatch: (moments: TownMoment[]) => void, onProgress: (moments: TownMoment[]) => void) {
+/** 生命周期、存储和 3 秒归并在这里；相机仍由 WorldStage 的 flyTo 驱动。
+ *  baseline 变了（本机 / 全部设备切换）时下一张快照重新当首屏，不把另一个范围里早就有的东西算成新动态。 */
+export function useMoments(snapshot: Snapshot | undefined, onBatch: (moments: TownMoment[]) => void, onProgress: (moments: TownMoment[]) => void, baseline = '') {
   const [queue, setQueue] = useState<TownMoment[]>([])
   const [away, setAway] = useState<TownMoment[]>([])
   const [preferences, setPreferences] = useState(readFollowPreferences)
   const [seenAtStart] = useState(readLastSeen)
   const previous = useRef<Snapshot | null>(null)
+  const base = useRef(baseline)
   const latest = useRef(snapshot)
   const callbacks = useRef({ onBatch, onProgress })
   const seen = useRef(new Set<string>())
@@ -42,6 +44,7 @@ export function useMoments(snapshot: Snapshot | undefined, onBatch: (moments: To
 
   useEffect(() => {
     if (!snapshot) return
+    if (base.current !== baseline) { base.current = baseline; previous.current = null }
     const first = previous.current == null
     const fresh = momentsBetween(previous.current, snapshot).filter((m) => !seen.current.has(m.key))
     const caughtUp = first || resumeAt.current != null
@@ -65,7 +68,7 @@ export function useMoments(snapshot: Snapshot | undefined, onBatch: (moments: To
       resumeAt.current = null
       remember()
     }
-  }, [snapshot])
+  }, [snapshot, baseline])
 
   useEffect(() => {
     const visibility = () => {

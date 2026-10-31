@@ -140,6 +140,22 @@
 .town-view .town-moment-actions .is-primary { background: #754515; color: #fffaf0; border-color: #754515; }
 .town-view .town-moment-actions .is-primary:hover { background: #61370e; }
 .town-view .town-moment-return { position: absolute; z-index: 4; left: 12px; bottom: 52px; }
+/* 手动导航：到达提示（含“进入工作室”）在返回按钮上方；项目列表在工具栏下面，按片区分组，可滚动。 */
+.town-view .town-arrived { position: absolute; z-index: 4; left: 12px; bottom: 104px; display: flex; align-items: center; flex-wrap: wrap; gap: 8px;
+  max-width: min(460px, calc(100% - 250px)); padding: 8px 12px; background: var(--town-card); border: 1px solid #c9b896; border-radius: 12px; font-size: 13px; line-height: 1.6; }
+.town-view .town-arrived span { flex: 1 1 200px; overflow-wrap: anywhere; }
+.town-view .town-projects { position: absolute; z-index: 5; top: 66px; right: 12px; width: min(360px, calc(100% - 24px)); max-height: calc(100% - 230px); overflow: auto;
+  padding: 10px 12px; background: var(--town-card); border: 1px solid #c9b896; border-radius: 12px; box-shadow: 0 8px 24px #3a2a1c24; font-size: 13px; }
+.town-view .town-projects-hint { margin: 0 0 6px; color: #6b5a44; font-size: 12px; }
+.town-view .town-projects section + section { margin-top: 8px; }
+.town-view .town-projects h3 { margin: 6px 0 4px; font-size: 13px; color: #6b3d12; }
+.town-view .town-projects h3 button { width: 100%; text-align: left; font-weight: 700; color: #6b3d12; }
+.town-view .town-projects ul { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.town-view .town-projects li { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.town-view .town-projects li button { padding: 6px 10px; }
+.town-view .town-projects .town-projects-name { flex: 1 1 140px; text-align: left; font-weight: 650; overflow-wrap: anywhere; }
+.town-view .town-projects small { flex-basis: 100%; color: #6b5a44; font-size: 11px; }
+.town-view .town-projects-empty { margin: 8px 0 0; color: #6b5a44; font-size: 12px; }
 .town-view .town-away { position: absolute; z-index: 5; top: 66px; left: 12px; right: 12px; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 8px 12px; background: var(--town-card); border: 1px solid #c9b896; border-radius: 12px; font-size: 13px; }
 .town-view .town-away span { flex: 1 1 240px; }
 .town-view .town-follow-settings { display: grid; gap: 6px; margin: 12px 0; padding: 10px 12px; border: 1px solid var(--town-line); border-radius: 10px; }
@@ -161,6 +177,8 @@
   .town-view .town-moment-overlay { top: auto; left: 8px; right: 8px; bottom: 66px; width: auto; max-height: 38%; overflow: auto; }
   .town-view .town-moment-card { padding: 12px; }
   .town-view .town-moment-return { bottom: 12px; }
+  .town-view .town-arrived { left: 8px; right: 8px; bottom: 64px; max-width: none; }
+  .town-view .town-projects { top: 112px; right: 8px; max-height: calc(100% - 200px); }
   .town-view .town-moment-message { margin-bottom: 8px; font-size: 14px; }
   .town-view .town-world.has-moment .town-minimap { visibility: hidden; }
 }
