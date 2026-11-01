@@ -12,6 +12,8 @@
 
 - **一张地图看全部工作。** 房子是项目，小人是正在干活的会话，熟了的菜是等你看的交付，广场上的告示栏是等你决定的事。房子的位置固定，不会因为状态变化跑来跑去。
 - **有新进展时带你去看。** 某个项目交付了，镜头会飞到那栋房子；你正在拖地图或读东西时不会抢镜头，看完点“回到刚才的位置”。
+- **忘了的事会再提醒。** 小镇顶部的“灵动岛”会提醒你：交付熟了 30 分钟还没收、工作停了 30 分钟没人推而下一步该你、交付后你已经回到对话接着推进（问你这件算不算处理了）。适合挂在副屏上常开。
+- **看得到每个项目的核心功能。** Agent 按功能回报“已完成 / 开发中 / 未开始”和验证情况；鼠标移到房子上就能看到，进入房子能看全部。这些是 Agent 自述，你验收过的才标“你已验收”。
 - **等你的事集中在一处。** 工具权限请求、Agent 的提问、等批准的合并、等你看的交付，都在面板右侧的队列里，可以直接允许、拒绝或处理。
 - **“Agent 说做完了”不等于你点了头。** 进展和交付由 Agent 自己回报，只有你能把工作标为“已处理”。会话停止、沉默或空闲都不算完成。
 - **按项目看简报。** 每个项目显示阶段、一句话结论、卡点、下一步和该谁动手，而不是一长串会话。
@@ -87,21 +89,48 @@ App 打开就是小镇的世界地图。
 | 中央广场 | 全镇合计、验收台、告示栏（等你决定的事） |
 | 小人 | 一个会话，衣服颜色表示是哪个 Agent |
 | 熟了的菜 | 一个等你看的交付 |
-| 红白路障、退件筐、小纸箱 | 有受阻的工作、最近失败的运行、正在进行的运行 |
+| 红白路障 | 有受阻的工作 |
+| 门口的“停着 N” | 有工作停在你手上：没做完、没人在推、30 分钟没动静，下一步该你 |
+| 退件筐、小纸箱 | 最近失败的运行、正在进行的运行（默认隐藏，在“显示”里打开） |
 | 灰色、云朵 | 很久没有新事件，不当作还在工作 |
 
 常用操作：
 
 - **拖动和缩放**：拖动地图移动，滚轮缩放；“全景”看全部，“广场”回到中间。
 - **点项目名牌**：镜头飞到那栋房子和门前的菜地，人还在世界里；点**片区名牌**（例如“xx 一带 · 7 个项目”）看整片。看完点“回到刚才的位置”。
-- **点房子本身**或“进入工作室”：走进项目内部，工作台是工作项，墙上白板是等你决定的事；按 Esc 出来。
+- **鼠标移到房子上**：显示项目概况：几个 Agent 在做、核心功能已完成 / 开发中 / 未开始、Agent 建议的下一步。
+- **点房子本身**或“进入工作室”：走进项目内部，工作台是工作项，墙上白板是等你决定的事，右侧列出全部核心功能；按 Esc 出来。
 - **点小人**：打开会话详情，可以回到原来的会话接着干。
-- **收菜 N**：逐个打开等你看的交付。
-- **按 Agent 看**、**回放**（看过去某一刻的小镇）、**怎么看**（小镇里的完整说明）。
+- **收菜 N**：逐个打开等你看的交付；旁边显示最久的一件等了多久，超过 30 分钟变红。
+- **按 Agent 看**、**怎么看**（小镇里的完整说明）。
+- **显示**：状态筛选、回放（看过去某一刻的小镇）、包裹和退件筐默认收起，要用时在这里打开，设置记在浏览器里。
 
 房子的位置会记在浏览器里，刷新或重开 App 后还在原处；看过的动态不会重复飞过去。所有没归档的项目都会留在地图上，不想看到某个项目就在完整面板的“项目”里归档它，随时可以恢复。
 
-小镇只用来看和找：批准、处理、退回都在面板里做。
+### 灵动岛提醒
+
+| 提醒 | 什么时候出现 | 你可以 |
+| --- | --- | --- |
+| 等你决定 | Agent 要权限或在问你 | 去处理 |
+| 你回来过 | 交付以后，你又回到交付的那个会话发了消息 | 已处理、退回修改、看看，或稍后（不点也行，它留在待验收里） |
+| 停在你手上 | 工作没做完、没 Agent 在跑、30 分钟没动静，下一步该你或没写 | 看看 |
+| 菜熟了 | 新交付；或熟了 30 分钟还没收（再提醒一次） | 收这一棵、开始收菜 |
+
+“你回来过”只记你发消息的时间，不读也不存你说了什么；它不改变工作状态，只有你点“已处理”才算处理。打开页面时就已超时的，只在“收菜”旁标红，不会一打开就弹一串。
+
+除了灵动岛里的“已处理 / 退回修改”，批准和合并仍在面板的卡片里由你来点。
+
+### 核心功能进度
+
+Agent 用 `steward-hook features` 按稳定的功能 ID 回报每项核心功能的实现和验证情况（说明会随 hooks 自动给到 Agent）。首页、工作项详情、房子悬停卡和项目内部都用这同一份清单。内容是 Agent 自述，不是独立校验；Agent 报“验证通过”不等于你验收，你在面板里确认过的才显示“你已验收”。没有回报的项目显示“还没登记核心功能”。格式和规则见 [docs/CORE-FEATURES.md](docs/CORE-FEATURES.md)。
+
+### 派活台（本机 Codex）
+
+在这台电脑上把任务直接交给你自己的 Codex：打开 `/?view=dispatch`，或点小镇广场上的派活台桌子。先在“可派活的项目”里加入本机的 Git 项目；每件任务自动新建分支和独立 worktree，在同一条 Codex 会话里接着交代下一步、停止，或“回电脑接着做”（交给这台电脑的 Codex 桌面 App）。Codex 要执行的操作会在这里等你决定，“仅允许这一次”只对这一次有效。
+
+- 只接受本机访问，手机和其他设备打不开。
+- 需要本机有 `codex` 命令（自动查找，也可在 `~/.steward/config.json` 里用 `"codex"` 指定路径）；找不到时派活台显示不可用，其他功能照常。
+- 派活台发起的工作在房子门口挂“派活 · N”。Agent 说做完了仍要你在小镇里验收。
 
 ### 合并审批
 
@@ -117,7 +146,6 @@ App 打开就是小镇的世界地图。
 
 - **命令行版**：不想用 App 时，`go build -o bin/ ./cmd/...` 后运行 `bin/steward install`、`bin/steward service install`、`bin/steward open`。仓库要放在一个长期不动的位置，不要放在“文稿”“桌面”“下载”里。已经装过命令行版再装 App 时，App 会问你“接管”还是“共用”。
 - **多台电脑合成一座小镇**、**在手机上只读查看**：需要 Tailscale，见[使用手册](docs/GUIDE.zh-CN.md#在其他设备上查看小镇只读)。只在你的 tailnet 内转发，**不要**用 `tailscale funnel` 或公网代理暴露面板。
-- **本机 Codex 控制原型**：实验功能，默认不安装，见 [docs/native-codex-prototype.zh-CN.md](docs/native-codex-prototype.zh-CN.md)。
 
 ## 更新与卸载
 
@@ -171,4 +199,4 @@ sh scripts/build-app.sh   # 打包 App 到 dist-app/
 
 ## English summary
 
-Session Steward is a local progress desk for Claude Code and Codex on macOS. Hooks forward session events to a single Go service on `127.0.0.1:7788`; the app draws your work as a town (projects are houses that keep their place, sessions are people, deliveries waiting for you are ripe crops), flies to the house that just delivered, groups work by project, shows what is blocked and what is waiting for you, and lets you answer tool permission requests in place. Only you can mark work as handled. Everything stays on your machine; there is no account and no telemetry. v0.2.0 is a trial release: macOS only, Chinese UI, unsigned (open it with right-click → Open), no in-app updates. Download the app from Releases, or build it with `sh scripts/build-app.sh` (Go 1.26.5+ and Xcode command line tools). See [docs/TRYOUT.zh-CN.md](docs/TRYOUT.zh-CN.md) for the trial walkthrough. Feedback is welcome in Issues; report security issues privately per [SECURITY.md](SECURITY.md).
+Session Steward is a local progress desk for Claude Code and Codex on macOS. Hooks forward session events to a single Go service on `127.0.0.1:7788`; the app draws your work as a town (projects are houses that keep their place, sessions are people, deliveries waiting for you are ripe crops), flies to the house that just delivered, reminds you about deliveries left unreviewed for 30 minutes, work stalled on you, and deliveries you have already moved on from in the chat (it asks; it never marks work handled by itself), shows each project's core features as reported by agents, offers a local-only dispatch desk for your own Codex, groups work by project, shows what is blocked and what is waiting for you, and lets you answer tool permission requests in place. Only you can mark work as handled. Everything stays on your machine; there is no account and no telemetry. v0.2.0 is a trial release: macOS only, Chinese UI, unsigned (open it with right-click → Open), no in-app updates. Download the app from Releases, or build it with `sh scripts/build-app.sh` (Go 1.26.5+ and Xcode command line tools). See [docs/TRYOUT.zh-CN.md](docs/TRYOUT.zh-CN.md) for the trial walkthrough. Feedback is welcome in Issues; report security issues privately per [SECURITY.md](SECURITY.md).
