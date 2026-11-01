@@ -654,14 +654,15 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
   const [focusArea, setFocusArea] = useState<string | null>(null)
   const [arrived, setArrived] = useState<NavTarget | null>(null)
   const [navNote, setNavNote] = useState('')
-  // 在灵动岛里收下或退回后，留一句回执，几秒后自己消失。
+  // 在灵动岛里收下或退回后，留一句回执，几秒后自己消失；在原会话处理掉的事留久一点（你可能正在 Agent 那边打字）。
   const [doneNote, setDoneNote] = useState('')
+  const [doneMs, setDoneMs] = useState(4000)
   const [resolving, setResolving] = useState({ busy: false, error: '' })
   useEffect(() => {
     if (!doneNote) return
-    const t = window.setTimeout(() => setDoneNote(''), 4000)
+    const t = window.setTimeout(() => setDoneNote(''), doneMs)
     return () => window.clearTimeout(t)
-  }, [doneNote])
+  }, [doneNote, doneMs])
   const [projectsOpen, setProjectsOpen] = useState(false)
   const [deskOpen, setDeskOpen] = useState(false)
   const [sparks, setSparks] = useState<ReadonlySet<string>>(new Set())
@@ -815,7 +816,11 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
     if (first) visitMoment(first)
   }, (progress) => {
     if (!reducedMotion && !props.replaying && !inside && !guide) setSparks(new Set(progress.map((m) => m.buildingKey)))
-  }, source)
+  }, source, (handled) => {
+    if (props.replaying) return
+    setDoneMs(10_000)
+    setDoneNote(handled.length === 1 ? handled[0].message : `${handled[0].message}，另有 ${handled.length - 1} 件也已在原会话处理`)
+  })
   useEffect(() => {
     if (!sparks.size) return
     const timer = window.setTimeout(() => setSparks(new Set()), 2200)
@@ -993,7 +998,7 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
             setResolving({ busy: true, error: '' })
             api.patchItem(m.itemId!, { status }).then(() => {
               feed.acknowledge(m.key); setMoment(null); setResolving({ busy: false, error: '' })
-              setDoneNote(status === 'done' ? `已收下 ${m.itemId}` : `已退回 ${m.itemId}，等 Agent 接着改`)
+              setDoneMs(4000); setDoneNote(status === 'done' ? `已收下 ${m.itemId}` : `已退回 ${m.itemId}，等 Agent 接着改`)
             }, (e) => setResolving({ busy: false, error: e instanceof Error ? e.message : '没有保存成功' }))
           } : undefined} />
       </div>}

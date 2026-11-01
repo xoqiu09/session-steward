@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Snapshot } from '../types'
-import { fakeApproval, fakeItem } from './fixtures'
-import { autoMoment, canAutoFollow, DEFAULT_FOLLOW, localMoment, momentsBetween, momentsWhileAway, OVERDUE_MS, overdueRipe, stalledMoments, updateMomentQueue, waitedText, type FollowGuard } from './moments'
+import { fakeApproval, fakeItem, fakeSession } from './fixtures'
+import { autoMoment, canAutoFollow, DEFAULT_FOLLOW, handledElsewhere, localMoment, momentsBetween, momentsWhileAway, OVERDUE_MS, overdueRipe, stalledMoments, updateMomentQueue, waitedText, type FollowGuard } from './moments'
 
 const now = '2026-10-29T08:00:00Z'
 const later = '2026-10-29T08:01:00Z'
@@ -133,5 +133,27 @@ describe('停在你手上', () => {
     expect(autoMoment(m, DEFAULT_FOLLOW)).toBe(true)
     const moved = { ...idle, now: '2099-01-01T00:00:00Z', work_items: [{ ...item, status: 'done' as const, updated_at: later }] }
     expect(updateMomentQueue([m], [], moved)).toEqual([])
+  })
+})
+
+describe('在原会话处理掉的回执', () => {
+  const session = { ...fakeSession({ id: 5, provider: 'codex', state: 'running' }), repo_id: 1 }
+  const waiting = (status: 'pending' | 'cancelled' | 'confirmed', close_reason = '', kind: 'decision' | 'permission' | 'attention' = 'decision', preview = '断网提示放顶部还是表格里？') =>
+    fakeApproval({ id: 'Q-1', kind, status, close_reason, session_id: 5, repo_id: 1, preview })
+  const at = (cursor: number, a: ReturnType<typeof waiting>): Snapshot => ({ ...before, cursor, sessions: [session], approvals: [a] })
+  it('回了话、终端里批了命令、答了原生提问都给回执，带 Agent 和内容', () => {
+    for (const reason of ['user_replied', 'resolved_elsewhere', 'answered_in_session']) {
+      const [r] = handledElsewhere(at(1, waiting('pending')), at(2, waiting('cancelled', reason)))
+      expect(r).toMatchObject({ key: 'Q-1', local: true })
+      expect(r.message).toBe('已在 Codex 里处理：“断网提示放顶部还是表格里？”')
+    }
+    expect(handledElsewhere(at(1, waiting('pending', '', 'permission', '')), at(2, waiting('cancelled', 'resolved_elsewhere', 'permission', '')))[0].message).toBe('已在 Codex 里处理：一条命令')
+  })
+  it('面板里点掉的、超时的、首屏和旧快照都不给', () => {
+    expect(handledElsewhere(at(1, waiting('pending')), at(2, waiting('cancelled', 'dismissed')))).toEqual([])
+    expect(handledElsewhere(at(1, waiting('pending')), at(2, waiting('cancelled', 'timeout')))).toEqual([])
+    expect(handledElsewhere(at(1, waiting('pending')), at(2, waiting('confirmed')))).toEqual([])
+    expect(handledElsewhere(null, at(2, waiting('cancelled', 'user_replied')))).toEqual([])
+    expect(handledElsewhere(at(1, waiting('cancelled', 'user_replied')), at(2, waiting('cancelled', 'user_replied')))).toEqual([])
   })
 })
