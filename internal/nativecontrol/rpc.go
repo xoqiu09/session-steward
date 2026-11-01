@@ -1,5 +1,5 @@
-// Package nativecontrol implements an opt-in, single-workspace Codex prototype.
-// It does not relax the normal panel's remote read-only policy.
+// Package nativecontrol drives the local Codex app-server for the dispatch desk.
+// Dispatch routes are loopback-only; the normal panel stays read-only for remote access.
 package nativecontrol
 
 import (
@@ -34,7 +34,6 @@ type Transport interface {
 	Events() <-chan Message
 	Close() error
 }
-type Factory func(context.Context) (Transport, error)
 
 type RPC struct {
 	cmd     *exec.Cmd

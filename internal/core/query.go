@@ -132,6 +132,7 @@ type Snapshot struct {
 	Attributions      []Attribution    `json:"attributions"`
 	Features          []ProjectFeature `json:"features"`
 	Managed           []ManagedSession `json:"managed"`
+	Dispatch          []DispatchMark   `json:"dispatch"`
 	Agents            []string         `json:"agents"`
 	AgentInfo         []AgentInfo      `json:"agent_info"`
 	MergeJobs         []MergeJob       `json:"merge_jobs"`
@@ -348,6 +349,9 @@ func (c *Core) Snapshot(ctx context.Context) (*Snapshot, error) {
 		return nil, err
 	}
 	if snap.Managed, err = c.readManaged(tx); err != nil {
+		return nil, err
+	}
+	if snap.Dispatch, err = readDispatchMarks(tx); err != nil {
 		return nil, err
 	}
 	if snap.SessionUsage, snap.ItemUsage, err = c.readUsage(tx); err != nil {

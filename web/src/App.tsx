@@ -23,14 +23,16 @@ import { ProjectsPanel, type ProjectScope } from './ProjectsPanel'
 import { buildToday } from './today/todayModel'
 import { fullPanelHref, kioskHref, parseTownRoute, worldTownRoute } from './town/route'
 import { shownNo } from './hub/ids'
-import { NativeControl } from './NativeControl'
+import { DispatchDesk } from './dispatch/DispatchDesk'
 import { HooksSettings } from './HooksSettings'
 
 type Tab = 'queue' | 'items' | 'sessions' | 'launch' | 'review'
 type Sel = { kind: 'item'; id: string } | { kind: 'session'; id: number } | null
 
 export default function App() {
-	return new URLSearchParams(window.location.search).get('view') === 'native' ? <NativeControl /> : <PanelApp />
+	// 原型的 ?view=native 已并入派活台。
+	const view = new URLSearchParams(window.location.search).get('view')
+	return view === 'dispatch' || view === 'native' ? <DispatchDesk /> : <PanelApp />
 }
 
 function PanelApp() {

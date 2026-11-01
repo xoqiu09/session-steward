@@ -640,6 +640,27 @@ export function ReviewDesk({ at, count, selected, dimDesk, onSelect }: { at: { g
   )
 }
 
+/** 派活台：在这台电脑上交代任务给 Codex。点了打开派活台页面。 */
+export function DispatchTable({ at, count, onOpen }: { at: { gx: number; gy: number }; count: number; onOpen: () => void }) {
+  const { gx, gy } = at
+  const label = iso(gx + 0.2, gy + 0.5, 46)
+  return (
+    <g className="town-obj town-dispatch" aria-label={`派活台：管着 ${count} 件任务，点开交代任务`} {...activate(onOpen)}>
+      <IsoBox gx={gx} gy={gy} w={2.6} d={1.0} h={15} top="#cfe0f7" left="#6f8fbf" right="#5b7aa8" />
+      {/* 桌上的传话筒：任务从这里交给 Codex */}
+      <g transform={`translate(${iso(gx + 1.9, gy + 0.4, 15).join(',')})`}>
+        <rect x="-5" y="-14" width="10" height="14" rx="2" fill="#2b5fd9" />
+        <circle cy="-17" r="5" fill="#9fb8f0" stroke="#2b5fd9" />
+      </g>
+      <g transform={`translate(${label[0]},${label[1]})`}>
+        <rect x="-56" y="-16" width="112" height="30" rx="7" fill="#2b5fd9" />
+        <text y="-2" textAnchor="middle" fontSize="13" fontWeight="700" fill="#fff">派活台</text>
+        <text y="10" textAnchor="middle" fontSize="9.5" fill="#dfe8ff">{count > 0 ? `管着 ${count} 件任务` : '在这台电脑交代任务'}</text>
+      </g>
+    </g>
+  )
+}
+
 const KIND_SHORT: Record<string, string> = { permission: '权限', merge: '合并', decision: '决定', attention: '提醒' }
 
 /** 告示栏高度（不含立柱），随待决定卡片数变化。 */

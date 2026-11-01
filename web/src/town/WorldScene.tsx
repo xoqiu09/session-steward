@@ -4,7 +4,7 @@ import { IsoBox, IsoTile, iso, type Pt } from './iso'
 import { attentionManaged } from '../workManagement'
 import { characterStatusLabel, type BuildingView, type Highlight, type ParcelView, type TownModel } from './townModel'
 import {
-  Building, HOUSE_SHAPE, Character, DecisionBoard, FailRack, Parcel, Path, ReviewDesk, StatusPill, Tag, Tree,
+  Building, HOUSE_SHAPE, Character, DecisionBoard, DispatchTable, FailRack, Parcel, Path, ReviewDesk, StatusPill, Tag, Tree,
   activate, buildingColors, charLook, charMatches, onReviewDesk, parcelMatches, parcelTitle,
   type BuildingShape, type Plot, type Selection,
 } from './TownScene'
@@ -27,6 +27,8 @@ import { autoMoment, canAutoFollow, localMoment, type TownMoment } from './momen
 import { useMoments } from './useMoments'
 import { MomentCard } from './MomentCard'
 import { identityKeys, projectIdentity } from './identity'
+import { isRemote as remoteAccess } from '../access'
+import { dispatchHref } from '../dispatch/dispatchModel'
 
 /** 每个街区的退件筐最多摆几个箱子，其余只计数。 */
 const BIN_MAX = 2
@@ -47,6 +49,10 @@ const hash = (s: string) => { let h = 0; for (const ch of s) h = (h * 31 + ch.ch
 
 interface SceneProps {
   model: TownModel
+  /** 派活台发起的工作项（只在本机视图里有）。 */
+  dispatch?: { managed_id: string; work_item_id: string; status: string }[]
+  /** 有它才在广场摆派活台、在房子门口挂牌子；参数是要直接打开的任务。 */
+  onDispatch?: (task?: string) => void
   world: WorldLayout
   view: Box
   far: boolean
@@ -71,6 +77,8 @@ export type NavTarget = { kind: 'project'; id: string } | { kind: 'area'; key: s
 
 /** 验收台在广场上的位置（广场右后方）。 */
 const DESK = { gx: 5.0, gy: 1.2 }
+/** 派活台在广场左侧空地，和右后方的验收台、前面的告示栏都隔开。 */
+const DISPATCH = { gx: 0.8, gy: 4.2 }
 
 /** 四档建筑：占地、墙色、高度、窗户层数。占满院子后排，远看也认得出大小差别。 */
 const TIERS: Record<Tier, { shape: BuildingShape; w: number; d: number }> = {
@@ -85,7 +93,7 @@ function districtPlot(d: District): Plot {
   return { gx: d.ox + 0.8, gy: d.oy + 0.5, w: t.w, d: t.d, facing: 'x', ...buildingColors(d.b.repo?.id) }
 }
 
-export function WorldScene({ model, world, view, far, selected, highlight, onSelect, changed = new Set(), offline = false, needsYou, agents = null, momentGlow, progressSparks, onNavigate, focusArea = null }: SceneProps) {
+export function WorldScene({ model, world, view, far, selected, highlight, onSelect, changed = new Set(), offline = false, needsYou, agents = null, momentGlow, progressSparks, onNavigate, focusArea = null, dispatch = [], onDispatch }: SceneProps) {
   const isSel = (kind: Selection['kind'], key: string) => selected?.kind === kind && selected.key === key
   const dim = (match: boolean) => (highlight && !match ? ' is-dim' : '')
   const flash = (key: string) => (changed.has(key) ? ' is-changed' : '')
@@ -222,6 +230,7 @@ export function WorldScene({ model, world, view, far, selected, highlight, onSel
               <g key={`rd${i}`} className="town-near" aria-hidden><TownCrate at={iso(P.ox + DESK.gx + 0.8 + (i % 3) * 0.9, P.oy + DESK.gy + 0.55, 16 + Math.floor(i / 3) * 11)} fill="#d6b27a" tape="#5b6cd8" /></g>
             ))}
             <FailRack at={{ gx: P.ox + 7.4, gy: P.oy + 5.2 }} count={failedTotal} />
+            {onDispatch && <DispatchTable at={{ gx: P.ox + DISPATCH.gx, gy: P.oy + DISPATCH.gy }} count={dispatch.filter((m) => m.status !== 'desktop').length} onOpen={() => onDispatch()} />}
             <DecisionBoard place={{ x: boardAt[0], y: boardAt[1], anchor: 'bottom', scale: 1 }} model={boardModel} isSel={(k) => isSel('approval', k)} dimClass={dim(highlight === 'waiting')} onSelect={onSelect} />
             {model.pendingApprovals.length > BOARD_MAX && <Tag at={[boardAt[0], boardAt[1] + 16]} text={`另有 ${model.pendingApprovals.length - BOARD_MAX} 条在关注队列`} bg="#fffaf0" fg="#6b5a44" small />}
           </g>
@@ -245,6 +254,15 @@ export function WorldScene({ model, world, view, far, selected, highlight, onSel
             {d.kind === 'wild' && <Fence gx={d.ox + 0.3} gy={d.oy + INNER_D - 0.5} len={1.9} />}
             {d.kind === 'wild' && <Fence gx={d.ox + 4.6} gy={d.oy + INNER_D - 0.5} len={4.0} />}
             <Building plot={plot} shape={TIERS[d.tier].shape} b={d.b} selected={isSel('building', d.b.key)} dimClass={dim(false)} onSelect={() => onSelect({ kind: 'building', key: d.b.key })} />
+            {onDispatch && (() => {
+              // 派活台发起的工作在门口挂个牌子，点了直接到那件任务（最近的一件）。
+              const ids = new Set(d.b.items.map((w) => w.id))
+              const sent = dispatch.filter((m) => ids.has(m.work_item_id))
+              if (!sent.length) return null
+              return <g className="town-obj" aria-label={`${d.b.name}：派活台发起的任务 ${sent.length} 件`} {...activate(() => onDispatch(sent[0].managed_id))}>
+                <Tag at={iso(plot.gx + plot.w / 2 + 1.1, plot.gy + plot.d + 0.2, 26)} text={`派活 · ${sent.length}`} bg="#2b5fd9" fg="#fff" small />
+              </g>
+            })()}
             {/* 门口的菜地：一棵菜一个工作项，熟了 = 待你验收 */}
             <Field gx={d.ox + 5.5} gy={d.oy + 4.9} b={d.b} pending={model.pendingApprovals} now={nowMs}
               selectedKey={selected?.kind === 'item' ? selected.key : null} dimClass={dim(highlight === 'review')} onSelect={onSelect} />
@@ -876,6 +894,7 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
       ) : (
         <>
       <WorldScene {...props} onSelect={sceneSelect} onNavigate={navigate} focusArea={focusArea} world={world} view={view} far={far} agents={byAgent ? { focus: agentFocus } : null}
+        dispatch={source === 'here' ? props.snapshot?.dispatch ?? [] : []} onDispatch={remoteAccess() ? undefined : (task) => window.location.assign(dispatchHref(task))}
         momentGlow={!reducedMotion && !props.replaying ? moment?.buildingKey : undefined} progressSparks={reducedMotion ? undefined : sparks} />
       <div className="town-world-tools" onPointerDown={(e) => e.stopPropagation()}>
         <button type="button" onClick={() => zoomBy(0.7)} aria-label="放大" title="放大（也可以滚动滚轮）">＋</button>

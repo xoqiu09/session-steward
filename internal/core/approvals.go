@@ -20,8 +20,9 @@ type Decision struct {
 }
 
 var (
-	ErrConflict = errors.New("操作与当前状态冲突")
-	ErrMismatch = errors.New("请求内容与审批记录不一致")
+	ErrConflict  = errors.New("操作与当前状态冲突")
+	ErrForbidden = errors.New("不允许的操作")
+	ErrMismatch  = errors.New("请求内容与审批记录不一致")
 )
 
 type approvalRow struct {
