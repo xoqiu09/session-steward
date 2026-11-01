@@ -115,10 +115,11 @@ App 打开就是小镇的世界地图。
 | 你回来过 | 交付以后，你又回到交付的那个会话发了消息 | 已处理、退回修改、看看，或稍后（不点也行，它留在待验收里） |
 | 停在你手上 | 工作没做完、没 Agent 在跑、30 分钟没动静，下一步该你或没写 | 看看 |
 | 菜熟了 | 新交付；或熟了 30 分钟还没收（再提醒一次） | 收这一棵、开始收菜 |
+| 已在原会话处理（回执） | 等你决定的事被你在 Claude / Codex 里处理掉了：回了提问或提醒、在终端里批了命令 | 不用做什么，10 秒后自己消失 |
 
 “你回来过”只记你发消息的时间，不读也不存你说了什么；它不改变工作状态，只有你点“已处理”才算处理。打开页面时就已超时的，只在“收菜”旁标红，不会一打开就弹一串。
 
-除了灵动岛里的“已处理 / 退回修改”，批准和合并仍在面板的卡片里由你来点。
+不用每件都回面板点：Agent 的提问、提醒和工具权限，你在原会话里回了话或在终端里批准后，会自动从“等你决定”里消失，灵动岛给一句“已在 Codex 里处理：……”。交付不一样，要你点“已处理”才算收下。除了灵动岛里的“已处理 / 退回修改”，批准和合并仍在面板的卡片里由你来点。
 
 ### 核心功能进度
 
@@ -199,4 +200,4 @@ sh scripts/build-app.sh   # 打包 App 到 dist-app/
 
 ## English summary
 
-Session Steward is a local progress desk for Claude Code and Codex on macOS. Hooks forward session events to a single Go service on `127.0.0.1:7788`; the app draws your work as a town (projects are houses that keep their place, sessions are people, deliveries waiting for you are ripe crops), flies to the house that just delivered, reminds you about deliveries left unreviewed for 30 minutes, work stalled on you, and deliveries you have already moved on from in the chat (it asks; it never marks work handled by itself), shows each project's core features as reported by agents, offers a local-only dispatch desk for your own Codex, groups work by project, shows what is blocked and what is waiting for you, and lets you answer tool permission requests in place. Only you can mark work as handled. Everything stays on your machine; there is no account and no telemetry. v0.2.0 is a trial release: macOS only, Chinese UI, unsigned (open it with right-click → Open), no in-app updates. Download the app from Releases, or build it with `sh scripts/build-app.sh` (Go 1.26.5+ and Xcode command line tools). See [docs/TRYOUT.zh-CN.md](docs/TRYOUT.zh-CN.md) for the trial walkthrough. Feedback is welcome in Issues; report security issues privately per [SECURITY.md](SECURITY.md).
+Session Steward is a local progress desk for Claude Code and Codex on macOS. Hooks forward session events to a single Go service on `127.0.0.1:7788`; the app draws your work as a town (projects are houses that keep their place, sessions are people, deliveries waiting for you are ripe crops), flies to the house that just delivered, reminds you about deliveries left unreviewed for 30 minutes, work stalled on you, and deliveries you have already moved on from in the chat (it asks; it never marks work handled by itself), confirms when a question or permission you answered in the original session has been closed, shows each project's core features as reported by agents, offers a local-only dispatch desk for your own Codex, groups work by project, shows what is blocked and what is waiting for you, and lets you answer tool permission requests in place. Only you can mark work as handled. Everything stays on your machine; there is no account and no telemetry. v0.2.0 is a trial release: macOS only, Chinese UI, unsigned (open it with right-click → Open), no in-app updates. Download the app from Releases, or build it with `sh scripts/build-app.sh` (Go 1.26.5+ and Xcode command line tools). See [docs/TRYOUT.zh-CN.md](docs/TRYOUT.zh-CN.md) for the trial walkthrough. Feedback is welcome in Issues; report security issues privately per [SECURITY.md](SECURITY.md).
