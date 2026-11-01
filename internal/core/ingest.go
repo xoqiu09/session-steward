@@ -340,6 +340,9 @@ func (c *Core) applyEvent(tx *sql.Tx, sid int64, e *event.Event, now string, can
 			WHERE session_id=? AND kind IN ('attention','decision') AND status='pending'`, now, sid); err != nil {
 			return err
 		}
+		if err := markReturned(tx, sid, occ, now); err != nil {
+			return err
+		}
 	case event.KindDeliver:
 		if err := c.deliver(tx, sid, e, now); err != nil {
 			return err
@@ -393,6 +396,42 @@ func (c *Core) deliver(tx *sql.Tx, sid int64, e *event.Event, now string) error 
 		return err
 	}
 	return store.Touch(tx, now, "work_item", item)
+}
+
+// markReturned 记下“交付之后你回到了这个会话”：只记时间，不看也不存你说了什么。
+// 只对这个会话交付过、仍在待验收的工作项生效。它不改变工作项状态，也不算验收：
+// 小镇据此在灵动岛问一句“算处理了吗”，收不收由你点。乱序到达的旧事件不会把时间往回改。
+func markReturned(tx *sql.Tx, sid int64, at, now string) error {
+	rows, err := tx.Query(`SELECT DISTINCT b.work_item_id FROM brief_entries b JOIN work_items w ON w.id=b.work_item_id
+		WHERE b.field='stage' AND b.source='deliver' AND b.flagged='' AND b.session_id=? AND b.at<? AND w.status='review'`, sid, at)
+	if err != nil {
+		return err
+	}
+	var items []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return err
+		}
+		items = append(items, id)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	for _, id := range items {
+		res, err := tx.Exec(`INSERT INTO meta(k,v) VALUES(?,?) ON CONFLICT(k) DO UPDATE SET v=excluded.v WHERE excluded.v>meta.v`, "returned:"+id, at)
+		if err != nil {
+			return err
+		}
+		if n, _ := res.RowsAffected(); n > 0 {
+			if err := store.Touch(tx, now, "work_item", id); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func nz(s, d string) string {

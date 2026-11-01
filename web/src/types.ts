@@ -108,6 +108,8 @@ export interface WorkItem {
   waiting: string[]
   agents: Provider[]
   brief?: Brief | null
+  /** 交付之后你最近一次回到交付会话发消息的时间；只是提示，不代表验收。 */
+  returned_at?: string
 }
 
 export type BriefKey = 'goal' | 'summary' | 'progress' | 'blocker' | 'next' | 'stage' | 'next_owner'

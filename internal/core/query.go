@@ -95,6 +95,8 @@ type WorkItem struct {
 	AutomaticIssueKind    string          `json:"automatic_issue_kind,omitempty"`
 	AutomaticIssueAt      string          `json:"automatic_issue_at,omitempty"`
 	Signal                *Signal         `json:"signal,omitempty"`
+	// ReturnedAt 是交付之后你最近一次回到交付会话发消息的时间；只是提示，不代表验收。
+	ReturnedAt string `json:"returned_at,omitempty"`
 }
 
 type Approval struct {
@@ -228,7 +230,8 @@ func (c *Core) Snapshot(ctx context.Context) (*Snapshot, error) {
 	rows, err = tx.Query(`SELECT w.id, w.repo_id, w.title, w.status, w.acceptance, w.branch, w.merge_state, w.needs_merge, w.created_at, w.updated_at,
 	  COALESCE(k.status_at,w.created_at),COALESCE(k.merge_at,w.created_at),COALESCE(k.dependencies_at,w.created_at),
 	  COALESCE((SELECT v FROM meta WHERE k='merge_verified:'||w.id),''),
-	  COALESCE((SELECT v FROM meta WHERE k='work_management:'||w.id),'')
+	  COALESCE((SELECT v FROM meta WHERE k='work_management:'||w.id),''),
+	  COALESCE((SELECT v FROM meta WHERE k='returned:'||w.id),'')
 	  FROM work_items w LEFT JOIN work_item_clocks k ON k.work_item_id=w.id ORDER BY w.id`)
 	if err != nil {
 		return nil, err
@@ -237,7 +240,7 @@ func (c *Core) Snapshot(ctx context.Context) (*Snapshot, error) {
 		var w WorkItem
 		var repo sql.NullInt64
 		var evidence, management string
-		if err := rows.Scan(&w.ID, &repo, &w.Title, &w.Status, &w.Acceptance, &w.Branch, &w.MergeState, &w.NeedsMerge, &w.CreatedAt, &w.UpdatedAt, &w.StatusChangedAt, &w.MergeChangedAt, &w.DependenciesChangedAt, &evidence, &management); err != nil {
+		if err := rows.Scan(&w.ID, &repo, &w.Title, &w.Status, &w.Acceptance, &w.Branch, &w.MergeState, &w.NeedsMerge, &w.CreatedAt, &w.UpdatedAt, &w.StatusChangedAt, &w.MergeChangedAt, &w.DependenciesChangedAt, &evidence, &management, &w.ReturnedAt); err != nil {
 			rows.Close()
 			return nil, err
 		}

@@ -17,6 +17,7 @@ import { buildTown, type Highlight, type TownModel } from './townModel'
 import { acceptSnapshot } from './feed'
 import { clampPage, needsYou, pageBuildings, pageOfCharacter } from './paging'
 import { DEFAULT_ROTATE_S } from './route'
+import { EXTRA_LABELS, readExtras, writeExtras, type TownExtras } from './extras'
 import './town.css'
 import './townView.css'
 
@@ -193,6 +194,13 @@ export function TownView({ snap, conn, repoId, provider, sel, onSelectItem, onSe
   }, [replay?.day, replay?.minute])
   const view = replay && replaySnap ? replaySnap : shown
   const [highlight, setHighlight] = useState<Highlight | null>(null)
+  const [extras, setExtrasState] = useState<TownExtras>(() => readExtras())
+  const setExtra = (key: keyof TownExtras, on: boolean) => {
+    const next = { ...extras, [key]: on }
+    setExtrasState(next)
+    writeExtras(next)
+    if (key === 'chips' && !on) setHighlight(null)
+  }
   const slice = useMemo(() => townSlice(view, repoId, provider), [view, repoId, provider])
   const model = useMemo(() => buildTown(slice, replay && replaySnap ? replaySnap.now : clientNow), [slice, clientNow, replay, replaySnap])
   const changed = useChanged(model, source)
@@ -271,16 +279,16 @@ export function TownView({ snap, conn, repoId, provider, sel, onSelectItem, onSe
   // 点建筑或项目卡片后整个面板只看这个项目：在小镇里写明，一键回到全部，不然像是别的项目都不见了。
   const scopedRepo = repoId === 'all' ? null : (shown.repos ?? []).find((r) => r.id === repoId)?.name ?? `项目 #${repoId}`
   return (
-    <div className={`town-view${offline ? ' is-offline' : ''}${kiosk ? ' is-kiosk' : ''}`}>
+    <div className={`town-view${offline ? ' is-offline' : ''}${kiosk ? ' is-kiosk' : ''}${extras.parcels ? '' : ' hide-parcels'}`}>
       <div className="town-bar">
-        <nav className="town-chips" aria-label="按状态高亮">
+        {extras.chips && <nav className="town-chips" aria-label="按状态高亮">
           {CHIPS.map(c => (
             <button key={c.key} type="button" className={`town-chip is-${c.key}${highlight === c.key ? ' is-on' : ''}`} aria-pressed={highlight === c.key}
               onClick={() => setHighlight(highlight === c.key ? null : c.key)}>
               <i aria-hidden />{offline && c.key === 'working' ? '断线前工作中' : c.label}<b>{model.counts[c.key]}</b>
             </button>
           ))}
-        </nav>
+        </nav>}
         {scopedRepo && onAllRepos && (
           <button type="button" className="town-scope" onClick={onAllRepos} title="小镇现在只画这一个项目；点这里显示全部项目">
             只看「{scopedRepo}」<b>显示全部项目</b>
@@ -301,7 +309,15 @@ export function TownView({ snap, conn, repoId, provider, sel, onSelectItem, onSe
         <span className="town-meta" title="小镇只画当前的会话、工作项和运行；完整记录在列表与项目简报里">
           快照 #{shown.cursor} · {hm(shown.now)}
         </span>
-        {!replay && !noReplay && <button type="button" className="town-replay-open" onClick={() => { setReplay(startPos()); setPlaying(false) }} title="拖到过去某个时刻，看当时小镇的样子">回放</button>}
+        <details className="town-extras">
+          <summary title="首屏默认收起不常用的东西，要用时在这里打开">显示</summary>
+          <div className="town-extras-menu">
+            {EXTRA_LABELS.filter((x) => x.key !== 'replay' || !noReplay).map((x) => (
+              <label key={x.key} title={x.help}><input type="checkbox" checked={extras[x.key]} onChange={(e) => setExtra(x.key, e.target.checked)} />{x.label}</label>
+            ))}
+          </div>
+        </details>
+        {extras.replay && !replay && !noReplay && <button type="button" className="town-replay-open" onClick={() => { setReplay(startPos()); setPlaying(false) }} title="拖到过去某个时刻，看当时小镇的样子">回放</button>}
         {bar}
       </div>
       <div className="town-diorama" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
@@ -320,7 +336,7 @@ export function TownView({ snap, conn, repoId, provider, sel, onSelectItem, onSe
         <ul className="town-legend" aria-label="图例">
           <li><i className="lg-building" />建筑 = 项目</li>
           <li><i className="lg-char" />角色 = 一个会话</li>
-          <li><i className="lg-parcel" />包裹 = 一次运行</li>
+          {extras.parcels && <li><i className="lg-parcel" />包裹 = 一次运行</li>}
           <li><i className="lg-board" />告示栏 = 等你决定</li>
         </ul>
       </div>

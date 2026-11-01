@@ -23,12 +23,16 @@ import { Cart, SHED_MAX, Track, Workshop, shedSeat, shedSpots, type ShedSpot } f
 import { harvestResult, ripeQueue } from './harvest'
 import { AGENTS, agentChips, agentCounts, agentLegend, agentOf, mainAgent, sumAgents, type Agent } from './agents'
 import type { Snapshot } from '../types'
-import { autoMoment, canAutoFollow, localMoment, type TownMoment } from './moments'
+import { OVERDUE_MS, autoMoment, canAutoFollow, deliveredAt, localMoment, waitedText, type TownMoment } from './moments'
 import { useMoments } from './useMoments'
+import { stalledItems, type StalledItem } from './stalled'
+import { HouseCard } from './HouseCard'
+import { houseInfo } from './houseInfo'
 import { MomentCard } from './MomentCard'
 import { identityKeys, projectIdentity } from './identity'
 import { isRemote as remoteAccess } from '../access'
 import { dispatchHref } from '../dispatch/dispatchModel'
+import { api } from '../api'
 
 /** 每个街区的退件筐最多摆几个箱子，其余只计数。 */
 const BIN_MAX = 2
@@ -62,6 +66,10 @@ interface SceneProps {
   changed?: ReadonlySet<string>
   offline?: boolean
   needsYou: (b: BuildingView) => boolean
+  /** 停在你手上的工作，按房子分组（只有本机的）。 */
+  stalled?: ReadonlyMap<string, StalledItem[]>
+  /** 鼠标移到房子上 / 移开：外层据此显示项目概况卡。 */
+  onHoverHouse?: (key: string | null, at?: { x: number; y: number }) => void
   /** “按 Agent 看”打开时：按 Agent 着色；focus 非空时只突出这个 Agent 的会话和项目。 */
   agents?: { focus: Agent | null } | null
   momentGlow?: string
@@ -93,7 +101,7 @@ function districtPlot(d: District): Plot {
   return { gx: d.ox + 0.8, gy: d.oy + 0.5, w: t.w, d: t.d, facing: 'x', ...buildingColors(d.b.repo?.id) }
 }
 
-export function WorldScene({ model, world, view, far, selected, highlight, onSelect, changed = new Set(), offline = false, needsYou, agents = null, momentGlow, progressSparks, onNavigate, focusArea = null, dispatch = [], onDispatch }: SceneProps) {
+export function WorldScene({ model, world, view, far, selected, highlight, onSelect, changed = new Set(), offline = false, needsYou, stalled, onHoverHouse, agents = null, momentGlow, progressSparks, onNavigate, focusArea = null, dispatch = [], onDispatch }: SceneProps) {
   const isSel = (kind: Selection['kind'], key: string) => selected?.kind === kind && selected.key === key
   const dim = (match: boolean) => (highlight && !match ? ' is-dim' : '')
   const flash = (key: string) => (changed.has(key) ? ' is-changed' : '')
@@ -227,7 +235,7 @@ export function WorldScene({ model, world, view, far, selected, highlight, onSel
             <ReviewDesk at={{ gx: P.ox + DESK.gx, gy: P.oy + DESK.gy }} count={reviewTotal} selected={isSel('review-desk', 'review-desk')} dimDesk={dim(highlight === 'review')} onSelect={onSelect} />
             {/* 验收台上的箱子只是示意，数量看招牌 */}
             {Array.from({ length: Math.min(5, reviewTotal) }, (_, i) => (
-              <g key={`rd${i}`} className="town-near" aria-hidden><TownCrate at={iso(P.ox + DESK.gx + 0.8 + (i % 3) * 0.9, P.oy + DESK.gy + 0.55, 16 + Math.floor(i / 3) * 11)} fill="#d6b27a" tape="#5b6cd8" /></g>
+              <g key={`rd${i}`} className="town-near town-crate" aria-hidden><TownCrate at={iso(P.ox + DESK.gx + 0.8 + (i % 3) * 0.9, P.oy + DESK.gy + 0.55, 16 + Math.floor(i / 3) * 11)} fill="#d6b27a" tape="#5b6cd8" /></g>
             ))}
             <FailRack at={{ gx: P.ox + 7.4, gy: P.oy + 5.2 }} count={failedTotal} />
             {onDispatch && <DispatchTable at={{ gx: P.ox + DISPATCH.gx, gy: P.oy + DISPATCH.gy }} count={dispatch.filter((m) => m.status !== 'desktop').length} onOpen={() => onDispatch()} />}
@@ -253,7 +261,10 @@ export function WorldScene({ model, world, view, far, selected, highlight, onSel
             {d.kind === 'wild' && <Campfire gx={d.ox + 7.2} gy={d.oy + 2.4} />}
             {d.kind === 'wild' && <Fence gx={d.ox + 0.3} gy={d.oy + INNER_D - 0.5} len={1.9} />}
             {d.kind === 'wild' && <Fence gx={d.ox + 4.6} gy={d.oy + INNER_D - 0.5} len={4.0} />}
-            <Building plot={plot} shape={TIERS[d.tier].shape} b={d.b} selected={isSel('building', d.b.key)} dimClass={dim(false)} onSelect={() => onSelect({ kind: 'building', key: d.b.key })} />
+            <g onPointerEnter={(e) => onHoverHouse?.(d.b.key, { x: e.clientX, y: e.clientY })} onPointerLeave={() => onHoverHouse?.(null)}
+              onFocus={(e) => { const r = (e.target as Element).getBoundingClientRect(); onHoverHouse?.(d.b.key, { x: r.right, y: r.top }) }} onBlur={() => onHoverHouse?.(null)}>
+              <Building plot={plot} shape={TIERS[d.tier].shape} b={d.b} selected={isSel('building', d.b.key)} dimClass={dim(false)} onSelect={() => onSelect({ kind: 'building', key: d.b.key })} />
+            </g>
             {onDispatch && (() => {
               // 派活台发起的工作在门口挂个牌子，点了直接到那件任务（最近的一件）。
               const ids = new Set(d.b.items.map((w) => w.id))
@@ -269,11 +280,21 @@ export function WorldScene({ model, world, view, far, selected, highlight, onSel
             {momentGlow === d.key && <ellipse className="town-moment-ring" cx={iso(d.ox + 7, d.oy + 6.4)[0]} cy={iso(d.ox + 7, d.oy + 6.4)[1]} rx="112" ry="49" fill="none" stroke="#e07b39" strokeWidth="5" aria-hidden />}
             {progressSparks?.has(d.key) && <text className="town-progress-spark" x={iso(d.ox + 7, d.oy + 6.4, 55)[0]} y={iso(d.ox + 7, d.oy + 6.4, 55)[1]} textAnchor="middle" fontSize="32" fill="#9a540d" aria-hidden>✦</text>}
             {failed > 0 && (
-              <g className={dim(highlight === 'failed')}>
+              <g className={`town-failbox${dim(highlight === 'failed')}`}>
                 <IsoBox gx={d.ox + 2.35} gy={d.oy + 7.45} w={1.0} d={0.7} h={9} top="#7a3a32" left="#a5483e" right="#8a3c33" />
                 <Tag at={iso(d.ox + 2.85, d.oy + 7.8, 40)} text={`失败 ${failed}`} bg="#d2483d" fg="#fff" small />
               </g>
             )}
+            {(() => {
+              // 停在你手上：门口一块牌子，悬停能看到 Agent 留下的下一步，点了去最久没动的那件。
+              const list = stalled?.get(d.b.key) ?? []
+              if (!list.length) return null
+              const tip = list.slice(0, 3).map((x) => `${x.item.id}：${x.reason}`).join('\n')
+              return <g className="town-obj" aria-label={`${d.b.name}：停在你手上 ${list.length} 件`} {...activate(() => onSelect({ kind: 'item', key: list[0].item.id }))}>
+                <title>{tip}</title>
+                <Tag at={iso(d.ox + 1.3, d.oy + 5.9, 46)} text={`停着 ${list.length}`} bg="#7a4fd0" fg="#fff" small />
+              </g>
+            })()}
             {statusAt.get(d.key)!.blocked > 0 && (
               <g className={`town-obj${dim(false)}`} {...activate(() => onSelect({ kind: 'building', key: d.b.key }))} aria-label={`${d.b.name}：受阻 ${statusAt.get(d.key)!.blocked} 项`}>
                 <Roadblock gx={d.ox + 3.0} gy={d.oy + 6.6} />
@@ -633,6 +654,14 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
   const [focusArea, setFocusArea] = useState<string | null>(null)
   const [arrived, setArrived] = useState<NavTarget | null>(null)
   const [navNote, setNavNote] = useState('')
+  // 在灵动岛里收下或退回后，留一句回执，几秒后自己消失。
+  const [doneNote, setDoneNote] = useState('')
+  const [resolving, setResolving] = useState({ busy: false, error: '' })
+  useEffect(() => {
+    if (!doneNote) return
+    const t = window.setTimeout(() => setDoneNote(''), 4000)
+    return () => window.clearTimeout(t)
+  }, [doneNote])
   const [projectsOpen, setProjectsOpen] = useState(false)
   const [deskOpen, setDeskOpen] = useState(false)
   const [sparks, setSparks] = useState<ReadonlySet<string>>(new Set())
@@ -694,6 +723,20 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
   // 桌面模式巡游：全景 → 各个需要注意的街区 → 全景；有人刚操作过、抽屉打开时暂停。
   const stops = useMemo(() => tourStops(world, (d) => attentionOf(d, needsYou), aspect), [world, aspect, needsYou])
   const ripe = useMemo(() => ripeQueue(world.districts.map((d) => d.b)).filter((r) => !props.snapshot || localMoment(props.snapshot, r.item.repo_id, r.item.id)), [world, props.snapshot])
+  // 停在你手上（只算本机的），按房子分组给门口挂牌子；跟着快照和小镇时钟更新。
+  const stalledByHouse = useMemo(() => {
+    const out = new Map<string, StalledItem[]>()
+    const s = props.snapshot
+    if (!s || props.replaying) return out
+    for (const x of stalledItems(s, Math.max(Date.parse(model.now) || 0, Date.now()))) {
+      if (!localMoment(s, x.item.repo_id, x.item.id)) continue
+      const key = `repo-${x.item.repo_id ?? 'none'}`
+      out.set(key, [...(out.get(key) ?? []), x])
+    }
+    return out
+  }, [props.snapshot, props.replaying, model.now])
+  // 待验收常驻：最久的一棵已经等了多久（按交付时间算），超过 30 分钟变醒目。
+  const oldestWait = ripe.length ? Math.max(0, ...ripe.map((r) => (Date.parse(model.now) || Date.now()) - (Date.parse(deliveredAt(r.item)) || Date.now()))) : null
   const results = harvest ? harvest.ids.map((id) => harvestResult(id, model.buildings)) : []
   const goHarvest = (ids: string[], index: number) => {
     setHarvest({ ids, index })
@@ -790,6 +833,7 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
   const awayFirst = localAway[0] ?? remoteAway[0]
   const visibleMoment = !inside && !paused && !guide && !harvest && !props.replaying ? moment : null
   useEffect(() => { if (moment && !feed.queue.some((m) => m.key === moment.key)) setMoment(null) }, [moment, feed.queue])
+  useEffect(() => { setResolving({ busy: false, error: '' }) }, [moment?.key])
   useEffect(() => {
     if (!moment && !showMoments) return
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { setMoment(null); setShowMoments(false) } }
@@ -850,6 +894,14 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
     return () => el.removeEventListener('wheel', onWheel)
   })
 
+  // 悬停在房子上：在鼠标旁显示项目概况（几个 Agent 在做、核心功能、下一步）。拖地图、进室内时收起。
+  const [hover, setHover] = useState<{ key: string; x: number; y: number } | null>(null)
+  const hoverHouse = (key: string | null, at?: { x: number; y: number }) => {
+    const r = box.current?.getBoundingClientRect()
+    if (!key || !at || !r || drag.current?.moved) { setHover(null); return }
+    setHover({ key, x: Math.min(at.x - r.left + 16, r.width - 300), y: Math.max(8, Math.min(at.y - r.top + 12, r.height - 260)) })
+  }
+  const hoverB = hover && !inside ? model.buildings.find((b) => b.key === hover.key) ?? null : null
   const onPointerDown = (e: RPointerEvent<HTMLDivElement>) => {
     if (e.button !== 0 || inside) return
     drag.current = { x: e.clientX, y: e.clientY, cam: camera, moved: false, id: e.pointerId }
@@ -859,7 +911,7 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
     if (!d || d.id !== e.pointerId) return
     const dx = e.clientX - d.x, dy = e.clientY - d.y
     if (!d.moved && Math.hypot(dx, dy) < 5) return
-    if (!d.moved) { d.moved = true; stop(); dropBack(); box.current?.setPointerCapture(e.pointerId) }
+    if (!d.moved) { d.moved = true; stop(); dropBack(); setHover(null); box.current?.setPointerCapture(e.pointerId) }
     lastTouch.current = Date.now()
     const r = box.current!.getBoundingClientRect()
     const k = d.cam.w / r.width
@@ -882,9 +934,11 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
       onPointerDownCapture={() => { lastTouch.current = Date.now(); stop() }} onKeyDownCapture={() => { lastTouch.current = Date.now(); stop() }}
       onClickCapture={(e) => { if (swallowClick.current) { swallowClick.current = false; e.stopPropagation(); e.preventDefault() } }}>
       <div className="town-moment-status" role="status" aria-live="polite" aria-atomic="true">{visibleMoment?.message ?? ''}</div>
+      {hoverB && hover && <HouseCard info={houseInfo(hoverB, props.snapshot?.features)} style={{ left: Math.max(8, hover.x), top: hover.y }} />}
       {insideB ? (
         <>
-          <InteriorScene b={insideB} model={model} selected={props.selected} highlight={props.highlight} onSelect={props.onSelect} changed={props.changed} offline={props.offline} />
+          <InteriorScene b={insideB} model={model} selected={props.selected} highlight={props.highlight} onSelect={props.onSelect} changed={props.changed} offline={props.offline}
+            features={props.snapshot?.features ?? null} />
           <div className="town-world-tools is-inside" onPointerDown={(e) => e.stopPropagation()}>
             <button type="button" onClick={() => setInside(null)} title="回到世界（Esc）">← 回到世界</button>
           </div>
@@ -893,7 +947,7 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
         </>
       ) : (
         <>
-      <WorldScene {...props} onSelect={sceneSelect} onNavigate={navigate} focusArea={focusArea} world={world} view={view} far={far} agents={byAgent ? { focus: agentFocus } : null}
+      <WorldScene {...props} stalled={stalledByHouse} onHoverHouse={hoverHouse} onSelect={sceneSelect} onNavigate={navigate} focusArea={focusArea} world={world} view={view} far={far} agents={byAgent ? { focus: agentFocus } : null}
         dispatch={source === 'here' ? props.snapshot?.dispatch ?? [] : []} onDispatch={remoteAccess() ? undefined : (task) => window.location.assign(dispatchHref(task))}
         momentGlow={!reducedMotion && !props.replaying ? moment?.buildingKey : undefined} progressSparks={reducedMotion ? undefined : sparks} />
       <div className="town-world-tools" onPointerDown={(e) => e.stopPropagation()}>
@@ -903,6 +957,8 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
         <button type="button" onClick={() => { lastTouch.current = Date.now(); leaveNav(); flyTo(fitCamera(cellBox(world.plaza.ox, world.plaza.oy), aspect, 1.1)) }} title="回到中央广场">广场</button>
         {!props.replaying && <button type="button" className={`town-basket${ripe.length ? ' has-ripe' : ''}`} onClick={startHarvest} disabled={!ripe.length && !harvest}
           title={ripe.length ? `熟了 ${ripe.length} 棵：一棵一棵打开验收卡片，收下或退回` : '现在没有熟了的菜（没有待验收的工作项）'}>收菜 {ripe.length}</button>}
+        {!props.replaying && oldestWait != null && <span className={`town-basket-wait${oldestWait >= OVERDUE_MS ? ' is-overdue' : ''}`} role="status"
+          title="最早熟的那棵从交付到现在的时间；超过 30 分钟变红">最久等了 {waitedText(oldestWait)}</span>}
         <span className="town-guide-anchor">
           <button type="button" aria-pressed={guide} className={guide ? 'is-on' : undefined} onClick={() => (guide ? setGuide(false) : openGuide())} title="小镇怎么看：地图上的东西、怎么操作、每天怎么用">怎么看</button>
           {!guideSeen && !guide && <span className="town-guide-bubble" role="note">第一次来？点这里看怎么用</span>}
@@ -930,8 +986,18 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
         <MomentCard moment={visibleMoment} ripeCount={ripe.length}
           onOpen={() => { setMoment(null); props.onSelect(visibleMoment.approvalId ? { kind: 'approval', key: visibleMoment.approvalId } : { kind: 'item', key: visibleMoment.itemId! }) }}
           onHarvest={() => { const ids = [visibleMoment.itemId!, ...ripe.map((r) => r.item.id).filter((id) => id !== visibleMoment.itemId)]; setMoment(null); goHarvest(ids, 0) }}
-          onLater={() => setMoment(null)} onAcknowledge={() => { feed.acknowledge(visibleMoment.key); setMoment(null) }} />
+          onLater={() => setMoment(null)} onAcknowledge={() => { feed.acknowledge(visibleMoment.key); setMoment(null) }}
+          busy={resolving.busy} error={resolving.error}
+          onResolve={visibleMoment.itemId ? (status) => {
+            const m = visibleMoment
+            setResolving({ busy: true, error: '' })
+            api.patchItem(m.itemId!, { status }).then(() => {
+              feed.acknowledge(m.key); setMoment(null); setResolving({ busy: false, error: '' })
+              setDoneNote(status === 'done' ? `已收下 ${m.itemId}` : `已退回 ${m.itemId}，等 Agent 接着改`)
+            }, (e) => setResolving({ busy: false, error: e instanceof Error ? e.message : '没有保存成功' }))
+          } : undefined} />
       </div>}
+      {doneNote && <div className="town-done-note town-world-ui" role="status">{doneNote}</div>}
       {(arrivedAt || navNote) && <div className="town-arrived town-world-ui" role="status" onPointerDown={(e) => e.stopPropagation()}>
         {navNote ? <span>{navNote}</span>
           : arrivedAt?.kind === 'project' ? <>

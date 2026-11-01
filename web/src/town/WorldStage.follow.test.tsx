@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { EXTRAS_KEY } from './extras'
 import type { ReactElement } from 'react'
 import type { Snapshot } from '../types'
 
@@ -101,6 +102,25 @@ describe('WorldStage 跟随动态', () => {
     advance(1); expect(notice(tree)?.props.moment.itemId).toBe('DEMO-2')
     expect(requestAnimationFrame).toHaveBeenCalledOnce(); expect(selected).not.toHaveBeenCalled()
     expect(words(tree)).not.toContain('已处理')
+  })
+  it('页面开着时，熟了 30 分钟还没收会再弹一次；打开前就超时的只标在收菜旁', () => {
+    render(); expect(notice(tree)).toBeUndefined(); expect(words(tree)).toContain('最久等了')
+    deliver(); advance(3000); expect(notice(tree)?.props.moment.itemId).toBe('DEMO-2')
+    click('稍后'); advance(31 * 60_000)
+    expect(notice(tree)?.props.moment.message).toContain('DEMO-2 熟了 30 分钟，还没收')
+    click('稍后'); advance(10 * 60_000); expect(notice(tree)).toBeUndefined()
+  })
+  it('交付后你回到会话：灵动岛问算不算处理，点“已处理”才收下并留回执', async () => {
+    const patch = vi.spyOn(api, 'patchItem').mockResolvedValue(undefined as never)
+    render()
+    snap = { ...snap, cursor: snap.cursor + 1, now: new Date().toISOString(),
+      work_items: snap.work_items!.map((w) => w.id === 'DEMO-1' ? { ...w, returned_at: new Date(Date.now() + 1000).toISOString() } : w) }
+    render(); advance(3000)
+    expect(notice(tree)?.props.moment.kind).toBe('returned'); expect(patch).not.toHaveBeenCalled()
+    click('已处理')
+    expect(patch).toHaveBeenCalledWith('DEMO-1', { status: 'done' })
+    await Promise.resolve(); await Promise.resolve(); render()
+    expect(notice(tree)).toBeUndefined(); expect(words(tree)).toContain('已收下 DEMO-1')
   })
   it('30 秒内点过地图时只入队；不会保护结束后突然补飞', () => {
     render(); tree.props.onPointerDownCapture(); deliver(); advance(3000)
@@ -286,6 +306,7 @@ describe('TownView 与 WorldStage 的真实组件连接', () => {
   })
   it('从 TownView 点击回放后，新交付进入队列但不移动镜头', () => {
     vi.spyOn(api, 'snapshotAt').mockResolvedValue(snap)
+    storage.set(EXTRAS_KEY, JSON.stringify({ chips: true, replay: true, parcels: true }))
     viewProps = {}; render(); button(townTree, '回放').props.onClick(); render(); deliver(); advance(3000)
     expect(notice(tree)).toBeUndefined(); expect(words(tree)).toContain('1 处有新动态'); expect(requestAnimationFrame).not.toHaveBeenCalled()
     expect(button(townTree, '回放')).toBeUndefined()

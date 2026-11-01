@@ -594,7 +594,7 @@ export function FailRack({ at, count }: { at: { gx: number; gy: number }; count:
   const { gx, gy } = at
   const base = iso(gx + 0.7, gy + 0.55)
   return (
-    <g aria-label={`退件架：${count} 个失败运行`}>
+    <g className="town-failrack" aria-label={`退件架：${count} 个失败运行`}>
       <IsoBox gx={gx} gy={gy} w={1.4} d={1.1} h={10} top="#7a3a32" left="#a5483e" right="#8a3c33" />
       <Tag at={[base[0], base[1] + 18]} text={`退件架 · 失败 ${count}`} bg="#d2483d" fg="#fff" small />
     </g>

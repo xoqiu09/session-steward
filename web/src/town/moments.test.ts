@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Snapshot } from '../types'
 import { fakeApproval, fakeItem } from './fixtures'
-import { autoMoment, canAutoFollow, DEFAULT_FOLLOW, localMoment, momentsBetween, momentsWhileAway, updateMomentQueue, type FollowGuard } from './moments'
+import { autoMoment, canAutoFollow, DEFAULT_FOLLOW, localMoment, momentsBetween, momentsWhileAway, OVERDUE_MS, overdueRipe, stalledMoments, updateMomentQueue, waitedText, type FollowGuard } from './moments'
 
 const now = '2026-10-29T08:00:00Z'
 const later = '2026-10-29T08:01:00Z'
@@ -78,5 +78,60 @@ describe('自动取景保护', () => {
   })
   it.each(['paused', 'inside', 'harvesting', 'replaying', 'guide', 'hidden', 'offline', 'presenting'] as const)('%s 状态保护镜头', (key) => {
     expect(canAutoFollow({ ...guard, [key]: true })).toBe(false)
+  })
+})
+
+describe('熟了没收的再提醒', () => {
+  const at = Date.parse(later)
+  it('不到 30 分钟不提醒，超过后提醒一条，键随交付时间变化', () => {
+    expect(overdueRipe(review(), at + OVERDUE_MS - 1)).toEqual([])
+    const [m] = overdueRipe(review(), at + OVERDUE_MS + 5 * 60_000)
+    expect(m).toMatchObject({ kind: 'ripe', itemId: 'DEMO-1', at: later })
+    expect(m.message).toBe('合成花园：DEMO-1 熟了 35 分钟，还没收')
+    const again = { ...review(), work_items: [{ ...review().work_items![0], brief: { fields: {}, last_delivered_at: '2026-10-29T09:00:00Z', tool_events_since: 0, last_event_at: '', stale: false } }] }
+    expect(overdueRipe(again, Date.parse('2026-10-29T10:00:00Z'))[0].key).not.toBe(m.key)
+  })
+  it('只看待验收：收下、退回或进行中的都不提醒', () => {
+    for (const status of ['done', 'in_progress', 'abandoned'] as const)
+      expect(overdueRipe({ ...review(), work_items: [{ ...item, status, updated_at: later }] }, at + 2 * OVERDUE_MS)).toEqual([])
+  })
+  it('等待时间写成分钟、小时、天', () => {
+    expect(waitedText(30_000)).toBe('1 分钟')
+    expect(waitedText(59 * 60_000)).toBe('59 分钟')
+    expect(waitedText(3 * 3600_000)).toBe('3 小时')
+    expect(waitedText(72 * 3600_000)).toBe('3 天')
+  })
+})
+
+describe('交付后你回来过', () => {
+  const delivered = (returned?: string): Snapshot => ({ ...review(), cursor: 3, work_items: [{ ...review().work_items![0],
+    brief: { fields: {}, last_delivered_at: later, tool_events_since: 0, last_event_at: '', stale: false }, ...(returned ? { returned_at: returned } : {}) }] })
+  it('回到会话后问一次，同一时间不重复，晚于交付才算', () => {
+    const back = '2026-10-29T08:05:00Z'
+    const [m] = momentsBetween(delivered(), delivered(back))
+    expect(m).toMatchObject({ kind: 'returned', itemId: 'DEMO-1', at: back })
+    expect(m.message).toContain('这件算处理了吗')
+    expect(momentsBetween(delivered(back), delivered(back))).toEqual([])
+    expect(momentsBetween(delivered(), delivered('2026-10-29T07:00:00Z'))).toEqual([])
+    expect(autoMoment(m, DEFAULT_FOLLOW)).toBe(true)
+  })
+  it('收下或退回后提示失效；离开期间回来过也会补上', () => {
+    const back = '2026-10-29T08:05:00Z'
+    const [m] = momentsBetween(delivered(), delivered(back))
+    expect(updateMomentQueue([m], [], { ...delivered(back), work_items: [{ ...delivered(back).work_items![0], status: 'done' }] })).toEqual([])
+    expect(momentsWhileAway(delivered(back), Date.parse(now)).map((x) => x.kind)).toContain('returned')
+  })
+})
+
+describe('停在你手上', () => {
+  it('没人在推满 30 分钟才提醒，带项目和下一步；有新动静后提示失效', () => {
+    const idle: Snapshot = { ...before, work_items: [{ ...item, updated_at: now }] }
+    expect(stalledMoments(idle, Date.parse(now) + 29 * 60_000)).toEqual([])
+    const [m] = stalledMoments(idle, Date.parse(now) + 31 * 60_000)
+    expect(m).toMatchObject({ kind: 'stalled', itemId: 'DEMO-1', buildingKey: 'repo-1', local: true })
+    expect(m.message).toMatch(/^合成花园：DEMO-1 /)
+    expect(autoMoment(m, DEFAULT_FOLLOW)).toBe(true)
+    const moved = { ...idle, now: '2099-01-01T00:00:00Z', work_items: [{ ...item, status: 'done' as const, updated_at: later }] }
+    expect(updateMomentQueue([m], [], moved)).toEqual([])
   })
 })

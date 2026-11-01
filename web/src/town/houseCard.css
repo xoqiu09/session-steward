@@ -1,0 +1,41 @@
+/* 房子信息卡（悬停浮层）和室内“核心功能”面板。变量取 .town-view 的，不在小镇里时用同色兜底。 */
+.town-house-card {
+  position: absolute; z-index: 6; width: 260px; box-sizing: border-box; padding: 10px 12px; pointer-events: none;
+  background: var(--town-card, #fffaf0); color: var(--town-ink, #3a2a1c); border: 1px solid #c9b896; border-radius: 12px;
+  box-shadow: 0 8px 24px #3a2a1c24; font-size: 12px; line-height: 1.5; text-wrap: pretty;
+}
+.town-house-card-title { font-size: 14px; font-weight: 800; }
+.town-house-card-agents { display: flex; align-items: center; gap: 4px; margin-top: 2px; color: var(--town-muted, #7a6a55); }
+.town-house-card-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; }
+.town-house-card-empty { margin: 8px 0 0; color: var(--town-muted, #7a6a55); }
+.town-house-card-groups { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin-top: 8px; }
+.town-house-card-group { min-width: 0; padding: 4px 6px; border-radius: 8px; background: #f6efe0; }
+.town-house-card-group.is-done { background: #e6f0e1; }
+.town-house-card-group.is-building { background: #fbefcf; }
+.town-house-card-count { font-size: 11px; color: var(--town-muted, #7a6a55); }
+.town-house-card-count b { color: var(--town-ink, #3a2a1c); font-size: 13px; }
+.town-house-card-group ul { margin: 2px 0 0; padding: 0; list-style: none; }
+.town-house-card-group li { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 11px; }
+.town-house-card-more, .town-house-card-muted { color: var(--town-muted, #7a6a55); }
+.town-house-card-next { margin: 8px 0 0; padding-top: 6px; border-top: 1px dashed var(--town-line, #e2d5bd); }
+.town-house-card-item { color: var(--town-muted, #7a6a55); font-size: 11px; }
+
+/* 室内核心功能面板：画在 SVG 右侧留出的一列里（foreignObject） */
+.town-house-features {
+  box-sizing: border-box; height: 100%; display: flex; flex-direction: column; padding: 10px 12px;
+  background: var(--town-card, #fffaf0); color: var(--town-ink, #3a2a1c); border: 2px solid #c9b896; border-radius: 12px;
+  font-size: 12px; line-height: 1.45;
+}
+.town-house-features-head { font-size: 15px; font-weight: 800; }
+.town-house-features-counts { margin-top: 2px; color: var(--town-muted, #7a6a55); font-size: 11px; }
+.town-house-features-note { margin: 4px 0 0; color: var(--town-muted, #7a6a55); font-size: 10.5px; }
+.town-house-features-empty { margin: 10px 0 0; color: var(--town-muted, #7a6a55); }
+.town-house-features ul { flex: 1; min-height: 0; overflow: auto; margin: 8px 0 0; padding: 0; list-style: none; display: grid; align-content: start; gap: 6px; }
+.town-house-features li { padding: 6px 8px; border-radius: 8px; background: #f6efe0; border-left: 4px solid #c9b896; }
+.town-house-features li.is-done { background: #eef5ea; border-left-color: #6a9c5c; }
+.town-house-features li.is-building { background: #fdf4dc; border-left-color: #d9a520; }
+.town-house-features-name { font-weight: 700; }
+.town-house-features-status { color: var(--town-muted, #7a6a55); font-size: 11px; }
+.town-house-features-status.is-warn { color: #a5342b; }
+.town-house-features-line { margin: 2px 0 0; font-size: 11px; color: var(--town-muted, #7a6a55); overflow-wrap: anywhere; }
+.town-house-features-blocker { margin: 2px 0 0; font-size: 11px; color: #a5342b; overflow-wrap: anywhere; }
