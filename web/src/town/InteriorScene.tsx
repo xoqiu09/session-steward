@@ -9,7 +9,9 @@ import {
 import { Flowers, Pine } from './scenery'
 import { AGENTS, agentOf, type Agent } from './agents'
 import { Cart, type ShedSpot } from './workshop'
-import type { WorkItem } from '../types'
+import { FEATURE_GROUP_LABEL, houseInfo, type FeatureGroup, type HouseFeature } from './houseInfo'
+import type { ProjectFeature, WorkItem } from '../types'
+import './houseCard.css'
 
 const ROOM_W = 16
 const ROOM_D = 12
@@ -18,6 +20,9 @@ const COLS = 3
 const ROWS = 3
 const BENCH_W = 3.0
 const BENCH_D = 1.1
+// 核心功能面板：画在房间右侧另留的一列里，不压在房间上
+const PANEL_X = 520
+const PANEL_W = 290
 
 const ORDER: Record<WorkItem['status'], number> = { review: 0, blocked: 1, in_progress: 2, todo: 3, done: 4, abandoned: 5 }
 const BENCH_TOP: Record<WorkItem['status'], string> = {
@@ -84,13 +89,14 @@ export function zoneBenchSpot(z: Zone, n: number, i: number): { gx: number; gy: 
   return { gx: left + col * (BENCH_W + 1.0), gy: 2.4 + row * 3.6 }
 }
 
-export function interiorViewBox(): string {
+/** panel：右侧多留一列放核心功能面板。 */
+export function interiorViewBox(panel = false): string {
   const a = iso(0, 0, WALL_H + 40), r = iso(ROOM_W, 0), b = iso(ROOM_W, ROOM_D), l = iso(0, ROOM_D)
-  const x0 = l[0] - 30, x1 = r[0] + 30, y0 = a[1] - 20, y1 = b[1] + 60
+  const x0 = l[0] - 30, x1 = panel ? PANEL_X + PANEL_W + 20 : r[0] + 30, y0 = a[1] - 20, y1 = b[1] + 60
   return `${x0} ${y0} ${x1 - x0} ${y1 - y0}`
 }
 
-export function InteriorScene({ b, model, selected, highlight, onSelect, changed = new Set(), offline = false }: {
+export function InteriorScene({ b, model, selected, highlight, onSelect, changed = new Set(), offline = false, features }: {
   b: BuildingView
   model: TownModel
   selected: Selection | null
@@ -98,6 +104,8 @@ export function InteriorScene({ b, model, selected, highlight, onSelect, changed
   onSelect: (s: Selection) => void
   changed?: ReadonlySet<string>
   offline?: boolean
+  /** 快照里的核心功能（snapshot.features）；不传时不画面板，传 null 或 [] 显示空状态。 */
+  features?: readonly ProjectFeature[] | null
 }) {
   const isSel = (kind: Selection['kind'], key: string) => selected?.kind === kind && selected.key === key
   const dim = (match: boolean) => (highlight && !match ? ' is-dim' : '')
@@ -140,7 +148,7 @@ export function InteriorScene({ b, model, selected, highlight, onSelect, changed
   const board = iso(ROOM_W - 3.2, 0, 96)
 
   return (
-    <svg className={`town-svg is-interior${offline ? ' is-offline' : ''}`} viewBox={interiorViewBox()} role="group" aria-label={`${b.name} 室内`}>
+    <svg className={`town-svg is-interior${offline ? ' is-offline' : ''}`} viewBox={interiorViewBox(features !== undefined)} role="group" aria-label={`${b.name} 室内`}>
       <defs>
         <pattern id="interior-planks" width="60" height="30" patternUnits="userSpaceOnUse">
           <path d="M0 15 L30 0 M30 30 L60 15" stroke="#c8a77a" strokeWidth="1" />
@@ -183,7 +191,7 @@ export function InteriorScene({ b, model, selected, highlight, onSelect, changed
       <IsoBox gx={0.4} gy={0.4} w={1} d={1} h={14} top="#a07a52" left="#b98a52" right="#9c7140" />
       <Pine at={iso(0.9, 0.9, 14)} k={0.6} />
       {failed.length > 0 && (
-        <g className={dim(highlight === 'failed')}>
+        <g className={`town-failbox${dim(highlight === 'failed')}`}>
           <IsoBox gx={ROOM_W - 1.8} gy={0.8} w={1.3} d={1.1} h={12} top="#7a3a32" left="#a5483e" right="#8a3c33" />
           <Tag at={iso(ROOM_W - 1.15, 1.35, 44)} text={`退件 ${failed.length}`} bg="#d2483d" fg="#fff" small />
         </g>
@@ -215,7 +223,7 @@ export function InteriorScene({ b, model, selected, highlight, onSelect, changed
           <g key={w.id} className={`town-obj town-bench${isSel('item', w.id) ? ' is-selected' : ''}${dim(highlight === 'review' ? w.status === 'review' : highlight === 'failed' ? false : !highlight)}`}
             {...activate(() => onSelect({ kind: 'item', key: w.id }))} aria-label={`工作项 ${w.id} ${w.title}：${itemStatusLabel[w.status]}`}>
             <IsoBox gx={s.gx} gy={s.gy} w={BENCH_W} d={BENCH_D} h={18} top={BENCH_TOP[w.status]} left="#b98a52" right="#9c7140" stroke={isSel('item', w.id) ? '#2d6cdf' : undefined} />
-            {review.slice(0, 2).map((p, k) => <Crate key={p.key} at={iso(s.gx + 2.1 + k * 0.5, s.gy + 0.5, 18)} fill="#d6b27a" tape="#5b6cd8" />)}
+            {review.slice(0, 2).map((p, k) => <g key={p.key} className="town-crate"><Crate at={iso(s.gx + 2.1 + k * 0.5, s.gy + 0.5, 18)} fill="#d6b27a" tape="#5b6cd8" /></g>)}
           </g>
         )
       })}
@@ -259,6 +267,7 @@ export function InteriorScene({ b, model, selected, highlight, onSelect, changed
         )
       })}
       {zones && relay && <Cart relay={relay} from={aisle(relay.from)} to={aisle(relay.to)} count={model.relays.filter((r) => r.repoId === b.repo?.id && r.from === relay.from && r.to === relay.to).length} onSelect={onSelect} />}
+      {features !== undefined && <FeaturePanel b={b} features={features} />}
       {b.characters.length === 0 && <Tag at={[iso(ROOM_W - 2.5, ROOM_D - 1.5)[0], iso(ROOM_W - 2.5, ROOM_D - 1.5)[1] - 10] as Pt} text="现在没有会话在这里" bg="#fffaf0" fg="#6b5a44" small />}
     </svg>
   )
@@ -272,5 +281,36 @@ function Track2({ a, b }: { a: ShedSpot; b: ShedSpot }) {
       <line x1={p[0]} y1={p[1]} x2={q[0]} y2={q[1]} stroke="#cfb184" strokeWidth={10} strokeLinecap="round" opacity={0.8} />
       <line x1={p[0]} y1={p[1]} x2={q[0]} y2={q[1]} stroke="#a88a5c" strokeWidth={1} strokeDasharray="6 6" />
     </g>
+  )
+}
+
+// 面板里先列要关注的：开发中、未开始，最后是已完成
+const PANEL_ORDER: FeatureGroup[] = ['building', 'todo', 'done']
+
+/** 室内右侧的核心功能面板：完整列出这个项目的功能、状态、验收标准和最近一次回报的卡点。只读。 */
+function FeaturePanel({ b, features }: { b: BuildingView; features: readonly ProjectFeature[] | null }) {
+  const info = houseInfo(b, features)
+  const [, y0, , h] = interiorViewBox(true).split(' ').map(Number)
+  const list: HouseFeature[] = PANEL_ORDER.flatMap((g) => info.groups[g])
+  return (
+    <foreignObject x={PANEL_X} y={y0 + 10} width={PANEL_W} height={h - 20}>
+      <section className="town-house-features" aria-label="核心功能">
+        <div className="town-house-features-head">核心功能</div>
+        {info.empty ? <p className="town-house-features-empty">还没登记核心功能：Agent 用 steward-hook features 回报后会出现在这里</p> : <>
+          <div className="town-house-features-counts">{(['done', 'building', 'todo'] as const).map((g) => `${FEATURE_GROUP_LABEL[g]} ${info.groups[g].length}`).join(' · ')}</div>
+          <p className="town-house-features-note">实现与验证为 Agent 回报；“你已验收”才是你确认过的。</p>
+          <ul>
+            {list.map((f) => (
+              <li key={f.id} className={`is-${f.group}`}>
+                <div className="town-house-features-name">{clip(f.title, 24)}</div>
+                <div className={`town-house-features-status${f.conflict || f.status.includes('失败') ? ' is-warn' : ''}`}>{f.status}{f.stale ? ' · 回报已超过一天' : ''}</div>
+                <p className="town-house-features-line">验收标准：{f.acceptance ? clip(f.acceptance, 60) : '尚未回报'}</p>
+                {f.blocker && <p className="town-house-features-blocker">卡点：{clip(f.blocker, 60)}</p>}
+              </li>
+            ))}
+          </ul>
+        </>}
+      </section>
+    </foreignObject>
   )
 }

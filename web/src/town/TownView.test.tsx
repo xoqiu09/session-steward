@@ -1,5 +1,5 @@
 import { renderToStaticMarkup } from 'react-dom/server'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { TownView, townSlice } from './TownView'
 import { fakeApproval, fakeItem, fakeRun, fakeSession } from './fixtures'
 import type { Snapshot } from '../types'
@@ -72,9 +72,21 @@ describe('TownView', () => {
   })
 
   it('断线时提示画面停住，并把“工作中”改称断线前', () => {
-    const html = render('offline')
-    expect(html).toContain('连接中断')
-    expect(html).toContain('断线前工作中')
+    vi.stubGlobal('localStorage', { getItem: () => JSON.stringify({ chips: true }), setItem: () => {} })
+    try {
+      const html = render('offline')
+      expect(html).toContain('连接中断')
+      expect(html).toContain('断线前工作中')
+    } finally { vi.unstubAllGlobals() }
+  })
+
+  it('首屏默认收起状态筛选、回放和包裹，只留“显示”开关', () => {
+    const html = render('live')
+    expect(html).not.toContain('按状态高亮')
+    expect(html).not.toContain('town-replay-open')
+    expect(html).not.toContain('包裹 = 一次运行')
+    expect(html).toContain('hide-parcels')
+    expect(html).toContain('包裹和退件筐')
   })
 })
 

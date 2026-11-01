@@ -1,9 +1,9 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
-import { InteriorScene, benchItems, benchSpot } from './InteriorScene'
+import { InteriorScene, benchItems, benchSpot, interiorViewBox } from './InteriorScene'
 import { buildTown } from './townModel'
 import { fakeApproval, fakeItem, fakeRun, fakeSession } from './fixtures'
-import type { Snapshot } from '../types'
+import type { ProjectFeature, Snapshot } from '../types'
 
 const now = '2026-10-26T06:00:00Z'
 const items = [
@@ -49,5 +49,41 @@ describe('项目室内', () => {
     expect(html).toContain('选 A 还是 B？')
     expect(html).toContain('还有 4 项未摆上工作台')
     expect(html).not.toMatch(/允许本次|已处理|标记完成/)
+  })
+})
+
+describe('项目室内 · 核心功能面板', () => {
+  const model = buildTown(snap, now)
+  const b = model.buildings[0]
+  const feature = (p: Partial<ProjectFeature> & Pick<ProjectFeature, 'id' | 'title' | 'repo_id'>): ProjectFeature => ({
+    acceptance: '', scope_basis: '', scope_status: 'documented', scope_version: '1', candidate: '', revision: '', implementation: 'unknown', validation: 'unknown',
+    conflict: false, stale: false, accepted: false, work_item_ids: [], contributions: [], ...p,
+  })
+  const render = (features?: ProjectFeature[] | null) =>
+    renderToStaticMarkup(<InteriorScene b={b} model={model} selected={null} highlight={null} onSelect={() => {}} features={features} />)
+
+  it('有功能时列出本项目所有功能的名称、状态、验收标准和卡点', () => {
+    const html = render([
+      feature({ id: 'f1', repo_id: 1, title: '导入账单', implementation: 'implemented', validation: 'passed', acceptance: '导入 3 个样例文件无报错' }),
+      feature({ id: 'f2', repo_id: 1, title: '分类规则', implementation: 'implementing', contributions: [
+        { id: 'k', candidate: '', session_id: 7, run_id: 1, work_item_id: 'W-1', provider: 'claude', at: now, active: true, blocker: '缺少样例文件' },
+      ] }),
+      feature({ id: 'f3', repo_id: 1, title: '多币种', implementation: 'not_started' }),
+      feature({ id: 'x', repo_id: 2, title: '别的项目的功能' }),
+    ])
+    expect(html).toContain('aria-label="核心功能"')
+    for (const t of ['导入账单', '分类规则', '多币种', '已实现 · Agent 报验证通过', '开发中', '未开始', '导入 3 个样例文件无报错', '卡点：缺少样例文件', '已完成 1 · 开发中 1 · 未开始 1']) expect(html).toContain(t)
+    expect(html).not.toContain('别的项目的功能')
+    expect(html).toContain('工作项 W-1 正在做')
+  })
+
+  it('没有功能时显示空状态文字', () => {
+    for (const f of [[], null]) expect(render(f)).toContain('还没登记核心功能：Agent 用 steward-hook features 回报后会出现在这里')
+  })
+
+  it('不传 features 时不画面板，视野不变', () => {
+    const html = render()
+    expect(html).not.toContain('核心功能')
+    expect(html).toContain(`viewBox="${interiorViewBox()}"`)
   })
 })

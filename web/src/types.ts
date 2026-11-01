@@ -108,6 +108,8 @@ export interface WorkItem {
   waiting: string[]
   agents: Provider[]
   brief?: Brief | null
+  /** 交付之后你最近一次回到交付会话发消息的时间；只是提示，不代表验收。 */
+  returned_at?: string
 }
 
 export type BriefKey = 'goal' | 'summary' | 'progress' | 'blocker' | 'next' | 'stage' | 'next_owner'
@@ -215,6 +217,8 @@ export interface Snapshot {
   approvals: Approval[] | null
   attributions?: Attribution[] | null
   managed?: ManagedSession[] | null
+  /** 派活台发起的工作项：只有编号和大致状态，没有任务文字。 */
+  dispatch?: DispatchMark[] | null
   agents?: string[] | null
   agent_info?: AgentInfo[] | null
   merge_jobs?: MergeJob[] | null
@@ -245,6 +249,8 @@ export interface Handoff {
   id: string; work_item_id: string; from_session_id: number | null; from_provider: string; to_agent: string
   source_branch: string; source_sha: string; managed_id: string; state: string; created_at: string
 }
+
+export interface DispatchMark { managed_id: string; work_item_id: string; repo_id: number; status: string }
 
 export interface ManagedSession {
   id: string; repo_id: number; agent: string; title: string; work_item_id: string

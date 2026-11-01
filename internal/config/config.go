@@ -25,6 +25,7 @@ type Config struct {
 	Agents       map[string]AgentSpec `json:"agents"`
 	Tmux         string               `json:"tmux"`          // tmux 路径，缺省自动查找
 	WorktreeRoot string               `json:"worktree_root"` // 托管 worktree 根目录，缺省放在仓库旁
+	Codex        string               `json:"codex"`         // 派活台用的 codex 路径，缺省自动查找
 	// “需要你”推送：macOS 通知默认开启；ntfy 默认关闭，填写主题 URL 才发送。
 	NotifyMacOS  bool   `json:"notify_macos"`
 	NotifyDialog bool   `json:"notify_dialog"` // 额外弹出带“打开面板”按钮的提示框

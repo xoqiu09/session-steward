@@ -144,24 +144,31 @@ func (c *Core) LaunchManaged(ctx context.Context, in LaunchInput) (*ManagedSessi
 }
 
 // launchOpts 供交接复用：沿用已有工作项、从指定提交建分支、给 Agent 传入首条提示。
+// native=true 时是派活台的 Codex app-server 任务：同样新建分支和 worktree，但不起 tmux，进程由派活台管理。
 type launchOpts struct {
 	item    string
 	baseSHA string
 	prompt  string
+	native  bool
 	inTx    func(tx *sql.Tx, m *ManagedSession, now string) error
 }
 
 func (c *Core) launch(ctx context.Context, in LaunchInput, o launchOpts) (*ManagedSession, error) {
-	if c.Term == nil {
-		return nil, fmt.Errorf("%w: 本机未找到 tmux，无法启动托管会话", ErrBadRequest)
-	}
-	spec, ok := c.Agents[in.Agent]
-	if !ok || len(spec.Argv) == 0 {
-		return nil, fmt.Errorf("%w: 未配置的 Agent %q", ErrBadRequest, in.Agent)
-	}
-	argv := append([]string{}, spec.Argv...)
-	if o.prompt != "" && spec.PromptArg {
-		argv = append(argv, o.prompt)
+	var argv []string
+	if o.native {
+		in.Agent, argv = "codex", []string{"codex", "app-server"}
+	} else {
+		if c.Term == nil {
+			return nil, fmt.Errorf("%w: 本机未找到 tmux，无法启动托管会话", ErrBadRequest)
+		}
+		spec, ok := c.Agents[in.Agent]
+		if !ok || len(spec.Argv) == 0 {
+			return nil, fmt.Errorf("%w: 未配置的 Agent %q", ErrBadRequest, in.Agent)
+		}
+		argv = append([]string{}, spec.Argv...)
+		if o.prompt != "" && spec.PromptArg {
+			argv = append(argv, o.prompt)
+		}
 	}
 	title := clip(in.Title)
 	if title == "" || utf8.RuneCountInString(title) > 200 {
@@ -209,6 +216,10 @@ func (c *Core) launch(ctx context.Context, in LaunchInput, o launchOpts) (*Manag
 	}
 	now := c.St.NowTS()
 	m := &ManagedSession{ID: id, RepoID: in.RepoID, Agent: in.Agent, Title: title, Worktree: dir, Branch: branch, BaseSHA: base, TmuxName: managedPrefix + id, State: "starting", CreatedAt: now, UpdatedAt: now}
+	runner, nativeStatus := "tmux", ""
+	if o.native {
+		m.TmuxName, m.State, runner, nativeStatus = "", "running", "codex_app", "ready"
+	}
 	err = c.St.Tx(ctx, func(tx *sql.Tx) error {
 		item := o.item
 		if item == "" {
@@ -222,8 +233,8 @@ func (c *Core) launch(ctx context.Context, in LaunchInput, o launchOpts) (*Manag
 		}
 		m.WorkItemID = item
 		cmd, _ := json.Marshal(argv)
-		if _, err := tx.Exec(`INSERT INTO managed_sessions(id,repo_id,agent,command,title,work_item_id,worktree,branch,base_sha,tmux_name,state,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,'starting',?,?)`,
-			id, in.RepoID, in.Agent, string(cmd), title, item, dir, branch, base, m.TmuxName, now, now); err != nil {
+		if _, err := tx.Exec(`INSERT INTO managed_sessions(id,repo_id,agent,command,title,work_item_id,worktree,branch,base_sha,tmux_name,state,created_at,updated_at,runner,native_status) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+			id, in.RepoID, in.Agent, string(cmd), title, item, dir, branch, base, m.TmuxName, m.State, now, now, runner, nativeStatus); err != nil {
 			return err
 		}
 		if err := managedAudit(tx, id, "launch", in.Agent+" @ "+branch, now); err != nil {
@@ -243,6 +254,10 @@ func (c *Core) launch(ctx context.Context, in LaunchInput, o launchOpts) (*Manag
 		gitWrite(context.Background(), common, "--git-dir="+common, "worktree", "remove", "--force", dir)
 		gitWrite(context.Background(), common, "--git-dir="+common, "branch", "-D", branch)
 		return nil, err
+	}
+	if o.native {
+		c.notify()
+		return m, nil
 	}
 	env := append([]string{"STEWARD_HOME=" + c.StewardHome, "STEWARD_MANAGED_ID=" + id}, c.ManagedEnv...)
 	if err := c.Term.Start(ctx, m.TmuxName, dir, env, argv); err != nil {
@@ -299,7 +314,7 @@ func (c *Core) setManagedState(ctx context.Context, id, to string, code *int, ms
 func (c *Core) managed(ctx context.Context, id string) (*ManagedSession, error) {
 	var m ManagedSession
 	var code, sid sql.NullInt64
-	err := c.St.R().QueryRowContext(ctx, `SELECT id,repo_id,agent,title,work_item_id,worktree,branch,base_sha,tmux_name,state,exit_code,error,session_id,takeover,created_at,updated_at FROM managed_sessions WHERE id=?`, id).
+	err := c.St.R().QueryRowContext(ctx, `SELECT id,repo_id,agent,title,work_item_id,worktree,branch,base_sha,tmux_name,state,exit_code,error,session_id,takeover,created_at,updated_at FROM managed_sessions WHERE id=? AND runner='tmux'`, id).
 		Scan(&m.ID, &m.RepoID, &m.Agent, &m.Title, &m.WorkItemID, &m.Worktree, &m.Branch, &m.BaseSHA, &m.TmuxName, &m.State, &code, &m.Error, &sid, &m.Takeover, &m.CreatedAt, &m.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
@@ -387,7 +402,7 @@ func (c *Core) SetTakeover(ctx context.Context, id string, on bool) error {
 		v, action = 1, "takeover_on"
 	}
 	err := c.St.Tx(ctx, func(tx *sql.Tx) error {
-		res, err := tx.Exec(`UPDATE managed_sessions SET takeover=?, updated_at=? WHERE id=? AND (state='running' OR ?=0)`, v, now, id, v)
+		res, err := tx.Exec(`UPDATE managed_sessions SET takeover=?, updated_at=? WHERE id=? AND runner='tmux' AND (state='running' OR ?=0)`, v, now, id, v)
 		if err != nil {
 			return err
 		}
@@ -500,7 +515,7 @@ func (c *Core) ReconcileManaged(ctx context.Context) error {
 	if c.Term == nil {
 		return nil
 	}
-	rows, err := c.St.R().QueryContext(ctx, `SELECT id,tmux_name,state,updated_at FROM managed_sessions WHERE state IN ('starting','running')`)
+	rows, err := c.St.R().QueryContext(ctx, `SELECT id,tmux_name,state,updated_at FROM managed_sessions WHERE runner='tmux' AND state IN ('starting','running')`)
 	if err != nil {
 		return err
 	}
@@ -593,7 +608,7 @@ func attachManaged(tx *sql.Tx, sid int64, l *locInfo, at, now string) error {
 
 func (c *Core) readManaged(tx *sql.Tx) ([]ManagedSession, error) {
 	rows, err := tx.Query(`SELECT id,repo_id,agent,title,work_item_id,worktree,branch,base_sha,tmux_name,state,exit_code,error,session_id,takeover,created_at,updated_at FROM managed_sessions
-		WHERE state<>'archived' OR updated_at > ? ORDER BY created_at DESC LIMIT 200`, store.TS(c.St.Now().Add(-24*time.Hour)))
+		WHERE runner='tmux' AND (state<>'archived' OR updated_at > ?) ORDER BY created_at DESC LIMIT 200`, store.TS(c.St.Now().Add(-24*time.Hour)))
 	if err != nil {
 		return nil, err
 	}
@@ -623,6 +638,7 @@ type ManagedAuditEntry struct {
 	Detail string `json:"detail"`
 	Actor  string `json:"actor"`
 	At     string `json:"at"`
+	Device string `json:"device,omitempty"`
 }
 
 func (c *Core) ManagedAudit(ctx context.Context, id string) ([]ManagedAuditEntry, error) {

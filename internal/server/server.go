@@ -17,6 +17,7 @@ import (
 	"github.com/xoqiu09/session-steward/internal/core"
 	"github.com/xoqiu09/session-steward/internal/event"
 	"github.com/xoqiu09/session-steward/internal/install"
+	"github.com/xoqiu09/session-steward/internal/nativecontrol"
 )
 
 type Server struct {
@@ -35,6 +36,9 @@ type Server struct {
 	Hub *Hub
 	// 只读 hooks 覆盖情况；版本命令由独立 Monitor 限时和缓存。
 	HookCoverage func(context.Context) []install.Coverage
+	// 派活台（只给本机）。为 nil 时页面显示 DispatchUnavailable 的原因。
+	Dispatch            *nativecontrol.Desk
+	DispatchUnavailable string
 }
 
 func (s *Server) remoteHost(host string) bool {
@@ -55,7 +59,7 @@ func hostOnly(h string) string {
 
 // remoteBlocked：远程全局只读。新增 API 默认不能从远程写入；终端画面也仅本机可见。
 func remoteBlocked(method, path string) bool {
-	if strings.HasPrefix(path, "/api/managed") || strings.HasSuffix(path, "/conversation") {
+	if strings.HasPrefix(path, "/api/managed") || strings.HasPrefix(path, "/api/dispatch") || strings.HasSuffix(path, "/conversation") {
 		return true // 包括只读终端画面：终端可能显示敏感内容
 	}
 	return method != http.MethodGet && method != http.MethodHead
@@ -257,6 +261,7 @@ func (s *Server) Handler() http.Handler {
 	}))
 	s.managedRoutes(mux)
 	s.projectRoutes(mux)
+	s.dispatchRoutes(mux)
 	mux.HandleFunc("GET /login", s.handleLogin)
 
 	if s.Static != nil {
@@ -424,6 +429,8 @@ func writeErr(w http.ResponseWriter, err error) {
 		code = 409
 	case errors.Is(err, core.ErrCycle), errors.Is(err, core.ErrBadRequest):
 		code = 400
+	case errors.Is(err, core.ErrForbidden):
+		code = 403
 	}
 	writeJSON(w, code, map[string]string{"error": err.Error()})
 }
@@ -838,6 +845,9 @@ func (s *Server) handleRunOutcome(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleDecide(w http.ResponseWriter, r *http.Request) {
+	if s.dispatchApproval(w, r) {
+		return
+	}
 	var b struct {
 		Fingerprint string `json:"fingerprint"`
 		Behavior    string `json:"behavior"`
@@ -858,6 +868,9 @@ func (s *Server) handleDecide(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleDismiss(w http.ResponseWriter, r *http.Request) {
+	if s.dispatchApproval(w, r) {
+		return
+	}
 	var b struct {
 		Reason string `json:"reason"`
 	}

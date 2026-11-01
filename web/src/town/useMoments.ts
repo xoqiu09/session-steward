@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Snapshot } from '../types'
 import {
-  DEFAULT_FOLLOW, FOLLOW_KEY, LAST_SEEN_KEY, MOMENT_WINDOW_MS, momentCurrent, momentsBetween, readSeenMoments, sortMoments, unseenWhileAway, updateMomentQueue, writeSeenMoments,
+  DEFAULT_FOLLOW, FOLLOW_KEY, LAST_SEEN_KEY, MOMENT_WINDOW_MS, OVERDUE_MS, momentCurrent, momentsBetween, overdueRipe, stalledMoments, readSeenMoments, sortMoments, unseenWhileAway, updateMomentQueue, writeSeenMoments,
   type FollowPreferences, type TownMoment,
 } from './moments'
 
@@ -95,6 +95,28 @@ export function useMoments(snapshot: Snapshot | undefined, onBatch: (moments: To
       window.clearTimeout(timer.current)
     }
   }, [])
+
+  // 熟了 30 分钟还没收的菜、停在你手上的工作：每分钟查一次，每次交付只提醒一次；页面在后台时不算看过，回来再提醒。
+  // 首屏不飞：打开页面时就已超时的，只在“收菜”上标出最久等了多久；页面开着期间新跨过 30 分钟的才弹出来。
+  const openedAt = useRef(Date.now())
+  useEffect(() => {
+    const check = () => {
+      const s = latest.current
+      if (!s || document.hidden) return
+      const now = Date.now()
+      // 熟了没收、停在你手上，都只提醒页面开着期间新跨过 30 分钟的。
+      const due = [...overdueRipe(s, now), ...stalledMoments(s, now).filter((m) => m.local)]
+        .filter((m) => !seen.current!.has(m.key) && Date.parse(m.at) + OVERDUE_MS > openedAt.current)
+      if (!due.length) return
+      due.forEach((m) => seen.current!.add(m.key))
+      writeSeenMoments(seen.current!)
+      setQueue((q) => updateMomentQueue(q, due, s))
+      callbacks.current.onBatch(due)
+    }
+    check()
+    const t = window.setInterval(check, 60_000)
+    return () => window.clearInterval(t)
+  }, [snapshot == null])
 
   const savePreferences = (value: FollowPreferences) => {
     setPreferences(value)

@@ -32,6 +32,7 @@ import (
 	"github.com/xoqiu09/session-steward/internal/event"
 	"github.com/xoqiu09/session-steward/internal/gitx"
 	"github.com/xoqiu09/session-steward/internal/install"
+	"github.com/xoqiu09/session-steward/internal/nativecontrol"
 	"github.com/xoqiu09/session-steward/internal/notify"
 	"github.com/xoqiu09/session-steward/internal/scan"
 	"github.com/xoqiu09/session-steward/internal/server"
@@ -260,6 +261,12 @@ func serve() error {
 		}
 	}
 	s := &server.Server{BuildCommit: BuildCommit, ReportingHints: cfg.ReportingHints, Core: c, IngestToken: ingest, PanelToken: panel, PermWait: time.Duration(cfg.PermissionWaitSec) * time.Second, Static: static}
+	if desk, reason := dispatchDesk(ctx, c, cfg.Codex); desk != nil {
+		s.Dispatch = desk
+		defer desk.Close()
+	} else {
+		s.DispatchUnavailable = reason
+	}
 	hookMonitor := &install.Monitor{Targets: []install.Target{install.ClaudeTarget(home), install.CodexTarget(home, os.Getenv("CODEX_HOME"))}, ClaudeVersion: c.LatestClaudeVersion, ExplicitClaudeVersion: claudeVersion}
 	s.HookCoverage = hookMonitor.Snapshot
 	if len(cfg.RemoteHosts) > 0 {
@@ -713,4 +720,41 @@ func hubInfo() error {
 		fmt.Println("hub.role 只能是 hub 或 agent")
 	}
 	return nil
+}
+
+// dispatchDesk 用这台电脑上用户自己的 Codex 开派活台。子进程只用命令行参数关掉 hooks 和插件，
+// 不改 Codex 配置；没有可派活的项目时什么都不会执行。
+func dispatchDesk(ctx context.Context, c *core.Core, configured string) (*nativecontrol.Desk, string) {
+	bin := findCodex(configured)
+	if bin == "" {
+		return nil, "这台电脑没有找到 codex 命令，派活台不可用"
+	}
+	vctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	out, _ := exec.CommandContext(vctx, bin, "--version").Output()
+	cancel()
+	host, _ := os.Hostname()
+	desk, err := nativecontrol.NewDesk(ctx, c, func(ctx context.Context, dir string) (nativecontrol.Transport, error) {
+		return nativecontrol.Start(ctx, bin, dir)
+	}, config.HostID(), strings.TrimSuffix(host, ".local"), strings.TrimSpace(string(out)))
+	if err != nil {
+		log.Printf("派活台没有启动：%v", err)
+		return nil, "派活台启动失败，请看服务日志"
+	}
+	return desk, ""
+}
+
+func findCodex(configured string) string {
+	if configured != "" {
+		return configured
+	}
+	if p, err := exec.LookPath("codex"); err == nil {
+		return p
+	}
+	home, _ := os.UserHomeDir()
+	for _, p := range []string{filepath.Join(home, ".local/bin/codex"), "/opt/homebrew/bin/codex", "/usr/local/bin/codex"} {
+		if st, err := os.Stat(p); err == nil && !st.IsDir() {
+			return p
+		}
+	}
+	return ""
 }

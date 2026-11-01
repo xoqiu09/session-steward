@@ -594,7 +594,7 @@ export function FailRack({ at, count }: { at: { gx: number; gy: number }; count:
   const { gx, gy } = at
   const base = iso(gx + 0.7, gy + 0.55)
   return (
-    <g aria-label={`退件架：${count} 个失败运行`}>
+    <g className="town-failrack" aria-label={`退件架：${count} 个失败运行`}>
       <IsoBox gx={gx} gy={gy} w={1.4} d={1.1} h={10} top="#7a3a32" left="#a5483e" right="#8a3c33" />
       <Tag at={[base[0], base[1] + 18]} text={`退件架 · 失败 ${count}`} bg="#d2483d" fg="#fff" small />
     </g>
@@ -635,6 +635,27 @@ export function ReviewDesk({ at, count, selected, dimDesk, onSelect }: { at: { g
           <text y="-2" textAnchor="middle" fontSize="13" fontWeight="700" fill="#fff">你的验收台</text>
           <text y="10" textAnchor="middle" fontSize="9.5" fill="#dfe4ff">只有你能验收 · {count} 件待验收</text>
         </g>
+      </g>
+    </g>
+  )
+}
+
+/** 派活台：在这台电脑上交代任务给 Codex。点了打开派活台页面。 */
+export function DispatchTable({ at, count, onOpen }: { at: { gx: number; gy: number }; count: number; onOpen: () => void }) {
+  const { gx, gy } = at
+  const label = iso(gx + 0.2, gy + 0.5, 46)
+  return (
+    <g className="town-obj town-dispatch" aria-label={`派活台：管着 ${count} 件任务，点开交代任务`} {...activate(onOpen)}>
+      <IsoBox gx={gx} gy={gy} w={2.6} d={1.0} h={15} top="#cfe0f7" left="#6f8fbf" right="#5b7aa8" />
+      {/* 桌上的传话筒：任务从这里交给 Codex */}
+      <g transform={`translate(${iso(gx + 1.9, gy + 0.4, 15).join(',')})`}>
+        <rect x="-5" y="-14" width="10" height="14" rx="2" fill="#2b5fd9" />
+        <circle cy="-17" r="5" fill="#9fb8f0" stroke="#2b5fd9" />
+      </g>
+      <g transform={`translate(${label[0]},${label[1]})`}>
+        <rect x="-56" y="-16" width="112" height="30" rx="7" fill="#2b5fd9" />
+        <text y="-2" textAnchor="middle" fontSize="13" fontWeight="700" fill="#fff">派活台</text>
+        <text y="10" textAnchor="middle" fontSize="9.5" fill="#dfe8ff">{count > 0 ? `管着 ${count} 件任务` : '在这台电脑交代任务'}</text>
       </g>
     </g>
   )

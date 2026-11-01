@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { EXTRAS_KEY } from './extras'
 import type { ReactElement } from 'react'
 import type { Snapshot } from '../types'
 
@@ -231,6 +232,7 @@ describe('回到刚才的位置', () => {
   })
   it('经 TownView：恢复设备范围、只看的项目和状态高亮；恢复不了的说明原因', () => {
     const onScope = vi.fn(), onAllRepos = vi.fn(), onSelectRepo = vi.fn()
+    storage.set(EXTRAS_KEY, JSON.stringify({ chips: true, replay: true, parcels: true }))
     viewProps = { scope: 'all', onScope, onAllRepos, onSelectRepo, repoId: 'all' }; render()
     nodes(townTree).find((n) => n.type === 'button' && words(n).startsWith('工作中'))!.props.onClick(); render()
     const initial = view()

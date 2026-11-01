@@ -80,3 +80,11 @@
   background: #2f3a8f; color: #fff; font-size: 12px; pointer-events: none; white-space: nowrap; max-width: calc(100% - 24px); overflow: hidden; text-overflow: ellipsis;
 }
 
+
+/* 首屏减法：包裹、验收台箱子和退件筐默认收起，在“显示”里打开 */
+.town-view.hide-parcels :is(.town-parcel, .town-failrack, .town-failbox, .town-crate) { display: none; }
+.town-view .town-extras { position: relative; font-size: 12px; }
+.town-view .town-extras > summary { list-style: none; cursor: pointer; padding: 3px 10px; border-radius: 8px; border: 1px solid #c9b896; background: #fff; }
+.town-view .town-extras > summary::-webkit-details-marker { display: none; }
+.town-view .town-extras-menu { position: absolute; right: 0; top: calc(100% + 4px); z-index: 20; display: grid; gap: 6px; min-width: 150px; padding: 10px 12px; border: 1px solid #c9b896; border-radius: 8px; background: #fffaf0; box-shadow: 0 6px 18px rgba(60, 40, 10, .15); }
+.town-view .town-extras-menu label { display: flex; align-items: center; gap: 6px; white-space: nowrap; cursor: pointer; }

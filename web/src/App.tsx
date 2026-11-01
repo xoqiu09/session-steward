@@ -23,14 +23,16 @@ import { ProjectsPanel, type ProjectScope } from './ProjectsPanel'
 import { buildToday } from './today/todayModel'
 import { fullPanelHref, kioskHref, parseTownRoute, worldTownRoute } from './town/route'
 import { shownNo } from './hub/ids'
-import { NativeControl } from './NativeControl'
+import { DispatchDesk } from './dispatch/DispatchDesk'
 import { HooksSettings } from './HooksSettings'
 
 type Tab = 'queue' | 'items' | 'sessions' | 'launch' | 'review'
 type Sel = { kind: 'item'; id: string } | { kind: 'session'; id: number } | null
 
 export default function App() {
-	return new URLSearchParams(window.location.search).get('view') === 'native' ? <NativeControl /> : <PanelApp />
+	// 原型的 ?view=native 已并入派活台。
+	const view = new URLSearchParams(window.location.search).get('view')
+	return view === 'dispatch' || view === 'native' ? <DispatchDesk /> : <PanelApp />
 }
 
 function PanelApp() {
@@ -53,7 +55,11 @@ function PanelApp() {
   const [repoId, setRepoId] = useState<number | 'all'>('all')
   const [provider, setProvider] = useState<string>('all')
   const [route, setRoute] = useState(() => parseTownRoute(window.location.search, window.location.hash))
-  const [view, setView] = useState<'today' | 'overview' | 'town' | 'canvas' | 'list' | 'history'>(() => (new URLSearchParams(window.location.search).get('view') === 'today' ? 'today' : route.town ? 'town' : 'overview'))
+  // 画布不在顶部导航里了（太复杂、暂时不用），仍可用 ?view=canvas 打开。
+  const [view, setView] = useState<'today' | 'overview' | 'town' | 'canvas' | 'list' | 'history'>(() => {
+    const v = new URLSearchParams(window.location.search).get('view')
+    return v === 'today' ? 'today' : v === 'canvas' ? 'canvas' : route.town ? 'town' : 'overview'
+  })
   const openTown = () => {
     setRoute(worldTownRoute)
     setView('town')
@@ -192,7 +198,7 @@ function PanelApp() {
             <button className={view === 'today' ? 'on' : ''} onClick={() => setView('today')}>每日十分钟</button>
             <button className={view === 'overview' ? 'on' : ''} onClick={() => setView('overview')}>项目简报</button>
             <button className={view === 'town' ? 'on' : ''} onClick={openTown}>小镇</button>
-            <button className={view === 'canvas' ? 'on' : ''} onClick={() => setView('canvas')}>画布</button>
+            {view === 'canvas' && <button className="on">画布</button>}
             <button className={view === 'list' ? 'on' : ''} onClick={() => setView('list')}>列表</button>
             <button className={view === 'history' ? 'on' : ''} onClick={() => setView('history')}>历史</button>
           </div>

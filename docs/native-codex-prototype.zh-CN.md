@@ -1,5 +1,7 @@
 # 本机 Codex 控制原型（个人非商业验证）
 
+> **现状（K1 之后）**：独立命令 `cmd/steward-native-prototype` 和 `?view=native` 页面已并入正式 `steward serve` 的本机派活台（`/?view=dispatch`，接口 `/api/dispatch*`，只接受本机访问）。下文是原型阶段的记录，命令和启动方式已不再适用；现行设计见派活台设计文档（`docs/dispatch/design.zh-CN.md`，在 docs/dispatch-desk 分支）。
+
 这是独立、默认不安装的原型。普通 `steward serve`、远程面板全局只读、Tailscale 和现有工具配置均不改变。只验证一个明确授权的 workspace、一条 Codex 原生 thread 和一个小镇工作项。
 
 ## 使用范围与实现
