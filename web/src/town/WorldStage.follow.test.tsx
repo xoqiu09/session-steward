@@ -122,6 +122,13 @@ describe('WorldStage 跟随动态', () => {
     await Promise.resolve(); await Promise.resolve(); render()
     expect(notice(tree)).toBeUndefined(); expect(words(tree)).toContain('已收下 DEMO-1')
   })
+  it('等你决定的事在原会话里处理掉了：灵动岛给一句回执，不弹卡片', () => {
+    const q = (status: 'pending' | 'cancelled', close_reason = '') => fakeApproval({ id: 'Q-9', kind: 'decision', status, close_reason, repo_id: 1, preview: '要不要加二次密码？', created_at: new Date().toISOString() })
+    snap = { ...snap, approvals: [q('pending')] }; render()
+    snap = { ...snap, cursor: snap.cursor + 1, now: new Date().toISOString(), approvals: [q('cancelled', 'user_replied')] }; render()
+    expect(words(tree)).toContain('已在原会话里处理：“要不要加二次密码？”')
+    advance(9000); expect(words(tree)).toContain('已在原会话里处理'); advance(1000); expect(words(tree)).not.toContain('已在原会话里处理')
+  })
   it('30 秒内点过地图时只入队；不会保护结束后突然补飞', () => {
     render(); tree.props.onPointerDownCapture(); deliver(); advance(3000)
     expect(notice(tree)).toBeUndefined(); expect(words(tree)).toContain('1 处有新动态')

@@ -49,6 +49,30 @@ function itemMoment(s: Snapshot, w: WorkItem, kind: Exclude<MomentKind, 'decisio
     local: localMoment(s, w.repo_id, w.id), message }
 }
 
+/** 这些关闭原因说明你是在 Claude / Codex 原会话里处理掉的：回了话、在终端里批了命令、答了原生提问。 */
+const HANDLED_ELSEWHERE = new Set(['user_replied', 'resolved_elsewhere', 'answered_in_session'])
+const WAITING_KINDS = new Set(['permission', 'decision', 'attention'])
+const WHAT: Record<string, string> = { permission: '一条命令', decision: '一个问题', attention: '一条提醒' }
+
+export interface HandledReceipt { key: string; message: string; local: boolean }
+
+/** 上一张快照里还在等你的事，这一张里因为你在原会话处理而关掉了：给一句回执。只是告诉你小镇收到了，不改任何状态。 */
+export function handledElsewhere(before: Snapshot | null, next: Snapshot): HandledReceipt[] {
+  if (!before || (next.cursor < before.cursor && time(next.now) <= time(before.now))) return []
+  const waiting = new Set((before.approvals ?? []).filter((a) => a.status === 'pending' && WAITING_KINDS.has(a.kind)).map((a) => a.id))
+  const out: HandledReceipt[] = []
+  for (const a of next.approvals ?? []) {
+    if (!waiting.has(a.id) || a.status !== 'cancelled' || !HANDLED_ELSEWHERE.has(a.close_reason)) continue
+    const session = (next.sessions ?? []).find((v) => v.id === a.session_id)
+    const where = session?.provider === 'claude' ? ' Claude ' : session?.provider === 'codex' ? ' Codex ' : '原会话'
+    const what = a.preview?.trim() ? `“${a.preview.trim().slice(0, 24)}${a.preview.trim().length > 24 ? '…' : ''}”` : WHAT[a.kind]
+    const itemId = a.work_item_id || session?.work_item_id || undefined
+    const repoId = a.repo_id ?? session?.repo_id ?? null
+    out.push({ key: a.id, message: `已在${where}里处理：${what}`, local: localMoment(next, repoId, itemId, a.session_id) })
+  }
+  return out
+}
+
 function approvalMoment(s: Snapshot, a: Approval): TownMoment {
   const session = (s.sessions ?? []).find((v) => v.id === a.session_id)
   const itemId = a.work_item_id || session?.work_item_id || undefined

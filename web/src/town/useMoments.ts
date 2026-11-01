@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Snapshot } from '../types'
 import {
-  DEFAULT_FOLLOW, FOLLOW_KEY, LAST_SEEN_KEY, MOMENT_WINDOW_MS, OVERDUE_MS, momentCurrent, momentsBetween, overdueRipe, stalledMoments, readSeenMoments, sortMoments, unseenWhileAway, updateMomentQueue, writeSeenMoments,
-  type FollowPreferences, type TownMoment,
+  DEFAULT_FOLLOW, FOLLOW_KEY, LAST_SEEN_KEY, MOMENT_WINDOW_MS, OVERDUE_MS, momentCurrent, handledElsewhere, momentsBetween, overdueRipe, stalledMoments, readSeenMoments, sortMoments, unseenWhileAway, updateMomentQueue, writeSeenMoments,
+  type FollowPreferences, type HandledReceipt, type TownMoment,
 } from './moments'
 
 export function readFollowPreferences(): FollowPreferences {
@@ -21,7 +21,8 @@ function readLastSeen(): number | null {
 
 /** 生命周期、存储和 3 秒归并在这里；相机仍由 WorldStage 的 flyTo 驱动。
  *  baseline 变了（本机 / 全部设备切换）时下一张快照重新当首屏，不把另一个范围里早就有的东西算成新动态。 */
-export function useMoments(snapshot: Snapshot | undefined, onBatch: (moments: TownMoment[]) => void, onProgress: (moments: TownMoment[]) => void, baseline = '') {
+export function useMoments(snapshot: Snapshot | undefined, onBatch: (moments: TownMoment[]) => void, onProgress: (moments: TownMoment[]) => void, baseline = '',
+  onHandled?: (receipts: HandledReceipt[]) => void) {
   const [queue, setQueue] = useState<TownMoment[]>([])
   const [away, setAway] = useState<TownMoment[]>([])
   const [preferences, setPreferences] = useState(readFollowPreferences)
@@ -29,7 +30,7 @@ export function useMoments(snapshot: Snapshot | undefined, onBatch: (moments: To
   const previous = useRef<Snapshot | null>(null)
   const base = useRef(baseline)
   const latest = useRef(snapshot)
-  const callbacks = useRef({ onBatch, onProgress })
+  const callbacks = useRef({ onBatch, onProgress, onHandled })
   const seen = useRef<Set<string> | null>(null)
   seen.current ??= new Set(readSeenMoments())
   const lastSeen = useRef<number | null>(seenAtStart)
@@ -37,7 +38,7 @@ export function useMoments(snapshot: Snapshot | undefined, onBatch: (moments: To
   const batch = useRef<TownMoment[]>([])
   const timer = useRef<number | undefined>(undefined)
   // Timer callbacks must read the current guard/camera, never those captured by the first signal.
-  useEffect(() => { callbacks.current = { onBatch, onProgress }; latest.current = snapshot })
+  useEffect(() => { callbacks.current = { onBatch, onProgress, onHandled }; latest.current = snapshot })
   const remember = () => {
     lastSeen.current = Date.now()
     try { localStorage.setItem(LAST_SEEN_KEY, String(lastSeen.current)) } catch { /* 浏览器拒绝存储时，本次会话照常可用。 */ }
@@ -49,6 +50,9 @@ export function useMoments(snapshot: Snapshot | undefined, onBatch: (moments: To
     if (base.current !== baseline) { base.current = baseline; previous.current = null }
     const first = previous.current == null
     const fresh = momentsBetween(previous.current, snapshot).filter((m) => !seen.current!.has(m.key))
+    // 在 Claude / Codex 里处理掉的事给一句回执；页面在后台时看不到，就不发。
+    const handled = first ? [] : handledElsewhere(previous.current, snapshot).filter((r) => r.local)
+    if (handled.length && !document.hidden) callbacks.current.onHandled?.(handled)
     const caughtUp = first || resumeAt.current != null
       ? unseenWhileAway(snapshot, lastSeen.current, seen.current!).filter((m) => first || Date.parse(m.at) <= resumeAt.current!) : []
     previous.current = snapshot
