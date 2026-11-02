@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"os"
 	"sync"
 	"time"
 
@@ -28,6 +29,14 @@ func Open(path string) (*Store, error) {
 	if err := migrate(w, migrations); err != nil {
 		w.Close()
 		return nil, fmt.Errorf("初始化 schema: %w", err)
+	}
+	// Queued user inputs are private local data. SQLite sidecars inherit DB permissions
+	// on creation; tighten existing sidecars before accepting any new input as well.
+	for _, file := range []string{path, path + "-wal", path + "-shm"} {
+		if e := os.Chmod(file, 0600); e != nil && !os.IsNotExist(e) {
+			w.Close()
+			return nil, fmt.Errorf("设置数据库私有权限: %w", e)
+		}
 	}
 	r, err := sql.Open("sqlite", dsn+"&_pragma=query_only(1)")
 	if err != nil {

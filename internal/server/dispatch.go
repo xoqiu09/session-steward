@@ -97,6 +97,15 @@ func (s *Server) dispatchRoutes(mux *http.ServeMux) {
 			reply(w, v, err)
 		}
 	}))
+	mux.HandleFunc("POST /api/dispatch/release-background", local(func(w http.ResponseWriter, r *http.Request, d *nativecontrol.Desk) {
+		if b, ok := read(w, r); ok {
+			if err := d.ReleaseBackground(b.Client, b.Epoch, device); err != nil {
+				reply(w, nil, err)
+				return
+			}
+			writeJSON(w, 200, d.View())
+		}
+	}))
 	mux.HandleFunc("POST /api/dispatch/projects", local(func(w http.ResponseWriter, r *http.Request, d *nativecontrol.Desk) {
 		if b, ok := read(w, r); ok {
 			if err := s.Core.SetDispatchProject(r.Context(), b.RepoID, b.Allowed); err != nil {

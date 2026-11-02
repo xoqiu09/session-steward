@@ -61,6 +61,8 @@ type Source struct {
 
 // Event 是落库与推送的统一结构。只包含脱敏后的字段。
 type Event struct {
+	Candidate string `json:"candidate,omitempty"` // exact clean commit observed by a trusted execution adapter; empty means unknown
+
 	EventID              string            `json:"event_id"`
 	SchemaVersion        int               `json:"schema_version"`
 	OccurredAt           time.Time         `json:"occurred_at"`
@@ -90,6 +92,15 @@ type Event struct {
 }
 
 func (e *Event) Validate() error {
+	if e.Candidate != "" {
+		if len(e.Candidate) != 40 && len(e.Candidate) != 64 {
+			return fmt.Errorf("候选提交格式无效")
+		}
+		if _, err := hex.DecodeString(e.Candidate); err != nil {
+			return fmt.Errorf("候选提交格式无效")
+		}
+	}
+
 	if !ValidChannel(e.Source.Channel) {
 		return fmt.Errorf("未知信号渠道: %s", e.Source.Channel)
 	}

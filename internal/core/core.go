@@ -17,6 +17,12 @@ type Locator interface {
 }
 
 type Core struct {
+	OrchHostID string // authenticated execution-device identity, never taken from a request
+
+	OrchExecutor OrchestrationExecutor // nil: no background execution
+	orchMu       sync.Mutex            // serializes orchestration passes; no background model calls
+	orchWatchAt  time.Time
+
 	St  *store.Store
 	Loc Locator
 

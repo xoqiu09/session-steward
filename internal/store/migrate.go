@@ -49,6 +49,7 @@ CREATE INDEX IF NOT EXISTS usage_daily_day ON usage_daily(day)`)},
 	{5, addSignalColumns},
 	// 派活台：托管会话增加运行方式与原生会话号，审计记设备，新增可派活项目与幂等键。
 	{6, addDispatchSchema},
+	{7, addOrchestrationSchema},
 }
 
 func execSQL(q string) func(*sql.Tx) error {

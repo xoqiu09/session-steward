@@ -52,3 +52,25 @@
 .dd-alert { border-left: 3px solid var(--danger); padding: 10px 14px; background: var(--panel); overflow-wrap: anywhere; margin: 0 0 14px; }
 .dd-blocked { margin-top: 24px; }
 @media (max-width: 760px) { .dispatch-desk { padding: 16px 16px 40px; } .dd-grid { grid-template-columns: 1fr; gap: 0; } .dd-actions .btn { flex: 1; justify-content: center; } }
+
+/* Backend orchestration follows the existing desk palette and form rhythm. */
+.orch-heading { display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap; }
+.orch-heading h2 { margin:0; }
+.orch-records { list-style:none; padding:0; margin:20px 0; }
+.orch-records > li { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:start; gap:12px; padding:16px 0; border-top:1px solid var(--line); }
+.orch-records small { display:block; margin-top:4px; }
+.orch-records a { color:var(--text); overflow-wrap:anywhere; }
+.orch-inputs { grid-column:1 / -1; list-style:none; padding:0; display:grid; gap:8px; color:var(--muted); font-size:12px; }
+.orch-inputs li { display:flex; flex-wrap:wrap; align-items:baseline; gap:6px 16px; }
+.orch-finding { padding:16px 0; border-top:1px solid var(--line); }
+.orch-finding > p { margin:8px 0; }
+.orch-finding .btn { margin-top:12px; }
+.orch-grant { border-top:1px solid var(--line); padding-top:16px; }
+.orch-grant summary, .orch-finding summary { cursor:pointer; }
+.orch-grant form { padding-top:16px; }
+.orch-limits { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; }
+.orch-panel label.orch-checkbox { display:flex; align-items:flex-start; gap:10px; font-weight:400; line-height:1.7; }
+.orch-panel .orch-checkbox input { width:18px; min-width:18px; margin-top:3px; }
+.dd-control { flex-wrap:wrap; }
+@media(max-width:600px) { .orch-limits { grid-template-columns:1fr; gap:0; } .orch-panel .btn { min-height:44px; } .orch-records > li { grid-template-columns: minmax(0,1fr); } }
+.orch-fields { border:0; padding:0; margin:0; min-width:0; }

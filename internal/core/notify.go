@@ -215,6 +215,14 @@ func (n *Notifier) Pending(ctx context.Context) ([]Alert, error) {
 		}
 		add(Alert{Key: "routine:" + w.ID + ":" + w.AutomaticIssueKind + ":" + w.AutomaticIssueAt, Title: "自动任务需要检查", Body: w.ID + " 出现卡点、验证失败或长时间无新活动", Link: n.link("item=" + url.QueryEscape(w.ID))})
 	}
+	extra, err := n.C.OrchestrationAlerts(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, alert := range extra {
+		alert.Link = n.BaseURL + alert.Link
+		add(alert)
+	}
 	return n.C.visibleProjectAlerts(ctx, out)
 }
 

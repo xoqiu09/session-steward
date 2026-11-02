@@ -231,6 +231,15 @@ func serve() error {
 			}
 		}()
 	}
+	// Set execution ports before notifier goroutines can read the orchestration view.
+	orchestrationDesk, dispatchReason := dispatchDesk(ctx, c, cfg.Codex)
+	if orchestrationDesk != nil {
+		c.OrchExecutor = orchestrationDesk
+		defer orchestrationDesk.Close()
+	}
+	if err := c.RecoverOrchestration(ctx); err != nil {
+		return err
+	}
 	// “需要你”推送
 	var senders []core.Sender
 	if cfg.NotifyMacOS && runtime.GOOS == "darwin" {
@@ -261,12 +270,11 @@ func serve() error {
 		}
 	}
 	s := &server.Server{BuildCommit: BuildCommit, ReportingHints: cfg.ReportingHints, Core: c, IngestToken: ingest, PanelToken: panel, PermWait: time.Duration(cfg.PermissionWaitSec) * time.Second, Static: static}
-	if desk, reason := dispatchDesk(ctx, c, cfg.Codex); desk != nil {
-		s.Dispatch = desk
-		defer desk.Close()
-	} else {
-		s.DispatchUnavailable = reason
-	}
+	s.Dispatch, s.DispatchUnavailable = orchestrationDesk, dispatchReason
+	orchestrationContext, stopOrchestration := context.WithCancel(ctx)
+	orchestrationDone := make(chan struct{})
+	go func() { defer close(orchestrationDone); c.OrchestrationRun(orchestrationContext) }()
+	defer func() { stopOrchestration(); <-orchestrationDone }()
 	hookMonitor := &install.Monitor{Targets: []install.Target{install.ClaudeTarget(home), install.CodexTarget(home, os.Getenv("CODEX_HOME"))}, ClaudeVersion: c.LatestClaudeVersion, ExplicitClaudeVersion: claudeVersion}
 	s.HookCoverage = hookMonitor.Snapshot
 	if len(cfg.RemoteHosts) > 0 {

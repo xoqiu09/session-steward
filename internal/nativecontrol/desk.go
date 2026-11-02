@@ -53,6 +53,8 @@ type TaskView struct {
 }
 
 type DeskView struct {
+	BackgroundControl bool `json:"background_control"`
+
 	Host           string                 `json:"host"`
 	CodexVersion   string                 `json:"codex_version"`
 	Owner          string                 `json:"owner"`
@@ -86,6 +88,7 @@ type Desk struct {
 }
 
 func NewDesk(ctx context.Context, c *core.Core, factory Factory, hostID, host, codexVersion string) (*Desk, error) {
+	c.OrchHostID = hostID
 	rows, err := c.DispatchRows(ctx)
 	if err != nil {
 		return nil, err
@@ -197,6 +200,8 @@ func (d *Desk) View() DeskView {
 	v := DeskView{Host: d.host, CodexVersion: d.codexVersion, Owner: d.owner, Epoch: d.epoch, LeaseUntil: d.until, HandoffEnabled: DesktopHandoffVerified}
 	tasks := d.taskList()
 	d.mu.Unlock()
+	mode, _ := d.Core.OrchestrationMode(d.ctx)
+	v.BackgroundControl = mode == "enabled"
 	v.Projects, _ = d.Core.DispatchProjects(d.ctx)
 	if v.Projects == nil {
 		v.Projects = []core.DispatchProject{}
@@ -351,6 +356,9 @@ func (d *Desk) OwnsApproval(id string) bool {
 // 同一件任务同一时刻只有一个原生请求在途。每次解锁后的 RPC 返回时都重新核对身份，
 // 被别人接过去的旧请求不能改写新控制者看到的状态。
 type nativeRequest struct {
+	background bool
+	allowed    func() bool
+
 	client, op, turn string
 	epoch            int
 	startingTurn     bool
@@ -411,6 +419,13 @@ func (t *Task) view(detail bool) TaskView {
 
 func (t *Task) ingest(kind event.Kind, id, text string, toolIDs ...string) (core.IngestResult, error) {
 	e := &event.Event{EventID: "native:" + t.row.Thread + ":" + id, SchemaVersion: 1, OccurredAt: t.d.now().UTC(), Source: event.Source{Provider: "codex", Client: "cli", Originator: "codex_cli", HostID: t.d.hostID}, SessionID: t.row.Thread, Cwd: t.row.Worktree, Kind: kind, RawName: "CodexAppServer", Text: text, WorkTag: t.row.WorkItemID}
+
+	if kind == event.KindToolFail || kind == event.KindToolPost {
+		e.Candidate = t.d.Core.ManagedCandidate(t.d.ctx, t.row.ID)
+	}
+	if kind == event.KindToolFail {
+		e.Reason = "nonzero_exit"
+	}
 	if len(toolIDs) > 0 {
 		e.ToolUseID = toolIDs[0]
 		e.ToolName = "commandExecution"
@@ -419,7 +434,14 @@ func (t *Task) ingest(kind event.Kind, id, text string, toolIDs ...string) (core
 }
 
 func (t *Task) requestCurrent(r *nativeRequest) bool {
-	if t.inflight != r || !t.d.current(r.client, r.epoch) {
+	if t.inflight != r {
+		return false
+	}
+	if r.background {
+		if !t.d.backgroundCurrent(r.epoch) || r.allowed == nil || !r.allowed() {
+			return false
+		}
+	} else if !t.d.current(r.client, r.epoch) {
 		return false
 	}
 	if r.op != "" {
@@ -576,6 +598,10 @@ func (t *Task) connect(r *nativeRequest, thread string) (Transport, string, erro
 		params["developerInstructions"] = "This task was dispatched from Session Steward on this Mac. Work only in the current worktree. Do not use cloud workspaces. When you intentionally deliver your work, call ss_deliver with a concise summary; this records agent delivery for the user's review, never user acceptance. Do not call it when interrupted or merely waiting."
 		params["dynamicTools"] = []any{map[string]any{"type": "function", "name": "ss_deliver", "description": "Explicitly report your work as delivered for the user's review, never accepted.", "inputSchema": map[string]any{"type": "object", "properties": map[string]any{"summary": map[string]any{"type": "string", "minLength": 1, "maxLength": 400}}, "required": []string{"summary"}, "additionalProperties": false}}}
 	}
+	if thread == "" {
+		params["dynamicTools"] = append(params["dynamicTools"].([]any), map[string]any{"type": "function", "name": "ss_return_event", "description": "Return an unrelated or insufficiently scoped SS delivery for routing review; does not execute or expand permission.", "inputSchema": map[string]any{"type": "object", "properties": map[string]any{"delivery_id": map[string]any{"type": "string", "minLength": 64, "maxLength": 64}, "reason": map[string]any{"type": "string", "enum": []string{"unrelated", "missing_scope", "missing_evidence"}}}, "required": []string{"delivery_id", "reason"}, "additionalProperties": false}})
+	}
+
 	var result struct {
 		Thread struct {
 			ID string `json:"id"`
@@ -870,6 +896,19 @@ func (t *Task) handle(tr Transport, msg Message) {
 			if err == nil {
 				t.observe("agent_delivered")
 			}
+			return
+		}
+
+		if msg.Method == "item/tool/call" && p.Tool == "ss_return_event" {
+			var args struct {
+				DeliveryID string `json:"delivery_id"`
+				Reason     string `json:"reason"`
+			}
+			err := json.Unmarshal(p.Arguments, &args)
+			if err == nil {
+				err = t.d.Core.ReturnOrchestrationEvent(t.d.ctx, t.row.ID, t.row.WorkItemID, args.DeliveryID, p.TurnID, args.Reason)
+			}
+			_ = tr.Reply(msg.ID, map[string]any{"success": err == nil, "contentItems": []any{map[string]string{"type": "inputText", "text": fmt.Sprintf("Routing review recorded: %t. No new authorization or user acceptance was written.", err == nil)}}})
 			return
 		}
 		_ = tr.Reject(msg.ID)
