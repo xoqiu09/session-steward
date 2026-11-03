@@ -75,6 +75,10 @@ describe('项目室内 · 核心功能面板', () => {
     for (const t of ['导入账单', '分类规则', '多币种', '已实现 · Agent 报验证通过', '开发中', '未开始', '导入 3 个样例文件无报错', '卡点：缺少样例文件', '已完成 1 · 开发中 1 · 未开始 1']) expect(html).toContain(t)
     expect(html).not.toContain('别的项目的功能')
     expect(html).toContain('工作项 W-1 正在做')
+    // 面板必须在 SVG 之外，原生 WebKit 的滚动合成不再经过 foreignObject 坐标系。
+    expect(html).not.toContain('<foreignObject')
+    expect(html).toMatch(/<\/svg><\/div><section class="town-house-features"/)
+    expect(html).toContain(`viewBox="${interiorViewBox()}"`)
   })
 
   it('没有功能时显示空状态文字', () => {
@@ -85,5 +89,12 @@ describe('项目室内 · 核心功能面板', () => {
     const html = render()
     expect(html).not.toContain('核心功能')
     expect(html).toContain(`viewBox="${interiorViewBox()}"`)
+  })
+  it('长功能清单只有一处独立面板，完整保留每项，留给 HTML 容器滚动', () => {
+    const html = render(Array.from({ length: 36 }, (_, i) => feature({ id: `f-${i}`, repo_id: 1, title: `合成功能 ${i + 1}` })))
+    expect(html.match(/class="town-house-features-name"/g)).toHaveLength(36)
+    expect(html.match(/aria-label="核心功能"/g)).toHaveLength(1)
+    expect(html).not.toContain('<foreignObject')
+    expect(html).not.toMatch(/<button|<form|<input/)
   })
 })

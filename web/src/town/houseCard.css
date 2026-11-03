@@ -20,17 +20,22 @@
 .town-house-card-next { margin: 8px 0 0; padding-top: 6px; border-top: 1px dashed var(--town-line, #e2d5bd); }
 .town-house-card-item { color: var(--town-muted, #7a6a55); font-size: 11px; }
 
-/* 室内核心功能面板：画在 SVG 右侧留出的一列里（foreignObject） */
+/* 房间 SVG 与 HTML 列表分列，避免 WebKit 中 foreignObject 滚动内容发生坐标偏移。 */
+.town-view .town-interior-layout { position: absolute; inset: 0; z-index: 2; container-type: inline-size; cursor: default; }
+.town-view .town-interior-grid { position: absolute; inset: 64px 16px 40px; display: grid; grid-template-columns: minmax(0, 1fr) minmax(250px, 320px); gap: 18px; }
+.town-view .town-interior-room { position: relative; min-width: 0; min-height: 0; }
+.town-view .town-world-hint.is-inside { left: 220px; right: 16px; transform: none; max-width: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: center; }
 .town-house-features {
-  box-sizing: border-box; height: 100%; display: flex; flex-direction: column; padding: 10px 12px;
+  box-sizing: border-box; height: 100%; min-width: 0; min-height: 0; overflow: hidden; display: flex; flex-direction: column; padding: 12px 14px;
   background: var(--town-card, #fffaf0); color: var(--town-ink, #3a2a1c); border: 2px solid #c9b896; border-radius: 12px;
-  font-size: 12px; line-height: 1.45;
+  font-size: 12px; line-height: 1.6; user-select: text; touch-action: pan-y;
 }
 .town-house-features-head { font-size: 15px; font-weight: 800; }
 .town-house-features-counts { margin-top: 2px; color: var(--town-muted, #7a6a55); font-size: 11px; }
 .town-house-features-note { margin: 4px 0 0; color: var(--town-muted, #7a6a55); font-size: 10.5px; }
 .town-house-features-empty { margin: 10px 0 0; color: var(--town-muted, #7a6a55); }
-.town-house-features ul { flex: 1; min-height: 0; overflow: auto; margin: 8px 0 0; padding: 0; list-style: none; display: grid; align-content: start; gap: 6px; }
+.town-house-features ul { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; margin: 10px 0 0; padding: 0 4px 0 0; list-style: none; display: grid; align-content: start; gap: 8px; scrollbar-gutter: stable; }
+.town-house-features ul:focus-visible { outline: 2px solid var(--town-blue, #2d6cdf); outline-offset: -2px; }
 .town-house-features li { padding: 6px 8px; border-radius: 8px; background: #f6efe0; border-left: 4px solid #c9b896; }
 .town-house-features li.is-done { background: #eef5ea; border-left-color: #6a9c5c; }
 .town-house-features li.is-building { background: #fdf4dc; border-left-color: #d9a520; }
@@ -39,3 +44,10 @@
 .town-house-features-status.is-warn { color: #a5342b; }
 .town-house-features-line { margin: 2px 0 0; font-size: 11px; color: var(--town-muted, #7a6a55); overflow-wrap: anywhere; }
 .town-house-features-blocker { margin: 2px 0 0; font-size: 11px; color: #a5342b; overflow-wrap: anywhere; }
+@container (max-width: 760px) {
+  .town-view .town-interior-grid { inset: 60px 10px 40px; grid-template-columns: minmax(0, 1fr) minmax(220px, 36%); gap: 10px; }
+}
+@container (max-width: 600px) {
+  .town-view .town-interior-grid { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(120px, 1fr) minmax(130px, 1fr); }
+  .town-house-features { padding: 8px 10px; }
+}

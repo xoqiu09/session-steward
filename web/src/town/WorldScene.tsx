@@ -961,7 +961,7 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
             <button type="button" onClick={() => setInside(null)} title="回到世界（Esc）">← 回到世界</button>
             <button type="button" aria-haspopup="dialog" aria-expanded={structure} onClick={e => openStructure(e.currentTarget)} title="查看 SS 自身的结构说明首版样本">结构说明</button>
           </div>
-          <p className="town-world-hint">{insideB.name} · 室内：工作台是工作项，点任何东西看详情</p>
+          <p className="town-world-hint is-inside">{insideB.name} · 室内：工作台是工作项，点任何东西看详情</p>
           {guide && <TownGuide onClose={() => setGuide(false)} follow={feed.preferences} onFollowChange={feed.savePreferences} />}
         </>
       ) : (

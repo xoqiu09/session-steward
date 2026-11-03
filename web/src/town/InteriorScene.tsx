@@ -20,10 +20,6 @@ const COLS = 3
 const ROWS = 3
 const BENCH_W = 3.0
 const BENCH_D = 1.1
-// 核心功能面板：画在房间右侧另留的一列里，不压在房间上
-const PANEL_X = 520
-const PANEL_W = 290
-
 const ORDER: Record<WorkItem['status'], number> = { review: 0, blocked: 1, in_progress: 2, todo: 3, done: 4, abandoned: 5 }
 const BENCH_TOP: Record<WorkItem['status'], string> = {
   review: '#c9d0f5', blocked: '#f2c4bd', in_progress: '#f6dfa6', todo: '#e6dccb', done: '#cfe3c9', abandoned: '#ddd',
@@ -89,10 +85,10 @@ export function zoneBenchSpot(z: Zone, n: number, i: number): { gx: number; gy: 
   return { gx: left + col * (BENCH_W + 1.0), gy: 2.4 + row * 3.6 }
 }
 
-/** panel：右侧多留一列放核心功能面板。 */
-export function interiorViewBox(panel = false): string {
+/** SVG 只负责房间，功能列表由旁边的 HTML 面板排版。 */
+export function interiorViewBox(): string {
   const a = iso(0, 0, WALL_H + 40), r = iso(ROOM_W, 0), b = iso(ROOM_W, ROOM_D), l = iso(0, ROOM_D)
-  const x0 = l[0] - 30, x1 = panel ? PANEL_X + PANEL_W + 20 : r[0] + 30, y0 = a[1] - 20, y1 = b[1] + 60
+  const x0 = l[0] - 30, x1 = r[0] + 30, y0 = a[1] - 20, y1 = b[1] + 60
   return `${x0} ${y0} ${x1 - x0} ${y1 - y0}`
 }
 
@@ -147,8 +143,8 @@ export function InteriorScene({ b, model, selected, highlight, onSelect, changed
   const wallRight = (gy0: number, gy1: number, z0: number, z1: number) => pts([iso(0, gy0, z0), iso(0, gy1, z0), iso(0, gy1, z1), iso(0, gy0, z1)])
   const board = iso(ROOM_W - 3.2, 0, 96)
 
-  return (
-    <svg className={`town-svg is-interior${offline ? ' is-offline' : ''}`} viewBox={interiorViewBox(features !== undefined)} role="group" aria-label={`${b.name} 室内`}>
+  const room = (
+    <svg className={`town-svg is-interior${offline ? ' is-offline' : ''}`} viewBox={interiorViewBox()} role="group" aria-label={`${b.name} 室内`}>
       <defs>
         <pattern id="interior-planks" width="60" height="30" patternUnits="userSpaceOnUse">
           <path d="M0 15 L30 0 M30 30 L60 15" stroke="#c8a77a" strokeWidth="1" />
@@ -267,10 +263,16 @@ export function InteriorScene({ b, model, selected, highlight, onSelect, changed
         )
       })}
       {zones && relay && <Cart relay={relay} from={aisle(relay.from)} to={aisle(relay.to)} count={model.relays.filter((r) => r.repoId === b.repo?.id && r.from === relay.from && r.to === relay.to).length} onSelect={onSelect} />}
-      {features !== undefined && <FeaturePanel b={b} features={features} />}
       {b.characters.length === 0 && <Tag at={[iso(ROOM_W - 2.5, ROOM_D - 1.5)[0], iso(ROOM_W - 2.5, ROOM_D - 1.5)[1] - 10] as Pt} text="现在没有会话在这里" bg="#fffaf0" fg="#6b5a44" small />}
     </svg>
   )
+  if (features === undefined) return room
+  return <div className="town-interior-layout">
+    <div className="town-interior-grid">
+      <div className="town-interior-room">{room}</div>
+      <FeaturePanel b={b} features={features} />
+    </div>
+  </div>
 }
 
 /** 室内过道上的小推车轨道（门口那一排）。 */
@@ -290,16 +292,14 @@ const PANEL_ORDER: FeatureGroup[] = ['building', 'todo', 'done']
 /** 室内右侧的核心功能面板：完整列出这个项目的功能、状态、验收标准和最近一次回报的卡点。只读。 */
 function FeaturePanel({ b, features }: { b: BuildingView; features: readonly ProjectFeature[] | null }) {
   const info = houseInfo(b, features)
-  const [, y0, , h] = interiorViewBox(true).split(' ').map(Number)
   const list: HouseFeature[] = PANEL_ORDER.flatMap((g) => info.groups[g])
   return (
-    <foreignObject x={PANEL_X} y={y0 + 10} width={PANEL_W} height={h - 20}>
       <section className="town-house-features" aria-label="核心功能">
         <div className="town-house-features-head">核心功能</div>
         {info.empty ? <p className="town-house-features-empty">还没登记核心功能：Agent 用 steward-hook features 回报后会出现在这里</p> : <>
           <div className="town-house-features-counts">{(['done', 'building', 'todo'] as const).map((g) => `${FEATURE_GROUP_LABEL[g]} ${info.groups[g].length}`).join(' · ')}</div>
           <p className="town-house-features-note">实现与验证为 Agent 回报；“你已验收”才是你确认过的。</p>
-          <ul>
+          <ul tabIndex={0} aria-label={`${b.name} 核心功能列表`}>
             {list.map((f) => (
               <li key={f.id} className={`is-${f.group}`}>
                 <div className="town-house-features-name">{clip(f.title, 24)}</div>
@@ -311,6 +311,5 @@ function FeaturePanel({ b, features }: { b: BuildingView; features: readonly Pro
           </ul>
         </>}
       </section>
-    </foreignObject>
   )
 }
