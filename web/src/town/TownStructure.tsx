@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react'
 import { STRUCTURE_BASIS, STRUCTURE_OBJECTS, STRUCTURE_PAGES, type StructurePage } from './structureContent'
 import './townStructure.css'
+import { ProjectRoomDialog, type ProjectRoomContext } from './ProjectRoomDialog'
 
 function Arrow({ branch = false }: { branch?: boolean }) {
   return <svg className={branch ? 'structure-branch-arrow' : 'structure-arrow'} width="28" height="28" viewBox="0 0 28 28" aria-hidden="true">
@@ -36,7 +37,7 @@ function StructureDiagram({ page }: { page: StructurePage }) {
 }
 
 /** 内置、只读的 SS 样本。没有快照、API、文件读取或业务操作依赖。 */
-export function TownStructure({ onClose }: { onClose: () => void }) {
+function SSStructureSample({ onClose }: { onClose: () => void }) {
   const [tab, setTab] = useState(STRUCTURE_PAGES[0].id)
   const page = STRUCTURE_PAGES.find(p => p.id === tab)!
   const id = useId()
@@ -88,4 +89,9 @@ export function TownStructure({ onClose }: { onClose: () => void }) {
       </div>
     </aside>
   </div>
+}
+
+/** The toolbar retains the SS teaching sample; room entries read their own project. */
+export function TownStructure({ onClose, project }: { onClose: () => void; project?: ProjectRoomContext }) {
+  return project ? <ProjectRoomDialog project={project} onClose={onClose} /> : <SSStructureSample onClose={onClose} />
 }

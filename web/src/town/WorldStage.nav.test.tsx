@@ -323,13 +323,15 @@ describe('结构说明保留阅读现场', () => {
     return focus
   }
   const close = () => { explanation()!.props.onClose(); render() }
-  it('地图和任意项目房间共用同一个 SS 样本；关闭不退出房间，焦点回原入口', () => {
+  it('地图保留 SS 样本，房间读取自己的结构；关闭保留房间和原入口焦点', () => {
     render(); const before = view(); const focus = open()
-    expect(explanation()).toBeDefined(); expect(Object.keys(explanation()!.props)).toEqual(['onClose'])
+    expect(explanation()).toBeDefined(); expect(explanation()!.props.project).toBeUndefined()
     expect(nodes(tree).find(n => n.props.className === 'town-world-surface')!.props.inert).toBe(true)
     close(); expect(view()).toEqual(before); expect(focus).toHaveBeenCalledWith({ preventScroll: true })
     scene().props.onSelect({ kind: 'building', key: 'repo-1' }); render()
     const roomFocus = open(); expect(inside()).toBe(true)
+    expect(explanation()!.props.project.b.repo.id).toBe(1)
+    expect(explanation()!.props.project.b.name).toBe('合成花园')
     close(); expect(inside()).toBe(true); expect(roomFocus).toHaveBeenCalledOnce()
     expect(selected).not.toHaveBeenCalled()
   })

@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -51,6 +52,16 @@ func TestRepositoryIdentityReconciliationKeepsLedgerAndAcceptance(t *testing.T) 
 	if err = c.AcceptFeature(ctx, 1, f.ID, f.Candidate, f.Revision, "accepted"); err != nil {
 		t.Fatal(err)
 	}
+	var structureDoc map[string]any
+	if err = json.Unmarshal(syntheticStructure(), &structureDoc); err != nil {
+		t.Fatal(err)
+	}
+	structureDoc["groups"].([]any)[0].(map[string]any)["features"].([]any)[0].(map[string]any)["id"] = "feature"
+	rawStructure, _ := json.Marshal(structureDoc)
+	structure, err := c.SaveProjectStructure(ctx, 1, rawStructure, "", "user")
+	if err != nil {
+		t.Fatal(err)
+	}
 	for i := 0; i < 2; i++ {
 		if err = c.ReconcileRepos(ctx); err != nil {
 			t.Fatal(err)
@@ -59,6 +70,9 @@ func TestRepositoryIdentityReconciliationKeepsLedgerAndAcceptance(t *testing.T) 
 	snap, err = c.Snapshot(ctx)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if len(snap.Structures) != 1 || snap.Structures[0].RepoID != 2 || snap.Structures[0].Revision != structure.Revision || snap.Structures[0].Author != "user" {
+		t.Fatal("project structure lost during alias reconciliation", snap.Structures)
 	}
 	if len(snap.Repos) != 2 || len(snap.WorkItems) != 1 || len(snap.Runs) != 1 || len(snap.Features) != 1 || !snap.Features[0].Accepted || snap.Features[0].RepoID != 2 || *snap.WorkItems[0].RepoID != 2 || *snap.Sessions[0].RepoID != 2 || snap.WorkItems[0].Status != "review" {
 		t.Fatalf("ledger/state lost: %+v", snap)

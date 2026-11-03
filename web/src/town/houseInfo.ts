@@ -1,7 +1,7 @@
 // 房子信息卡：悬停一栋房子（一个项目）时看的概况。纯函数，只读快照。
 // 口径与首页“核心功能实现进度”一致：实现、验证都是 Agent 回报，只有 accepted 才是你验收；
 // 回报不一致（conflict）的功能不算已完成。没有登记功能时如实说没有，不猜。
-import type { FeatureContribution, ProjectFeature, WorkItem } from '../types'
+import type { FeatureContribution, ProjectFeature, ProjectStructure, WorkItem } from '../types'
 import { AGENTS, agentCounts, type Agent } from './agents'
 import { featureSections, type FeatureSection } from './featureCategories'
 import type { BuildingView } from './townModel'
@@ -36,6 +36,7 @@ export interface HouseInfo {
   active: number
   total: number
   groups: Record<FeatureGroup, HouseFeature[]>
+  structure: ProjectStructure | null
   purposeMapped: boolean
   sections: FeatureSection[]
   /** 这个项目还没有登记任何核心功能。 */
@@ -121,7 +122,7 @@ export function featureNext(features: readonly ProjectFeature[]): HouseNext | nu
   return best
 }
 
-export function houseInfo(b: BuildingView, features: readonly ProjectFeature[] | null | undefined): HouseInfo {
+export function houseInfo(b: BuildingView, features: readonly ProjectFeature[] | null | undefined, structure?: ProjectStructure | null): HouseInfo {
   const total = agentCounts(b)
   const active = agentCounts({ ...b, characters: b.characters.filter((c) => IN_PLAY.has(c.status)) })
   const agents = AGENTS.filter((a) => total[a.key] > 0).map((a) => ({ ...a, active: active[a.key], total: total[a.key] }))
@@ -131,11 +132,12 @@ export function houseInfo(b: BuildingView, features: readonly ProjectFeature[] |
     const h = toHouseFeature(f)
     groups[h.group].push(h)
   }
-  const purposes = featureSections(b, Object.values(groups).flat())
+  const ownStructure = structure?.repo_id === b.repo?.id ? structure ?? null : null
+  const purposes = featureSections(b, Object.values(groups).flat(), ownStructure)
   return {
     name: b.name, agents,
     active: agents.reduce((s, a) => s + a.active, 0), total: agents.reduce((s, a) => s + a.total, 0),
-    groups, purposeMapped: purposes.mapped, sections: purposes.sections, empty: mine.length === 0, next: newer(latestNext(b), featureNext(mine)),
+    structure: ownStructure, groups, purposeMapped: purposes.mapped, sections: purposes.sections, empty: mine.length === 0, next: newer(latestNext(b), featureNext(mine)),
   }
 }
 

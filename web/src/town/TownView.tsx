@@ -285,6 +285,7 @@ export function TownView({ snap, conn, repoId, provider, sel, onSelectItem, onSe
   const pinned = pages.length > 1 ? pages[0].filter((b) => pages.every((pg) => pg.includes(b))).length : 0
   // 点建筑或项目卡片后整个面板只看这个项目：在小镇里写明，一键回到全部，不然像是别的项目都不见了。
   const scopedRepo = repoId === 'all' ? null : (shown.repos ?? []).find((r) => r.id === repoId)?.name ?? `项目 #${repoId}`
+  const structureBuilding = repoId === 'all' ? undefined : model.buildings.find(b => b.repo?.id === repoId)
   return (
     <div className={`town-view${offline ? ' is-offline' : ''}${kiosk ? ' is-kiosk' : ''}${extras.parcels ? '' : ' hide-parcels'}`}>
       <div className="town-bar">
@@ -325,7 +326,7 @@ export function TownView({ snap, conn, repoId, provider, sel, onSelectItem, onSe
           </div>
         </details>
         {extras.replay && !replay && !noReplay && <button type="button" className="town-replay-open" onClick={() => { setReplay(startPos()); setPlaying(false) }} title="拖到过去某个时刻，看当时小镇的样子">回放</button>}
-        {!asWorld && <button type="button" className="town-structure-entry" aria-haspopup="dialog" aria-expanded={structure} onClick={e => { structureTrigger.current = e.currentTarget; swipe.current = null; setStructure(true) }} title="查看 SS 自身的结构说明首版样本">结构说明</button>}
+        {!asWorld && <button type="button" className="town-structure-entry" aria-haspopup="dialog" aria-expanded={structure} onClick={e => { structureTrigger.current = e.currentTarget; swipe.current = null; setStructure(true) }} title={structureBuilding ? "查看这个项目的目标、功能关系与验证依据" : "查看 SS 自身的结构说明首版样本"}>结构说明</button>}
         {bar}
       </div>
       <div className="town-diorama" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
@@ -348,7 +349,7 @@ export function TownView({ snap, conn, repoId, provider, sel, onSelectItem, onSe
           <li><i className="lg-board" />告示栏 = 等你决定</li>
         </ul>
       </div>
-      {structure && <TownStructure onClose={closeStructure} />}
+      {structure && <TownStructure onClose={closeStructure} project={structureBuilding ? { b: structureBuilding, features: shown.features ?? null, structure: shown.structures?.find(s => s.repo_id === structureBuilding.repo?.id) } : undefined} />}
     </div>
   )
 }

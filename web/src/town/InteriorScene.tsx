@@ -10,7 +10,7 @@ import { Flowers, Pine } from './scenery'
 import { AGENTS, agentOf, type Agent } from './agents'
 import { Cart, type ShedSpot } from './workshop'
 import { TownFeaturePanel } from './TownFeaturePanel'
-import type { ProjectFeature, WorkItem } from '../types'
+import type { ProjectFeature, ProjectStructure, WorkItem } from '../types'
 import './houseCard.css'
 
 const ROOM_W = 16
@@ -92,7 +92,7 @@ export function interiorViewBox(): string {
   return `${x0} ${y0} ${x1 - x0} ${y1 - y0}`
 }
 
-export function InteriorScene({ b, model, selected, highlight, onSelect, changed = new Set(), offline = false, features }: {
+export function InteriorScene({ b, model, selected, highlight, onSelect, changed = new Set(), offline = false, features, structure, writeable = false }: {
   b: BuildingView
   model: TownModel
   selected: Selection | null
@@ -102,6 +102,8 @@ export function InteriorScene({ b, model, selected, highlight, onSelect, changed
   offline?: boolean
   /** 快照里的核心功能（snapshot.features）；不传时不画面板，传 null 或 [] 显示空状态。 */
   features?: readonly ProjectFeature[] | null
+  structure?: ProjectStructure | null
+  writeable?: boolean
 }) {
   const isSel = (kind: Selection['kind'], key: string) => selected?.kind === kind && selected.key === key
   const dim = (match: boolean) => (highlight && !match ? ' is-dim' : '')
@@ -270,7 +272,7 @@ export function InteriorScene({ b, model, selected, highlight, onSelect, changed
   return <div className="town-interior-layout">
     <div className="town-interior-grid">
       <div className="town-interior-room">{room}</div>
-      <TownFeaturePanel key={b.key} b={b} features={features} />
+      <TownFeaturePanel key={b.key} b={b} features={features} structure={structure} writeable={writeable} onOpenItem={id => onSelect({ kind: 'item', key: id })} />
     </div>
   </div>
 }

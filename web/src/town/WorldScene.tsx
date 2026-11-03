@@ -952,14 +952,15 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
       onClickCapture={(e) => { if (swallowClick.current) { swallowClick.current = false; e.stopPropagation(); e.preventDefault() } }}>
       <div className="town-world-surface" inert={structure}>
       <div className="town-moment-status" role="status" aria-live="polite" aria-atomic="true">{visibleMoment?.message ?? ''}</div>
-      {hoverB && hover && <HouseCard info={houseInfo(hoverB, props.snapshot?.features)} style={{ left: Math.max(8, hover.x), top: hover.y }} />}
+      {hoverB && hover && <HouseCard info={houseInfo(hoverB, props.snapshot?.features, props.snapshot?.structures?.find(s => s.repo_id === hoverB.repo?.id))} style={{ left: Math.max(8, hover.x), top: hover.y }} />}
       {insideB ? (
         <>
           <InteriorScene b={insideB} model={model} selected={props.selected} highlight={props.highlight} onSelect={props.onSelect} changed={props.changed} offline={props.offline}
-            features={props.snapshot?.features ?? null} />
+            features={props.snapshot?.features ?? null} structure={props.snapshot?.structures?.find(s => s.repo_id === insideB.repo?.id)}
+            writeable={!remoteAccess() && !props.replaying && !props.offline && !!insideB.repo && insideB.repo.id < 1_000_000_000} />
           <div className="town-world-tools is-inside" onPointerDown={(e) => e.stopPropagation()}>
             <button type="button" onClick={() => setInside(null)} title="回到世界（Esc）">← 回到世界</button>
-            <button type="button" aria-haspopup="dialog" aria-expanded={structure} onClick={e => openStructure(e.currentTarget)} title="查看 SS 自身的结构说明首版样本">结构说明</button>
+            <button type="button" aria-haspopup="dialog" aria-expanded={structure} onClick={e => openStructure(e.currentTarget)} title={insideB ? "查看这个项目的目标、功能关系与验证依据" : "查看 SS 自身的结构说明首版样本"}>结构说明</button>
           </div>
           <p className="town-world-hint is-inside">{insideB.name} · 室内：工作台是工作项，点任何东西看详情</p>
           {guide && <TownGuide onClose={() => setGuide(false)} follow={feed.preferences} onFollowChange={feed.savePreferences} />}
@@ -982,7 +983,7 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
           <button type="button" aria-pressed={guide} className={guide ? 'is-on' : undefined} onClick={() => (guide ? setGuide(false) : openGuide())} title="小镇怎么看：地图上的东西、怎么操作、每天怎么用">怎么看</button>
           {!guideSeen && !guide && <span className="town-guide-bubble" role="note">第一次来？点这里看怎么用</span>}
         </span>
-        <button type="button" aria-haspopup="dialog" aria-expanded={structure} onClick={e => openStructure(e.currentTarget)} title="查看 SS 自身的结构说明首版样本">结构说明</button>
+        <button type="button" aria-haspopup="dialog" aria-expanded={structure} onClick={e => openStructure(e.currentTarget)} title={insideB ? "查看这个项目的目标、功能关系与验证依据" : "查看 SS 自身的结构说明首版样本"}>结构说明</button>
         <button type="button" aria-pressed={byAgent} className={byAgent ? 'is-on' : undefined} onClick={() => { setByAgent(!byAgent); setAgentFocus(null) }} title="按会话来自哪个 Agent 着色">按 Agent 看</button>
         <button type="button" aria-expanded={projectsOpen} className={projectsOpen ? 'is-on' : undefined} onClick={() => { setDeskOpen(false); setProjectsOpen(!projectsOpen) }}
           title="按片区列出全部项目：点项目名去它的房子和门前花园">项目 {world.districts.length}</button>
@@ -1048,7 +1049,7 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
         </>
       )}
       </div>
-      {structure && <TownStructure onClose={closeStructure} />}
+      {structure && <TownStructure onClose={closeStructure} project={insideB ? { b: insideB, features: props.snapshot?.features ?? null, structure: props.snapshot?.structures?.find(s => s.repo_id === insideB.repo?.id) } : undefined} />}
     </div>
   )
 }

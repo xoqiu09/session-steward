@@ -261,6 +261,7 @@ func (s *Server) Handler() http.Handler {
 	}))
 	s.managedRoutes(mux)
 	s.projectRoutes(mux)
+	s.projectStructureRoutes(mux)
 	s.dispatchRoutes(mux)
 	s.orchestrationRoutes(mux)
 	mux.HandleFunc("GET /login", s.handleLogin)

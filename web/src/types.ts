@@ -207,6 +207,7 @@ export interface Snapshot {
   /** 回放快照（小镇时间条）才有：那一刻的时间。只读。 */
   replay_at?: string
 	features?: ProjectFeature[] | null
+  structures?: ProjectStructure[] | null
   cursor: number
   now: string
   repos: Repo[] | null
@@ -271,6 +272,18 @@ export interface ProjectFeature {
   candidate: string; revision: string; implementation: string; validation: string
   conflict: boolean; stale: boolean; accepted: boolean; accepted_at?: string
   work_item_ids: string[]; contributions: FeatureContribution[]
+}
+
+// Presentation metadata only. Functional status and acceptance always come from ProjectFeature.
+export interface ProjectStructureDocument {
+  schema_version: 1
+  goal: string; audience: string; scope: string; prepared_at: string; basis_version: string
+  groups: { id: string; title: string; question: string; note?: string; features: { id: string; label?: string }[] }[]
+  relations: { from: string; to: string; label: string }[]
+  sources: { path: string; line_start?: number; line_end?: number; kind: 'documentation' | 'source'; note?: string }[]
+}
+export interface ProjectStructure {
+  repo_id: number; document: ProjectStructureDocument; revision: string; updated_at: string; author: 'agent' | 'user'
 }
 
 export interface Attribution {

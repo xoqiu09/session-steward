@@ -81,6 +81,8 @@ func run(args []string, stdin io.Reader, stdout io.Writer) int {
 		return report(ctx, client, args, cfg.ReportingHints)
 	case "features":
 		return features(ctx, client, args)
+	case "structure":
+		return structure(ctx, client, args)
 	default:
 		fmt.Fprintln(os.Stderr, "未知命令:", args[0])
 	}
