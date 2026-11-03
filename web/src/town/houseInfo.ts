@@ -3,6 +3,7 @@
 // 回报不一致（conflict）的功能不算已完成。没有登记功能时如实说没有，不猜。
 import type { FeatureContribution, ProjectFeature, WorkItem } from '../types'
 import { AGENTS, agentCounts, type Agent } from './agents'
+import { featureSections, type FeatureSection } from './featureCategories'
 import type { BuildingView } from './townModel'
 
 export type FeatureGroup = 'done' | 'building' | 'todo'
@@ -20,6 +21,8 @@ export interface HouseFeature {
   blocker: string
   conflict: boolean
   stale: boolean
+  accepted: boolean
+  reportedPassed: boolean
 }
 
 export interface HouseAgent { key: Agent; label: string; color: string; active: number; total: number }
@@ -33,6 +36,8 @@ export interface HouseInfo {
   active: number
   total: number
   groups: Record<FeatureGroup, HouseFeature[]>
+  purposeMapped: boolean
+  sections: FeatureSection[]
   /** 这个项目还没有登记任何核心功能。 */
   empty: boolean
   /** 未完成工作项简报里最新的一条“下一步”。 */
@@ -72,7 +77,8 @@ export function featureStatus(f: ProjectFeature): string {
 function toHouseFeature(f: ProjectFeature): HouseFeature {
   return {
     id: f.id, title: f.title, group: featureGroup(f), status: featureStatus(f), acceptance: f.acceptance ?? '',
-    blocker: latestContribution(f)?.blocker ?? '', conflict: f.conflict, stale: f.stale,
+    blocker: latestContribution(f)?.blocker ?? '', conflict: f.conflict, stale: f.stale, accepted: f.accepted,
+    reportedPassed: f.implementation === 'implemented' && f.validation === 'passed' && !f.conflict,
   }
 }
 
@@ -125,10 +131,11 @@ export function houseInfo(b: BuildingView, features: readonly ProjectFeature[] |
     const h = toHouseFeature(f)
     groups[h.group].push(h)
   }
+  const purposes = featureSections(b, Object.values(groups).flat())
   return {
     name: b.name, agents,
     active: agents.reduce((s, a) => s + a.active, 0), total: agents.reduce((s, a) => s + a.total, 0),
-    groups, empty: mine.length === 0, next: newer(latestNext(b), featureNext(mine)),
+    groups, purposeMapped: purposes.mapped, sections: purposes.sections, empty: mine.length === 0, next: newer(latestNext(b), featureNext(mine)),
   }
 }
 

@@ -15,7 +15,10 @@ export function HouseCard({ info, style }: { info: HouseInfo; style?: CSSPropert
         {info.agents.filter((a) => a.active > 0).map((a) => <i key={a.key} className="town-house-card-dot" style={{ background: a.color }} aria-hidden />)}
         <span>{agentLine(info)}</span>
       </div>
-      {info.empty ? <p className="town-house-card-empty">还没登记核心功能</p> : (
+      {info.empty ? <p className="town-house-card-empty">还没登记核心功能</p> : info.purposeMapped ? <>
+        <p className="town-house-card-purpose-label">按用途看功能 · 进入房间展开</p>
+        <ul className="town-house-card-purposes">{info.sections.map(section => <li key={section.id}><span>{section.title}</span><b>{section.items.length}</b></li>)}</ul>
+      </> : (
         <div className="town-house-card-groups">
           {GROUPS.map((g) => {
             const list = info.groups[g]

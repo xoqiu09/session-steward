@@ -9,7 +9,7 @@ import {
 import { Flowers, Pine } from './scenery'
 import { AGENTS, agentOf, type Agent } from './agents'
 import { Cart, type ShedSpot } from './workshop'
-import { FEATURE_GROUP_LABEL, houseInfo, type FeatureGroup, type HouseFeature } from './houseInfo'
+import { TownFeaturePanel } from './TownFeaturePanel'
 import type { ProjectFeature, WorkItem } from '../types'
 import './houseCard.css'
 
@@ -270,7 +270,7 @@ export function InteriorScene({ b, model, selected, highlight, onSelect, changed
   return <div className="town-interior-layout">
     <div className="town-interior-grid">
       <div className="town-interior-room">{room}</div>
-      <FeaturePanel b={b} features={features} />
+      <TownFeaturePanel key={b.key} b={b} features={features} />
     </div>
   </div>
 }
@@ -283,33 +283,5 @@ function Track2({ a, b }: { a: ShedSpot; b: ShedSpot }) {
       <line x1={p[0]} y1={p[1]} x2={q[0]} y2={q[1]} stroke="#cfb184" strokeWidth={10} strokeLinecap="round" opacity={0.8} />
       <line x1={p[0]} y1={p[1]} x2={q[0]} y2={q[1]} stroke="#a88a5c" strokeWidth={1} strokeDasharray="6 6" />
     </g>
-  )
-}
-
-// 面板里先列要关注的：开发中、未开始，最后是已完成
-const PANEL_ORDER: FeatureGroup[] = ['building', 'todo', 'done']
-
-/** 室内右侧的核心功能面板：完整列出这个项目的功能、状态、验收标准和最近一次回报的卡点。只读。 */
-function FeaturePanel({ b, features }: { b: BuildingView; features: readonly ProjectFeature[] | null }) {
-  const info = houseInfo(b, features)
-  const list: HouseFeature[] = PANEL_ORDER.flatMap((g) => info.groups[g])
-  return (
-      <section className="town-house-features" aria-label="核心功能">
-        <div className="town-house-features-head">核心功能</div>
-        {info.empty ? <p className="town-house-features-empty">还没登记核心功能：Agent 用 steward-hook features 回报后会出现在这里</p> : <>
-          <div className="town-house-features-counts">{(['done', 'building', 'todo'] as const).map((g) => `${FEATURE_GROUP_LABEL[g]} ${info.groups[g].length}`).join(' · ')}</div>
-          <p className="town-house-features-note">实现与验证为 Agent 回报；“你已验收”才是你确认过的。</p>
-          <ul tabIndex={0} aria-label={`${b.name} 核心功能列表`}>
-            {list.map((f) => (
-              <li key={f.id} className={`is-${f.group}`}>
-                <div className="town-house-features-name">{clip(f.title, 24)}</div>
-                <div className={`town-house-features-status${f.conflict || f.status.includes('失败') ? ' is-warn' : ''}`}>{f.status}{f.stale ? ' · 回报已超过一天' : ''}</div>
-                <p className="town-house-features-line">验收标准：{f.acceptance ? clip(f.acceptance, 60) : '尚未回报'}</p>
-                {f.blocker && <p className="town-house-features-blocker">卡点：{clip(f.blocker, 60)}</p>}
-              </li>
-            ))}
-          </ul>
-        </>}
-      </section>
   )
 }

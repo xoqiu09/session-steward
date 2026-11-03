@@ -19,6 +19,10 @@
 .town-house-card-more, .town-house-card-muted { color: var(--town-muted, #7a6a55); }
 .town-house-card-next { margin: 8px 0 0; padding-top: 6px; border-top: 1px dashed var(--town-line, #e2d5bd); }
 .town-house-card-item { color: var(--town-muted, #7a6a55); font-size: 11px; }
+.town-house-card-purpose-label { margin: 8px 0 4px; color: var(--town-muted, #7a6a55); font-size: 11px; }
+.town-house-card-purposes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 12px; margin: 0; padding: 0; list-style: none; }
+.town-house-card-purposes li { display: flex; justify-content: space-between; gap: 6px; font-size: 11px; }
+.town-house-card-purposes b { color: var(--town-muted, #7a6a55); font-variant-numeric: tabular-nums; }
 
 /* 房间 SVG 与 HTML 列表分列，避免 WebKit 中 foreignObject 滚动内容发生坐标偏移。 */
 .town-view .town-interior-layout { position: absolute; inset: 0; z-index: 2; container-type: inline-size; cursor: default; }
@@ -34,12 +38,29 @@
 .town-house-features-counts { margin-top: 2px; color: var(--town-muted, #7a6a55); font-size: 11px; }
 .town-house-features-note { margin: 4px 0 0; color: var(--town-muted, #7a6a55); font-size: 10.5px; }
 .town-house-features-empty { margin: 10px 0 0; color: var(--town-muted, #7a6a55); }
-.town-house-features ul { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; margin: 10px 0 0; padding: 0 4px 0 0; list-style: none; display: grid; align-content: start; gap: 8px; scrollbar-gutter: stable; }
-.town-house-features ul:focus-visible { outline: 2px solid var(--town-blue, #2d6cdf); outline-offset: -2px; }
-.town-house-features li { padding: 6px 8px; border-radius: 8px; background: #f6efe0; border-left: 4px solid #c9b896; }
-.town-house-features li.is-done { background: #eef5ea; border-left-color: #6a9c5c; }
-.town-house-features li.is-building { background: #fdf4dc; border-left-color: #d9a520; }
-.town-house-features-name { font-weight: 700; }
+.town-feature-categories { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; margin-top: 12px; padding-right: 4px; scrollbar-gutter: stable; }
+.town-feature-categories:focus-visible { outline: 2px solid var(--town-blue, #2d6cdf); outline-offset: -2px; }
+.town-feature-category { margin-bottom: 6px; border: 1px solid var(--town-line, #e2d5bd); border-radius: 9px; background: #fffaf0; }
+.town-feature-category > summary { position: relative; display: grid; gap: 3px; padding: 8px 25px 8px 10px; cursor: pointer; list-style: none; }
+.town-feature-category > summary::-webkit-details-marker, .town-feature-detail > summary::-webkit-details-marker { display: none; }
+.town-feature-chevron { position: absolute; right: 10px; top: 9px; color: #6b5a44; font-size: 18px; line-height: 1.2; }
+.town-feature-category[open] > summary > .town-feature-chevron, .town-feature-detail[open] > summary > .town-feature-chevron { transform: rotate(90deg); }
+.town-feature-category > summary:hover, .town-feature-category[open] > summary { background: #f4ecdc; border-radius: 8px; }
+.town-feature-category summary:focus-visible { outline: 2px solid var(--town-blue, #2d6cdf); outline-offset: -2px; border-radius: 6px; }
+.town-feature-category-title { display: flex; align-items: baseline; gap: 7px; font-size: 13px; font-weight: 700; }
+.town-feature-category-no { color: #6b5a44; font-size: 10px; font-weight: 400; font-variant-numeric: tabular-nums; }
+.town-feature-category-count { margin-left: auto; white-space: nowrap; color: #6b5a44; font-size: 11px; font-weight: 400; }
+.town-feature-category-question { color: #6b5a44; font-size: 11px; line-height: 1.5; }
+.town-feature-category-body { padding: 0 8px 8px; }
+.town-feature-category-body > .town-house-features-note { padding: 6px 2px; }
+.town-house-features ul { margin: 0; padding: 0; list-style: none; }
+.town-house-features li { padding: 0; border: 0; background: transparent; }
+.town-feature-detail { border-top: 1px dashed var(--town-line, #e2d5bd); }
+.town-feature-detail > summary { position: relative; display: grid; gap: 3px; min-height: 44px; box-sizing: border-box; padding: 8px 22px 8px 3px; list-style: none; cursor: pointer; }
+.town-feature-detail > summary > .town-feature-chevron { font-size: 15px; }
+.town-feature-detail > summary:hover { background: #f8f0df; }
+.town-house-features-name { font-weight: 600; line-height: 1.6; }
+.town-feature-facts { padding: 0 3px 10px; }
 .town-house-features-status { color: var(--town-muted, #7a6a55); font-size: 11px; }
 .town-house-features-status.is-warn { color: #a5342b; }
 .town-house-features-line { margin: 2px 0 0; font-size: 11px; color: var(--town-muted, #7a6a55); overflow-wrap: anywhere; }
