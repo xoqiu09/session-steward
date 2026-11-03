@@ -1,0 +1,86 @@
+/* 沿用小镇说明的纸色、墨色、字体和按钮；图文固定，不跟随地图缩放。 */
+.town-view .town-world-surface { position: absolute; inset: 0; }
+.town-view .town-structure-entry { min-height: 44px; padding: 5px 10px; border: 1px solid var(--town-line); border-radius: 9px; background: var(--town-card); color: var(--town-ink); font: inherit; font-size: 13px; cursor: pointer; }
+.town-view .town-structure-scrim { position: fixed; inset: 0; z-index: 40; background: rgba(58,42,28,.24); cursor: default; touch-action: auto; user-select: text; }
+.town-view .town-guide.town-structure {
+  left: 50%; top: 16px; bottom: 16px; transform: translateX(-50%); width: min(960px, calc(100% - 32px)); box-sizing: border-box;
+  padding: 24px 28px 28px; background: #fffcf5; color: #3a2a1c; line-height: 1.75; container-type: inline-size;
+  box-shadow: 0 12px 40px rgba(58,42,28,.15); touch-action: pan-y;
+}
+.town-view .structure-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.town-view .structure-header h2 { margin: 0; font-size: 21px; line-height: 1.5; letter-spacing: -.3px; }
+.town-view .structure-header h2 span { color: #6b5a44; font-size: 14px; font-weight: 500; white-space: nowrap; }
+.town-view .structure-eyebrow { margin: 0 0 3px; color: #6b5a44; font-size: 12px; }
+.town-view .town-structure button { min-height: 44px; font: inherit; font-size: 13px; }
+.town-view .structure-header button { flex: none; padding: 6px 12px; }
+.town-view .structure-header kbd { margin-left: 6px; color: #6b5a44; font: inherit; font-size: 11px; }
+.town-view .structure-meta { display: flex; flex-wrap: wrap; gap: 4px 18px; color: #6b5a44; font-size: 11px; margin-top: 8px; }
+.town-view .structure-scope { color: #6b5a44; margin: 4px 0 16px; font-size: 12px; }
+.town-view .structure-tabs { display: flex; gap: 4px; padding-bottom: 10px; border-bottom: 1px solid #e2d5bd; }
+.town-view .structure-tabs button { min-width: 104px; border-color: transparent; background: transparent; font-weight: 600; }
+.town-view .town-structure .structure-tabs button[aria-selected="true"] { background: #2f3a8f; border-color: #2f3a8f; color: #fff; }
+.town-view .town-structure .structure-page > h3 { font-size: 20px; line-height: 1.5; color: #3a2a1c; margin: 20px 0 6px; }
+.town-view .structure-lead { margin: 0 0 18px; color: #5a4a36; max-width: 64em; }
+.town-view .structure-diagram { margin: 0 0 22px; }
+.town-view .structure-chain { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 48px 60px; list-style: none; margin: 0; padding: 0; }
+.town-view .structure-step { position: relative; padding: 14px 16px; border: 1px solid #d8c7a6; border-radius: 10px; background: #f4ecdc; min-width: 0; }
+.town-view .structure-step-no { display: block; margin-bottom: 4px; color: #6b5a44; font-size: 11px; font-variant-numeric: tabular-nums; letter-spacing: 1px; }
+.town-view .structure-diagram h4 { margin: 0 0 3px; font-size: 15px; line-height: 1.5; }
+.town-view .structure-diagram small { display: block; font-size: 11px; color: #6b5a44; overflow-wrap: anywhere; }
+.town-view .structure-diagram p { margin: 7px 0 0; font-size: 12px; line-height: 1.75; }
+.town-view .structure-connection { position: absolute; left: 100%; top: 35%; width: 60px; display: flex; justify-content: center; color: #6b5a44; }
+.town-view .structure-connection > span { position: absolute; top: 29px; width: 56px; text-align: center; font-size: 10px; line-height: 1.45; }
+.town-view .is-overview .structure-step:nth-child(4) { grid-area: 2 / 3; }
+.town-view .is-overview .structure-step:nth-child(5) { grid-area: 2 / 2; }
+.town-view .is-overview .structure-step:nth-child(6) { grid-area: 2 / 1; background: #e9eddf; border-color: #bdc8a5; }
+.town-view .is-overview .structure-step:nth-child(3) .structure-connection { top: 100%; left: 50%; width: auto; height: 48px; align-items: center; }
+.town-view .is-overview .structure-step:nth-child(3) .structure-arrow { transform: rotate(90deg); }
+.town-view .is-overview .structure-step:nth-child(3) .structure-connection > span { top: 8px; left: 28px; width: 55px; }
+.town-view .is-overview .structure-step:nth-child(n+4) .structure-connection { left: auto; right: 100%; }
+.town-view .is-overview .structure-step:nth-child(n+4) .structure-arrow { transform: rotate(180deg); }
+.town-view .is-pause .structure-chain { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 52px; }
+.town-view .is-pause .structure-step { padding: 12px; }
+.town-view .is-pause .structure-connection { width: 52px; }
+.town-view .is-pause .structure-connection > span { width: 48px; }
+.town-view .structure-fork-label { margin: 24px 0 0; padding: 12px 0 0; border-top: 1px solid #d8c7a6; font-size: 13px; font-weight: 600; }
+.town-view .structure-fork-label span { display: block; font-size: 11px; font-weight: 400; color: #6b5a44; }
+.town-view .structure-readers { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin: 8px 0 0; padding: 0; list-style: none; }
+.town-view .structure-readers li { border: 1px solid #d8c7a6; border-radius: 10px; padding: 12px 14px; background: #fffaf0; }
+.town-view .structure-readers .is-conditional { border-style: dashed; }
+.town-view .structure-reader-link { display: flex; align-items: center; gap: 4px; color: #6b5a44; font-size: 11px; margin: -4px 0 6px; }
+.town-view .structure-branch-arrow { width: 22px; height: 22px; transform: rotate(90deg); }
+.town-view .is-conditional .structure-branch-arrow path { stroke-dasharray: 3 3; }
+.town-view .structure-objects > h3 { color: #3a2a1c; font-size: 16px; margin: 0 0 4px; }
+.town-view .structure-object-relation { color: #6b5a44; font-size: 12px; margin: 0 0 10px; }
+.town-view .structure-objects dl { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 12px 24px; margin: 0; }
+.town-view .structure-objects dl > div { padding-bottom: 12px; border-bottom: 1px dashed #e2d5bd; }
+.town-view .structure-objects dt { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; font-weight: 650; font-size: 13px; }
+.town-view .structure-objects dt span { font-weight: 400; color: #6b5a44; font-size: 12px; }
+.town-view .structure-objects dd { margin: 3px 0 0; font-size: 12px; }
+.town-view .structure-notes { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 24px; margin: 20px 0; }
+.town-view .structure-notes h4 { font-size: 13px; margin: 0 0 4px; color: #6b3d12; }
+.town-view .structure-notes p { margin: 0; font-size: 12px; }
+.town-view .structure-evidence { border-top: 1px solid #e2d5bd; padding-top: 4px; }
+.town-view .structure-evidence summary { cursor: pointer; padding: 10px 0; min-height: 44px; box-sizing: border-box; font-weight: 600; }
+.town-view .structure-evidence summary span { font-weight: 400; font-size: 11px; margin-left: 8px; color: #6b5a44; }
+.town-view .structure-evidence p { margin: 0 0 10px; font-size: 12px; color: #6b5a44; }
+.town-view .structure-evidence ul { margin: 0; padding: 0; list-style: none; }
+.town-view .structure-evidence li { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 4px 16px; padding: 8px 0; border-top: 1px dashed #eadfc8; font-size: 12px; }
+.town-view .structure-evidence code { color: #5a4a36; overflow-wrap: anywhere; font-size: 11px; }
+@container (max-width: 620px) {
+  .town-view .structure-chain, .town-view .is-pause .structure-chain { grid-template-columns: 1fr; gap: 42px; }
+  .town-view .is-overview .structure-step:nth-child(n) { grid-area: auto; }
+  .town-view .structure-step .structure-connection, .town-view .is-overview .structure-step:nth-child(n) .structure-connection {
+    top: 100%; left: 20px; right: auto; width: 28px; height: 42px; align-items: center;
+  }
+  .town-view .structure-step .structure-connection .structure-arrow { transform: rotate(90deg); }
+  .town-view .structure-step .structure-connection > span, .town-view .is-overview .structure-step:nth-child(3) .structure-connection > span { top: 12px; left: 36px; width: max-content; }
+  .town-view .structure-readers, .town-view .structure-objects dl, .town-view .structure-notes { grid-template-columns: 1fr; gap: 12px; }
+  .town-view .structure-header h2 { font-size: 18px; }
+  .town-view .structure-header h2 span { display: block; }
+  .town-view .structure-header kbd { display: none; }
+  .town-view .structure-evidence li { grid-template-columns: 1fr; }
+}
+@media (max-width: 760px) {
+  .town-view .town-guide.town-structure { top: 8px; bottom: 8px; width: calc(100% - 16px); padding: 16px; }
+}
