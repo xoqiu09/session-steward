@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "goal": "按用途保存素材，并能在需要时找回来。",
+  "audience": "整理自己素材的人（合成样例）",
+  "scope": "首次使用练习，只描述示例功能；保存目录不改变工作状态或用户验收。",
+  "prepared_at": "2026-11-03",
+  "basis_version": "synthetic-demo-v1",
+  "groups": [
+    {
+      "id": "collect",
+      "title": "保存素材",
+      "question": "素材从哪里来，来源怎样保留？",
+      "features": [{"id": "collect-assets", "label": "保存素材与来源"}]
+    },
+    {
+      "id": "find",
+      "title": "找回素材",
+      "question": "需要时，怎样按用途找到它？",
+      "features": [{"id": "find-assets", "label": "按用途查找素材"}]
+    }
+  ],
+  "relations": [{"from": "collect", "to": "find", "label": "保留用途与来源，方便之后查找"}],
+  "sources": [{"path": "README.md", "line_start": 1, "line_end": 7, "kind": "documentation", "note": "演示目录内的合成项目说明"}]
+}

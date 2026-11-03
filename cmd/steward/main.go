@@ -2,6 +2,7 @@
 //
 //	steward serve                 启动本地服务（只监听 127.0.0.1）
 //	steward open                  打印面板登录链接并在浏览器打开
+//	steward demo                  用全新的临时目录体验合成项目，不安装 hooks
 //	steward install [claude|codex|all]    追加 hooks 条目
 //	steward uninstall [claude|codex|all]  移除 hooks 条目
 //	steward status                查看 hooks 安装与 Codex 信任状态
@@ -54,6 +55,8 @@ func main() {
 		fmt.Println(BuildCommit)
 	case "serve":
 		err = serve()
+	case "demo":
+		err = demo(os.Args[2:])
 	case "open":
 		err = open()
 	case "remote":
@@ -81,7 +84,7 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "用法: steward serve [--claude-version x.y.z] | open | remote [--rotate] | install [claude|codex|all] [--project DIR] [--claude-version x.y.z] | uninstall [claude|codex|all] [--project DIR] | status | service install|uninstall|restart|status | hub | m0")
+	fmt.Fprintln(os.Stderr, "用法: steward serve [--claude-version x.y.z] | demo [--no-open] [--dir NEW_DIR] [--listen 127.0.0.1:PORT] | open | remote [--rotate] | install [claude|codex|all] [--project DIR] [--claude-version x.y.z] | uninstall [claude|codex|all] [--project DIR] | status | service install|uninstall|restart|status | hub | m0")
 }
 
 func arg(i int, d string) string {
