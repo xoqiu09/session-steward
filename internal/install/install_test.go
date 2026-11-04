@@ -1,7 +1,9 @@
 package install
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -302,5 +304,25 @@ func TestDanglingSymlinkWritesTarget(t *testing.T) {
 	}
 	if b, _ := os.ReadFile(real); string(b) != "{}" {
 		t.Fatalf("目标内容=%q", b)
+	}
+}
+
+func TestMonitorReportsCodexUntrustedCount(t *testing.T) {
+	dir := t.TempDir()
+	tg := CodexTarget(dir)
+	os.MkdirAll(filepath.Dir(tg.Path), 0o700)
+	in := &Installer{StateDir: filepath.Join(dir, "state"), HookBinary: "/synthetic/steward-hook", PermWait: 1}
+	if _, err := in.Install(tg); err != nil {
+		t.Fatal(err)
+	}
+	m := &Monitor{Targets: []Target{tg}, Probe: func(context.Context, string) (string, error) { return "", errors.New("synthetic: no CLI") }}
+	installed := len(m.Snapshot(context.Background())[0].Installed)
+	if got := m.Snapshot(context.Background())[0].Untrusted; got != installed || got == 0 {
+		t.Fatalf("all installed entries should be untrusted before Codex confirms: %d of %d", got, installed)
+	}
+	toml := filepath.Join(filepath.Dir(tg.Path), "config.toml")
+	os.WriteFile(toml, []byte("[hooks.state.\""+tg.Path+":stop:0:0\"]\ntrusted_hash = \"sha256:synthetic\"\n"), 0o600)
+	if got := m.Snapshot(context.Background())[0].Untrusted; got != installed-1 {
+		t.Fatalf("trusted entry still counted: %d", got)
 	}
 }

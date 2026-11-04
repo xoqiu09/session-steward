@@ -613,6 +613,8 @@ func (s *Server) handleSnapshot(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
+	available := s.Dispatch != nil
+	snap.DispatchAvailable = &available
 	writeJSON(w, 200, snap)
 }
 

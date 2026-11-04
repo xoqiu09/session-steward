@@ -70,3 +70,5 @@
 .pm-activity-badge { display: inline-block; margin-right: 6px; padding: 0 6px; border-radius: 999px; font-size: 12px; background: #eef2f6; color: #4a5563; }
 .pm-activity-badge.is-active { background: #e6f2e8; color: #2f5d3d; }
 .pm-activity-badge.is-dormant { background: #f3eee6; color: #6b5a3c; }
+.privacy-notes { margin-top: 18px; border-top: 1px solid var(--line); padding-top: 12px; }
+.privacy-notes ul { margin: 6px 0; padding-left: 18px; display: grid; gap: 4px; font-size: 13px; }

@@ -27,6 +27,7 @@ import { DispatchDesk } from './dispatch/DispatchDesk'
 import { HooksSettings } from './HooksSettings'
 import { useProjectMenu, REPO_ATTR } from './ui/ProjectMenu'
 import { NoticeBar } from './ui/NoticeBar'
+import { useHookCoverage } from './ui/setup'
 import { requestRoom } from './town/roomRequest'
 import { inactiveRepo } from './town/activity'
 
@@ -107,6 +108,7 @@ function PanelApp() {
 
   const groups = useMemo(() => (snap ? groupByRepo(snap, { query, showDone, repoId, provider }) : []), [snap, query, showDone, repoId, provider])
 
+  const coverage = useHookCoverage()
   // 项目推进卡片和小镇房子的右键菜单：查看、整理和收起都在这里，危险操作再确认。
   const projectMenu = useProjectMenu({ snap: hub.merged ?? snap ?? null, current: repoId, remote: isRemote(), actions: {
     onFilter: (r) => { setRepoId(r.id); setSel(null); setAttributionOpen(false); setTab('queue') },
@@ -147,10 +149,13 @@ function PanelApp() {
   ) : null
   const queuePanel = <Queue snap={snap} onSelectItem={selectItem} repoId={repoId} provider={provider} reviewOpen={queueFocus === 'review'} onReviewOpenChange={open => setQueueFocus(open ? 'review' : 'action')} />
 
+  // 这台电脑能从面板启动 Agent 时才给“新建会话”；原因写在“设置”里。
+  const canLaunch = (snap.agents?.length ?? 0) > 0 && !snap.managed_unavailable
   const projectShortcuts = <span className="pm-shortcuts" role="group" aria-label="项目管理入口">
     <button className="btn small" onClick={() => setProjectsOpen('active')}>项目管理</button>
-    <button className="btn small pm-counter" title="查看和恢复本机已归档的项目" onClick={() => setProjectsOpen('archived')}>已归档 {snap.archived_projects ?? 0}</button>
-    <button className="btn small pm-counter" title="查看和恢复本机已删除的项目" onClick={() => setProjectsOpen('trash')}>回收站 {snap.trashed_projects ?? 0}</button>
+    {/* 为 0 时不占位置；项目管理里仍能看到三个分类。 */}
+    {(snap.archived_projects ?? 0) > 0 && <button className="btn small pm-counter" title="查看和恢复本机已归档的项目" onClick={() => setProjectsOpen('archived')}>已归档 {snap.archived_projects}</button>}
+    {(snap.trashed_projects ?? 0) > 0 && <button className="btn small pm-counter" title="查看和恢复本机已删除的项目" onClick={() => setProjectsOpen('trash')}>回收站 {snap.trashed_projects}</button>}
   </span>
   const projectManager = projectsOpen && <ProjectsPanel initialScope={projectsOpen} device={hub.status?.device} onClose={() => { setProjectsOpen(null); setRepoId('all'); setSel(null) }} />
   const settings = settingsOpen && <HooksSettings onClose={() => setSettingsOpen(false)} />
@@ -163,7 +168,7 @@ function PanelApp() {
       <div className="app is-kiosk" onKeyDown={(e) => { if (e.key === 'Escape' && drawer) closeDrawer() }}>
         <main className="kiosk-main">
           {hubToast}
-          <TownView world={route.world} snap={hub.merged ?? snap} conn={conn} repoId={repoId} provider={provider} sel={sel} onSelectItem={townItem} onSelectSession={townSession}
+          <TownView coverage={coverage} world={route.world} snap={hub.merged ?? snap} conn={conn} repoId={repoId} provider={provider} sel={sel} onSelectItem={townItem} onSelectSession={townSession}
             onSelectRepo={(id) => setRepoId(id)} onAllRepos={() => setRepoId('all')} onQueue={openQueue} kiosk rotateMs={route.rotateMs} paused={drawer} noReplay={hub.scope === 'all'} {...townScope}
             bar={<span className="kiosk-tools">
               {hubSwitch}
@@ -174,7 +179,7 @@ function PanelApp() {
               <a className="btn small" href={fullPanelHref(path, null)} title="回到 Session Steward 完整面板">退出桌面模式</a>
             </span>} />
         </main>
-        {projectManager}{projectMenu}<NoticeBar snap={snap} />
+        {projectManager}{projectMenu}<NoticeBar snap={snap} coverage={coverage} />
         {settings}
         {drawer && <div className="kiosk-scrim" onClick={closeDrawer} aria-hidden />}
         {drawer && (
@@ -222,7 +227,7 @@ function PanelApp() {
           {view === 'town' && <a className="btn small" href={kioskHref(window.location.pathname, route.world)} title="全屏小镇，适合挂在副屏或手机上">桌面模式</a>}
           {view === 'canvas' && <button className="btn small" onClick={() => setExpandAll((v) => !v)}>{expandAll ? '默认折叠' : '全部展开'}</button>}
           {quietCount > 0 && <button className="btn small" onClick={() => { setSel(null); setAttributionOpen(false); setTab('sessions'); setSessionScope('quiet') }}>已收起会话 {quietCount}</button>}
-          <button className="btn small" onClick={openAttributions}>近期归属待确认 {attributionPending}</button>
+          {attributionPending > 0 && <button className="btn small" onClick={openAttributions}>近期归属待确认 {attributionPending}</button>}
           <button className="btn small" onClick={() => setSettingsOpen(true)}>设置</button>
         </header>
         {isRemote() && <p className="warn-box" role="status">{remoteReadOnlyMessage}</p>}
@@ -235,7 +240,7 @@ function PanelApp() {
             <button title="一段时间没有收到新事件的会话，不等于卡死；点击查看" onClick={() => { setSel(null); setAttributionOpen(false); setTab('sessions'); setSessionScope('quiet') }}>无新活动 <b>{sum.quiet}</b> 个会话</button>
             <span className="live-actors">{actors.recent.map(({ group: g, actor: a }) => <span key={g.key} className={`actor actor-${a}`} title={`${g.name}：近期行动方`}>{g.name} · {actorLabel[a]}</span>)}{actors.quiet.length > 0 && <span className="muted">已收起 {actors.quiet.length} 个无近期活动项目</span>}</span>
             {isRemote() ? <span className="remote-tag" title={remoteReadOnlyMessage}>远程</span>
-              : <button className="btn small primary" onClick={() => { setSel(null); setAttributionOpen(false); setTab('launch') }}>＋ 新建会话</button>}
+              : canLaunch && <button className="btn small primary" onClick={() => { setSel(null); setAttributionOpen(false); setTab('launch') }}>＋ 新建会话</button>}
           </div>
         })()}
         <div className={view === 'overview' || view === 'today' || view === 'canvas' ? 'workbench-overview overview-hidden' : 'workbench-overview'}>
@@ -244,11 +249,11 @@ function PanelApp() {
         </div>
         <div className="stage">
           {view === 'town' && hubToast}
-          {view === 'town' ? <TownView world={route.world} snap={hub.merged ?? snap} conn={conn} repoId={repoId} provider={provider} sel={sel} onSelectItem={townItem} onSelectSession={townSession} replayDay={replayDay}
+          {view === 'town' ? <TownView coverage={coverage} world={route.world} snap={hub.merged ?? snap} conn={conn} repoId={repoId} provider={provider} sel={sel} onSelectItem={townItem} onSelectSession={townSession} replayDay={replayDay}
             noReplay={hub.scope === 'all'} {...townScope} bar={<>{hubSwitch}{todayEntry}</>}
             onSelectRepo={(id) => setRepoId(id)} onAllRepos={() => setRepoId('all')} onQueue={(lane) => { setSel(null); setAttributionOpen(false); setTab('queue'); setQueueFocus(lane) }} />
             : view === 'today' ? <TodayView snap={snap} onSelectItem={selectItem} onOpenTown={openTown} device={hub.enabled ? hub.status?.device ?? '' : undefined} />
-            : view === 'overview' ? <Overview snap={snap} groups={groups} onSelectItem={selectItem} onSelectSession={selectSession} onOpenAttribution={openAttributions} pendingCount={counts.action} reviewCount={counts.review} expandQuiet={!!query.trim() || repoId !== 'all'} onQueue={(lane = 'action') => { setSel(null); setAttributionOpen(false); setTab('queue'); setQueueFocus(lane) }} /> : view === 'canvas' ? (
+            : view === 'overview' ? <Overview coverage={coverage} snap={snap} groups={groups} onSelectItem={selectItem} onSelectSession={selectSession} onOpenAttribution={openAttributions} pendingCount={counts.action} reviewCount={counts.review} expandQuiet={!!query.trim() || repoId !== 'all'} onQueue={(lane = 'action') => { setSel(null); setAttributionOpen(false); setTab('queue'); setQueueFocus(lane) }} /> : view === 'canvas' ? (
             <ReactFlowProvider>
               <Canvas snap={snap} groups={groups} selected={sel?.kind === 'item' ? sel.id : null} onSelectItem={selectItem} onOpenAttribution={openAttributions} expandAll={expandAll || !!query.trim()} />
             </ReactFlowProvider>
@@ -269,20 +274,20 @@ function PanelApp() {
               <button role="tab" aria-selected={tab === 'queue'} className={tab === 'queue' ? 'on' : ''} onClick={() => { setTab('queue'); setQueueFocus('action') }}>关注队列 {counts.action > 0 && <span className="badge" title="需要你审批或决定">{counts.action}</span>}</button>
               <button role="tab" aria-selected={tab === 'items'} className={tab === 'items' ? 'on' : ''} onClick={() => setTab('items')}>工作项</button>
               <button role="tab" aria-selected={tab === 'sessions'} className={tab === 'sessions' ? 'on' : ''} onClick={() => setTab('sessions')}>会话</button>
-              {!isRemote() && <button role="tab" aria-selected={tab === 'launch'} className={tab === 'launch' ? 'on' : ''} onClick={() => setTab('launch')}>新建会话</button>}
+              {!isRemote() && canLaunch && <button role="tab" aria-selected={tab === 'launch'} className={tab === 'launch' ? 'on' : ''} onClick={() => setTab('launch')}>新建会话</button>}
               <button role="tab" aria-selected={tab === 'review'} className={tab === 'review' ? 'on' : ''} onClick={() => setTab('review')}>复盘</button>
             </nav>
             <div className="side-body">
               {tab === 'queue' && <>{queuePanel}<button className="attribution-summary" onClick={openAttributions}>近期会话待归属 {attributionPending}<small>查看候选依据，按项目批量确认或撤销</small></button></>}
               {tab === 'items' && <WorkItemsPanel snap={snap} items={groups.flatMap((g) => g.items)} history={groups.flatMap(g => g.history ?? [])} repoId={repoId} onSelect={selectItem} />}
               {tab === 'review' && <ReviewPanel />}
-              {tab === 'launch' && !isRemote() && <NewManaged snap={snap} initialRepoId={repoId === 'all' ? undefined : repoId} onLaunched={(m) => selectItem(m.work_item_id)} />}
+              {tab === 'launch' && !isRemote() && canLaunch && <NewManaged snap={snap} initialRepoId={repoId === 'all' ? undefined : repoId} onLaunched={(m) => selectItem(m.work_item_id)} />}
               {tab === 'sessions' && <SessionList snap={snap} onSelect={selectSession} provider={provider} repoId={repoId} scope={sessionScope} onScopeChange={setSessionScope} />}
             </div>
           </>
         ))}
       </aside>
-      {projectManager}{projectMenu}<NoticeBar snap={snap} />
+      {projectManager}{projectMenu}<NoticeBar snap={snap} coverage={coverage} />
       {settings}
     </div>
   )

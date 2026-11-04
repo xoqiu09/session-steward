@@ -144,12 +144,14 @@ type Snapshot struct {
 	ManagedNote       string             `json:"managed_unavailable,omitempty"`
 	AccessIssues      []AccessIssue      `json:"access_issues,omitempty"`
 	ArchivedActivity  []ArchivedActivity `json:"archived_activity,omitempty"`
-	MergeJobs         []MergeJob         `json:"merge_jobs"`
-	CheckedRepos      []int64            `json:"checked_repos"`
-	SessionUsage      []SessionUsage     `json:"session_usage"`
-	ItemUsage         []ItemUsage        `json:"item_usage"`
-	Handoffs          []Handoff          `json:"handoffs"`
-	SummaryRepos      []int64            `json:"summary_repos"`
+	// DispatchAvailable 由服务端填写：这台电脑能不能用派活台（例如找到了 Codex）。为 nil 时按可用处理。
+	DispatchAvailable *bool          `json:"dispatch_available,omitempty"`
+	MergeJobs         []MergeJob     `json:"merge_jobs"`
+	CheckedRepos      []int64        `json:"checked_repos"`
+	SessionUsage      []SessionUsage `json:"session_usage"`
+	ItemUsage         []ItemUsage    `json:"item_usage"`
+	Handoffs          []Handoff      `json:"handoffs"`
+	SummaryRepos      []int64        `json:"summary_repos"`
 	// ReplayAt 非空表示这是回放快照（小镇时间条），只读。
 	ReplayAt string `json:"replay_at,omitempty"`
 	// Devices 只在“全部设备”合并视图里有。
