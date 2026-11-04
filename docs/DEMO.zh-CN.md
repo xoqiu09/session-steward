@@ -1,10 +1,16 @@
 # 新版合成演示
 
-对应尚未打包的新试用版候选。新版把服务启动与示例资料合在一个 `steward demo` 命令里；不需要先启动普通服务或单独灌数据。
+对应 v0.3.0-rc.1 试用预发布。服务启动与示例资料合在一个 `steward demo` 命令里；不需要先启动普通服务或单独灌数据。
 
 ## 启动
 
-在候选源码目录构建一次，需要 Go 1.26.5+：
+已安装 v0.3.0-rc.1 的 App 并完成第一次打开时，可以直接用 App 里的程序：
+
+```sh
+"/Applications/Session Steward.app/Contents/MacOS/steward" demo
+```
+
+下文的 `bin/steward` 都可以换成这个路径。从源码运行时，构建一次，需要 Go 1.26.5+：
 
 ```sh
 go build -o bin/steward ./cmd/steward
@@ -66,7 +72,7 @@ python3 scripts/check-demo.py --binary bin/steward --output /absolute/path/to/ne
 
 在启动终端按 Ctrl+C，进程会断开浏览器连接，关闭监听端口和数据库。数据保留，便于检查导入是否保存；不会在退出时自动删除你的演示编辑。再次运行创建全新样例，不自动继续上一次。
 
-`scripts/demo.sh` 和 `scripts/serve-demo.sh` 都转到同一个新入口，只需运行其中一个。可以用 `STEWARD_BIN` 指定当前候选的二进制：
+`scripts/demo.sh` 和 `scripts/serve-demo.sh` 都转到同一个新入口，只需运行其中一个。可以用 `STEWARD_BIN` 指定含 `demo` 命令的 steward 程序：
 
 ```sh
 STEWARD_BIN="/absolute/path/to/steward" sh scripts/demo.sh --no-open

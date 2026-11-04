@@ -4,7 +4,7 @@
 
 [首次使用](docs/FIRST-USE.zh-CN.md) · [合成演示](docs/DEMO.zh-CN.md) · [试用反馈](docs/TRYOUT.zh-CN.md) · [完整手册](docs/GUIDE.zh-CN.md) · [安全策略](SECURITY.md) · MIT · [English](#english-summary)
 
-> **新试用版候选，尚未发布安装包。** 本文的项目目录和新版演示对应当前源码；公开下载仍是 [v0.2.0](https://github.com/xoqiu09/session-steward/releases/tag/v0.2.0)，不包含这次完整的结构体验。候选先完成独立复核，再生成新安装包。
+> **v0.3.0-rc.1 试用预发布。** 这一版加入项目目录（概况、用途分类、功能关系）和独立的合成演示，安装包在 [v0.3.0-rc.1 Release](https://github.com/xoqiu09/session-steward/releases/tag/v0.3.0-rc.1)。它是预发布，可能还会调整；上一个正式版是 [v0.2.0](https://github.com/xoqiu09/session-steward/releases/tag/v0.2.0)。
 >
 > App 支持 macOS 13+（Apple 芯片 / Intel），界面为中文。默认资料留在本机，无遥测，不需要 SS 账号；首次接入需要你已有 Claude Code 或 Codex。
 
@@ -43,9 +43,9 @@
 
 ## 三步装好
 
-需要：macOS 13 或更新版本，以及 Claude Code 或 Codex（任一即可，桌面版和命令行版都行）。以下下载步骤适用于已公开的 v0.2.0，能体验基础小镇与进度功能；当前候选的新结构体验先从源码演示检查。
+需要：macOS 13 或更新版本，以及 Claude Code 或 Codex（任一即可，桌面版和命令行版都行）。以下以 v0.3.0-rc.1 预发布为准；它在 Releases 页面里标为 Pre-release。
 
-1. **下载。** 打开 [Releases](https://github.com/xoqiu09/session-steward/releases)，下载 v0.2.0 里对应芯片的 `Session-Steward_v0.2.0_macOS_arm64.app.zip`（Apple 芯片）或 `…_amd64.app.zip`（Intel）。解压后把 **Session Steward** 拖进“应用程序”。
+1. **下载。** 打开 [v0.3.0-rc.1 Release](https://github.com/xoqiu09/session-steward/releases/tag/v0.3.0-rc.1)，下载对应芯片的 `Session-Steward_v0.3.0-rc.1_macOS_arm64.app.zip`（Apple 芯片）或 `…_amd64.app.zip`（Intel）。解压后把 **Session Steward** 拖进“应用程序”。
 2. **第一次打开。** 这个版本没有 Apple 签名和公证，macOS 会拦一下：
    - 在“应用程序”里**右键 Session Steward → 打开 → 打开**；
    - 如果没有“打开”按钮（较新的 macOS）：先双击一次，再到“系统设置 → 隐私与安全性”，在下方找到 Session Steward，点“仍要打开”。
@@ -69,12 +69,20 @@ sh scripts/build-app.sh
 
 ## 先用演示数据看一眼
 
-在这份候选源码中构建一个命令行程序，需要 Go 1.26.5+；前端已构建并提交，不需要 Node。运行演示不需要 Claude Code、Codex、Python、curl 或 Git。
+装好 v0.3.0-rc.1 的 App 并完成第一次打开（上面第 2 步）后，不安装 hooks 也可以在终端直接运行：
+
+```sh
+"/Applications/Session Steward.app/Contents/MacOS/steward" demo
+```
+
+从源码运行需要 Go 1.26.5+（前端已构建并提交，不需要 Node）：
 
 ```sh
 go build -o bin/steward ./cmd/steward
 bin/steward demo
 ```
+
+运行演示不需要 Claude Code、Codex、Python、curl 或 Git。
 
 它会选一个空闲的本机端口、创建全新的临时目录并打开浏览器。只有三个虚构项目：
 
@@ -179,7 +187,7 @@ Agent 用 `steward-hook features` 按稳定的功能 ID 回报每项核心功能
 
 ## 更新与卸载
 
-- **更新**：v0.2.0 不支持在 App 里升级。有新版本时到 [Releases](https://github.com/xoqiu09/session-steward/releases) 下载新的 App，退出旧的，替换“应用程序”里的旧版再打开即可。数据在 `~/.steward`，不受影响。
+- **更新**：试用版暂不提供 App 内升级（没有发布签名的更新清单）。有新版本时到 [Releases](https://github.com/xoqiu09/session-steward/releases) 下载新的 App，退出旧的，替换“应用程序”里的旧版再打开即可。数据在 `~/.steward`，不受影响。
 - **卸载**：App 菜单选“卸载 hooks…”，移除 SS 自己的配置；原配置后来有其他工具修改时会保留那些修改。再“退出并停止采集”，把 App 拖进废纸篓。命令行版用 `bin/steward service uninstall && bin/steward uninstall`。
 - 数据在 `~/.steward`，确定不要了再自己删除。
 
@@ -219,7 +227,7 @@ sh scripts/build-app.sh   # 打包 App 到 dist-app/
 - 改 Go：`go test ./...`，改状态机或并发相关时再跑 `go test -race ./...`。
 - 改前端：在 `web/` 里 `npm test` 和 `npm run build`，并提交重新构建的 `web/dist`。
 - 发布：推送 `v*` 标签后，GitHub Actions 会构建 Apple 芯片和 Intel 两种 App 和命令行包，建一个草稿 Release，检查后手动发布。
-- 当前候选先独立复核，尚未打包或发布；新版本需要让源码、README、版本说明和安装包对应同一提交。
+- 新版本需要让源码、README、版本说明和安装包对应同一提交；`native/app/update-version.json` 的构建序号必须递增。
 - 测试和演示只用合成数据；开发约定见 [AGENTS.md](AGENTS.md)。
 
 目录：`cmd/steward`（服务与命令行）、`cmd/steward-hook`（hook 适配器）、`internal/`（核心状态机、存储、服务端、安装、通知、后台服务）、`web/`（React + Vite，小镇在 `web/src/town/`）、`native/app`（macOS App 外壳）、`native/macos`（通知助手）。
@@ -232,4 +240,4 @@ sh scripts/build-app.sh   # 打包 App 到 dist-app/
 
 Session Steward is a local project progress desk for Claude Code and Codex. Projects appear as houses in a town. Each room explains the project's purpose, feature groups and relationships, current work, and reported evidence. Descriptions require explicit input from the user or their existing development Agent; SS does not automatically scan every source repository. Agent reports and user acceptance remain separate.
 
-This source tree is a candidate for the next trial. Public v0.2.0 downloads do not include the complete new structure experience. Build `cmd/steward` with Go 1.26.5+ and run `bin/steward demo` for fictional projects in a fresh isolated directory, without hooks, history scanning, models, or real Agent execution. App trials target macOS 13+, Apple Silicon and Intel, with a Chinese UI. There is no SS account or telemetry; optional integrations and the coding agents have their own network boundaries. See the [first-use walkthrough](docs/FIRST-USE.zh-CN.md) and [trial checklist](docs/TRYOUT.zh-CN.md). New installer packaging is deferred until independent review.
+v0.3.0-rc.1 is a trial pre-release; download it from the [v0.3.0-rc.1 release](https://github.com/xoqiu09/session-steward/releases/tag/v0.3.0-rc.1). After opening the App once, run `"/Applications/Session Steward.app/Contents/MacOS/steward" demo`, or build `cmd/steward` with Go 1.26.5+ and run `bin/steward demo`, for fictional projects in a fresh isolated directory, without hooks, history scanning, models, or real Agent execution. App trials target macOS 13+, Apple Silicon and Intel, with a Chinese UI. There is no SS account or telemetry; optional integrations and the coding agents have their own network boundaries. See the [first-use walkthrough](docs/FIRST-USE.zh-CN.md) and [trial checklist](docs/TRYOUT.zh-CN.md).
