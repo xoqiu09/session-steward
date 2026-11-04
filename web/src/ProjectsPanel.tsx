@@ -12,14 +12,16 @@ const scopeNames: Record<ProjectScope, string> = { active: '使用中', archived
 const actionNames: Record<ProjectAction, string> = { archive: '归档', unarchive: '恢复到使用中', trash: '移入回收站', restore: '恢复到原分类' }
 const projectScope = (p: ProjectInfo): ProjectScope => p.trashed_at ? 'trash' : p.archived_at ? 'archived' : 'active'
 const projectPath = (p: ProjectInfo) => p.common_dir.replace(/\/\.git$/, '').replace(/^dir:/, '')
-type ActivityFilter = 'all' | RepoActivity
+type ActivityFilter = 'all' | RepoActivity | 'suspect'
 const activityNames: Record<RepoActivity, string> = { active: '活跃', quiet: '安静', dormant: '沉睡' }
-const activityHelp: Record<ActivityFilter, string> = { all: '全部', active: '7 天内有动静或有待办', quiet: '7–30 天没有动静', dormant: '超过 30 天没有动静' }
+const activityHelp: Record<ActivityFilter, string> = { all: '全部', active: '7 天内有动静或有待办', quiet: '7–30 天没有动静', dormant: '超过 30 天没有动静', suspect: '没有会话、不是 Git、没有待办、功能登记和结构资料' }
+/** 可能是误登记的目录：Agent 执行命令时顺手进过的回执、草稿、缓存等。只是建议，由你决定要不要移入回收站。 */
+export const suspectProject = (p: ProjectInfo) => p.sessions === 0 && !p.is_git && p.open_items === 0 && p.pending === 0 && (p.features ?? 0) === 0 && !p.has_structure
 export const activityOf = (p: Pick<ProjectInfo, 'activity'>): RepoActivity => p.activity ?? 'active'
 const activityLine = (p: ProjectInfo) => `${activityNames[activityOf(p)]}${p.last_activity_at ? ` · 最近活动 ${ago(p.last_activity_at, new Date().toISOString())}` : ' · 还没有会话'}`
 const dateLabel = (at: string) => Number.isNaN(Date.parse(at)) ? '时间待核对' : new Date(at).toLocaleString('zh-CN')
 
-export function ProjectsPanel({ onClose, initialScope = 'active', device }: { onClose: () => void; initialScope?: ProjectScope; device?: string }) {
+export function ProjectsPanel({ onClose, initialScope = 'active', device, initialFilter = 'all' }: { onClose: () => void; initialScope?: ProjectScope; device?: string; initialFilter?: ActivityFilter }) {
   const dialog = useRef<HTMLDialogElement>(null)
   const [projects, setProjects] = useState<ProjectInfo[] | null>(null)
   const [statuses, setStatuses] = useState<MergeSyncStatus[]>([])
@@ -51,22 +53,22 @@ export function ProjectsPanel({ onClose, initialScope = 'active', device }: { on
   return <dialog className="project-manager" ref={dialog} aria-label="项目管理" onCancel={onClose} onClose={onClose}>
     <div className="pm-heading"><div><span className="pm-eyebrow">{device ? `这台电脑 · ${device}` : '这台电脑的项目'}</span><h1>项目管理</h1><p>暂时不用的归档，放弃的移入回收站。都可以找回来。</p></div><button className="btn" onClick={onClose} autoFocus>关闭</button></div>
     <ErrorLine msg={error} />
-    {projects ? <ProjectManager projects={projects} statuses={statuses} readOnly={isRemote()} initialScope={initialScope}
+    {projects ? <ProjectManager projects={projects} statuses={statuses} readOnly={isRemote()} initialScope={initialScope} initialFilter={initialFilter}
       onArchive={async (ids, archived) => { await api.archiveProjects(ids, archived); await load() }}
       onTrash={async (ids, trashed) => { await api.trashProjects(ids, trashed); await load() }}
       onSync={async () => { await api.scanMerges(); await load() }} /> : <p role="status">正在读取项目…</p>}
   </dialog>
 }
 
-export function ProjectManager({ projects, statuses, readOnly = false, initialScope = 'active', onArchive, onTrash, onSync }: {
-  projects: ProjectInfo[]; statuses: MergeSyncStatus[]; readOnly?: boolean; initialScope?: ProjectScope
+export function ProjectManager({ projects, statuses, readOnly = false, initialScope = 'active', initialFilter = 'all', onArchive, onTrash, onSync }: {
+  projects: ProjectInfo[]; statuses: MergeSyncStatus[]; readOnly?: boolean; initialScope?: ProjectScope; initialFilter?: ActivityFilter
   onArchive: (ids: number[], archived: boolean) => Promise<unknown>
   onTrash: (ids: number[], trashed: boolean) => Promise<unknown>; onSync: () => Promise<unknown>
 }) {
   const act = useAction()
   const [mode, setMode] = useState<ProjectScope>(initialScope)
   const [query, setQuery] = useState('')
-  const [activity, setActivity] = useState<ActivityFilter>('all')
+  const [activity, setActivity] = useState<ActivityFilter>(initialFilter)
   const [selected, setSelected] = useState<Set<number>>(new Set())
   const [confirm, setConfirm] = useState<{ kind: ProjectAction; projects: ProjectInfo[] } | null>(null)
   const [notice, setNotice] = useState('')
@@ -78,9 +80,9 @@ export function ProjectManager({ projects, statuses, readOnly = false, initialSc
   const counts: Record<ProjectScope, number> = { active: 0, archived: 0, trash: 0 }
   for (const p of projects) counts[projectScope(p)]++
   const inScope = projects.filter(p => projectScope(p) === mode)
-  const activityCounts: Record<ActivityFilter, number> = { all: inScope.length, active: 0, quiet: 0, dormant: 0 }
-  for (const p of inScope) activityCounts[activityOf(p)]++
-  const visible = inScope.filter(p => (mode !== 'active' || activity === 'all' || activityOf(p) === activity) && `${p.name} ${p.common_dir}`.toLowerCase().includes(query.trim().toLowerCase()))
+  const activityCounts: Record<ActivityFilter, number> = { all: inScope.length, active: 0, quiet: 0, dormant: 0, suspect: 0 }
+  for (const p of inScope) { activityCounts[activityOf(p)]++; if (suspectProject(p)) activityCounts.suspect++ }
+  const visible = inScope.filter(p => (mode !== 'active' || activity === 'all' || (activity === 'suspect' ? suspectProject(p) : activityOf(p) === activity)) && `${p.name} ${p.common_dir}`.toLowerCase().includes(query.trim().toLowerCase()))
   const chosen = visible.filter(p => selected.has(p.id))
   const syncs = new Map(statuses.map(s => [s.repo_id, s]))
   const locked = act.busy || confirm !== null
@@ -106,9 +108,9 @@ export function ProjectManager({ projects, statuses, readOnly = false, initialSc
     </div>
     <div className="pm-tools"><input type="search" aria-label="搜索项目" placeholder="搜索项目名或目录" value={query} disabled={locked} onChange={e => { setQuery(e.target.value); clear() }} /><span className="muted">{query ? `找到 ${visible.length} 个项目` : `${visible.length} 个项目`}</span></div>
     {mode === 'active' && <div className="pm-activity" role="group" aria-label="按活跃度筛选">
-      {(['all', 'active', 'quiet', 'dormant'] as const).map(a => <button key={a} className={`btn small ${activity === a ? 'on' : ''}`} aria-pressed={activity === a} disabled={locked} title={activityHelp[a]} onClick={() => { setActivity(a); clear() }}>{a === 'all' ? '全部' : activityNames[a]} {activityCounts[a]}</button>)}
+      {(['all', 'active', 'quiet', 'dormant', 'suspect'] as const).filter(a => a !== 'suspect' || activityCounts.suspect > 0 || activity === 'suspect').map(a => <button key={a} className={`btn small ${activity === a ? 'on' : ''}`} aria-pressed={activity === a} disabled={locked} title={activityHelp[a]} onClick={() => { setActivity(a); clear() }}>{a === 'all' ? '全部' : a === 'suspect' ? '可能是误登记的目录' : activityNames[a]} {activityCounts[a]}</button>)}
     </div>}
-    <p className="pm-explanation">{mode === 'active' && activity !== 'all' && activity !== 'active' ? `${activityNames[activity]}的项目（${activityHelp[activity]}）默认不在小镇上显示，有新会话会自动回来；不再需要的可以全选后归档。` : mode === 'trash' ? '回收站中的项目已从小镇和待办移除。恢复后回到删除前的分类，保留时间不设自动清理。' : mode === 'archived' ? '归档项目已从小镇和待办收起。在这里恢复，也可以选中后移入回收站。' : '勾选一个或多个项目，就能一起归档或删除。每一行右侧也可以单独操作。'}</p>
+    <p className="pm-explanation">{mode === 'active' && activity === 'suspect' ? '这些目录没有会话、不是 Git 仓库，也没有待办、功能登记或结构资料，多半是 Agent 执行命令时顺手进过的回执、草稿或缓存目录。确认不需要的，全选后移入回收站；可以恢复，代码目录和历史记录都保留。' : mode === 'active' && (activity === 'quiet' || activity === 'dormant') ? `${activityNames[activity]}的项目（${activityHelp[activity]}）默认不在小镇上显示，有新会话会自动回来；不再需要的可以全选后归档。` : mode === 'trash' ? '回收站中的项目已从小镇和待办移除。恢复后回到删除前的分类，保留时间不设自动清理。' : mode === 'archived' ? '归档项目已从小镇和待办收起。在这里恢复，也可以选中后移入回收站。' : '勾选一个或多个项目，就能一起归档或删除。每一行右侧也可以单独操作。'}</p>
     <div className="pm-list" aria-label={`${scopeNames[mode]}项目`}>
       {visible.length > 0 && <label className="pm-select-all"><input type="checkbox" disabled={readOnly || locked} checked={chosen.length === visible.length} ref={el => { if (el) el.indeterminate = chosen.length > 0 && chosen.length < visible.length }} onChange={e => setSelected(new Set(e.target.checked ? visible.map(p => p.id) : []))} />全选当前显示的 {visible.length} 个项目</label>}
       {visible.map(p => { const sync = syncs.get(p.id); return <article className={`pm-project ${selected.has(p.id) ? 'is-selected' : ''}`} key={p.id}>
