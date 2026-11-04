@@ -207,7 +207,38 @@ func ensureRepo(tx *sql.Tx, l *locInfo, now string) (int64, error) {
 	return r.LastInsertId()
 }
 
+// toolLocation：这些事件的目录是那条命令的工作目录，不一定是会话所在的项目。
+func toolLocation(k event.Kind) bool {
+	switch k {
+	case event.KindToolPre, event.KindToolPost, event.KindToolFail, event.KindPermission:
+		return true
+	}
+	return false
+}
+
+// knownRepo 判断目录标识是否已经登记为项目（含别名）。
+func knownRepo(tx *sql.Tx, identity string) (bool, error) {
+	identity = canonicalIdentity(identity)
+	var one int
+	err := tx.QueryRow(`SELECT 1 FROM repo_identities WHERE identity=? UNION ALL SELECT 1 FROM repos WHERE common_dir=? LIMIT 1`, identity, identity).Scan(&one)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	return err == nil, err
+}
+
 func (c *Core) upsertSession(tx *sql.Tx, e *event.Event, l *locInfo, now string) (int64, error) {
+	// 命令在任务回执、草稿或缓存这类非 Git 目录里执行时，不因此新建项目，也不把会话挪过去；
+	// 已登记的目录照常归属。会话级事件（开始、提问、begin 等）仍按自身目录登记。
+	if l != nil && !l.isGit && toolLocation(e.Kind) {
+		known, err := knownRepo(tx, l.commonDir)
+		if err != nil {
+			return 0, err
+		}
+		if !known {
+			l = nil
+		}
+	}
 	var repoID int64
 	if l != nil {
 		var err error
