@@ -40,7 +40,7 @@ describe('每个项目自己的结构资料', () => {
   it('原登记和验收保持；通用房间默认概况，四个页签，只读浏览没有保存或执行控件', () => {
     const input = [feature('import', { implementation: 'implemented', validation: 'passed' }), feature('export', { accepted: true })]
     const before = JSON.stringify(input), html = renderToStaticMarkup(<TownFeaturePanel b={building} features={input} structure={record} />)
-    expect(html).toContain('你已验收 1 · Agent 报验证通过 1')
+    expect(html).toContain('你已确认 1 · Agent 自报通过 1（未经你确认）')
     expect(html.match(/role="tab"/g)).toHaveLength(4)
     expect(html).toContain('合成账目整理工具')
     expect(html).not.toContain('保存目录')

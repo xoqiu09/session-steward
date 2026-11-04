@@ -1,7 +1,7 @@
 // 小镇的新动态只描述快照的变化；不写审批、验收、合并或任何服务端状态。
 import type { Approval, Snapshot, WorkItem } from '../types'
 import { HUB_STRIDE } from '../hub/ids'
-import { attentionManaged } from '../workManagement'
+import { attentionManaged, deliveredAt, STALE_REVIEW_MS } from '../workManagement'
 import { stalledItems, stalledKey } from './stalled'
 
 // returned：菜熟了以后你又回到那个会话发了消息，问你一句这件算不算处理了，收不收由你点。
@@ -148,7 +148,7 @@ export function waitedText(ms: number): string {
   return h < 48 ? `${h} 小时` : `${Math.floor(h / 24)} 天`
 }
 
-export const deliveredAt = (w: WorkItem) => w.brief?.last_delivered_at || w.updated_at
+export { deliveredAt } from '../workManagement'
 
 /** 熟了超过 OVERDUE_MS 还没收的菜。键里带交付时间：同一次交付只提醒一次，重新交付后会再提醒。 */
 export function overdueRipe(s: Snapshot, nowMs: number): TownMoment[] {
@@ -157,7 +157,8 @@ export function overdueRipe(s: Snapshot, nowMs: number): TownMoment[] {
     if (!visibleItem(w) || w.status !== 'review') continue
     const at = deliveredAt(w)
     const waited = nowMs - time(at)
-    if (!time(at) || waited < OVERDUE_MS) continue
+    // 超过 7 天的不再弹提醒，在每日十分钟和队列里集中处理。
+    if (!time(at) || waited < OVERDUE_MS || waited >= STALE_REVIEW_MS) continue
     const base = itemMoment(s, w, 'ripe', at)
     const project = (s.repos ?? []).find((r) => r.id === w.repo_id)?.name || '未归属'
     out.push({ ...base, key: JSON.stringify([w.id, 'overdue', at]), message: `${project}：${w.id} 熟了 ${waitedText(waited)}，还没收` })

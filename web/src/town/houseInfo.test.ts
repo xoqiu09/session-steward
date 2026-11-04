@@ -61,14 +61,15 @@ describe('房子信息卡', () => {
   const ledger = model.buildings.find((b) => b.repo?.id === 1)!
   const brief2 = model.buildings.find((b) => b.repo?.id === 2)!
 
-  it('分组口径：已实现且报验证通过或你已验收才算已完成；冲突不算完成', () => {
+  it('分组口径：只有你验收过的算已确认；Agent 自报实现并通过的单列；冲突不算完成', () => {
     const info = houseInfo(ledger, features)
-    const ids = (g: 'done' | 'building' | 'todo') => info.groups[g].map((f) => f.id).sort()
-    expect(ids('done')).toEqual(['f1', 'f2'])
+    const ids = (g: 'done' | 'reported' | 'building' | 'todo') => info.groups[g].map((f) => f.id).sort()
+    expect(ids('done')).toEqual(['f2'])
+    expect(ids('reported')).toEqual(['f1'])
     expect(ids('building')).toEqual(['f3', 'f4', 'f7'])
     expect(ids('todo')).toEqual(['f5', 'f6'])
     const status = Object.fromEntries(Object.values(info.groups).flat().map((f) => [f.id, f.status]))
-    expect(status).toMatchObject({ f1: '已实现 · Agent 报验证通过', f2: '你已验收', f3: '开发中', f4: '验证失败', f5: '未开始', f7: '回报不一致，待对齐' })
+    expect(status).toMatchObject({ f1: '已实现 · Agent 自报通过，待你确认', f2: '你已验收', f3: '开发中', f4: '验证失败', f5: '未开始', f7: '回报不一致，待对齐' })
     expect(info.groups.building.find((f) => f.id === 'f3')!.blocker).toBe('缺少样例文件')
     expect(info.groups.building.find((f) => f.id === 'f7')!.conflict).toBe(true)
     expect(featureGroup(fakeFeature({ id: 'z', repo_id: 1, title: 'z', implementation: 'implemented', validation: 'validating' }))).toBe('building')
@@ -78,7 +79,7 @@ describe('房子信息卡', () => {
     const info = houseInfo(ledger, features)
     expect(Object.values(info.groups).flat().some((f) => f.id === 'x1')).toBe(false)
     const other = houseInfo(brief2, features)
-    expect(other.groups.done.map((f) => f.id)).toEqual(['x1'])
+    expect([...other.groups.done, ...other.groups.reported].map((f) => f.id)).toEqual(['x1'])
     expect(other.next?.itemId).toBe('W-4')
   })
 
@@ -101,10 +102,10 @@ describe('房子信息卡', () => {
     expect(info.next).toEqual({ text: '请你看一下图表配色', itemId: 'W-2', owner: '你', at: '2026-10-26T05:40:00Z' })
   })
 
-  it('信息卡：标题、在做的 Agent、三组计数、超过 4 条写“另 N 项”、下一步；无按钮', () => {
+  it('信息卡：标题、在做的 Agent、四组计数、超过 4 条写“另 N 项”、下一步；无按钮', () => {
     const many = Array.from({ length: 6 }, (_, i) => fakeFeature({ id: `m${i}`, repo_id: 1, title: `功能 ${i}`, implementation: 'not_started' }))
     const html = renderToStaticMarkup(createElement(HouseCard, { info: houseInfo(ledger, [...features, ...many]) }))
-    for (const t of ['aria-label="项目概况"', 'pixel-ledger', 'Claude 2 · Codex 1 在做', '已完成 <b>2</b>', '开发中 <b>3</b>', '未开始 <b>8</b>', '另 4 项', '下一步 · 你', '请你看一下图表配色']) expect(html).toContain(t)
+    for (const t of ['aria-label="项目概况"', 'pixel-ledger', 'Claude 2 · Codex 1 在做', '你已确认 <b>1</b>', 'Agent 报完成 <b>1</b>', '开发中 <b>3</b>', '未开始 <b>8</b>', '另 4 项', '下一步 · 你', '请你看一下图表配色']) expect(html).toContain(t)
     expect(html).not.toContain('<button')
     expect(renderToStaticMarkup(createElement(HouseCard, { info: houseInfo(ledger, []) }))).toContain('还没登记核心功能')
   })

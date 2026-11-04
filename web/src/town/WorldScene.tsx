@@ -1,5 +1,6 @@
 // 小镇世界：每个项目一个街区，中间是广场。远景只画街区名牌和计数，近景画小人、包裹和任务。只读。
 import { useEffect, useMemo, useRef, useState, type PointerEvent as RPointerEvent } from 'react'
+import { STALE_REVIEW_MS } from '../workManagement'
 import { onRoomRequest, takeRoomRequest, type RoomFocus, type RoomRequest } from './roomRequest'
 import { IsoBox, IsoTile, iso, type Pt } from './iso'
 import { attentionManaged } from '../workManagement'
@@ -771,7 +772,11 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
     return out
   }, [props.snapshot, props.replaying, model.now])
   // 待验收常驻：最久的一棵已经等了多久（按交付时间算），超过 30 分钟变醒目。
-  const oldestWait = ripe.length ? Math.max(0, ...ripe.map((r) => (Date.parse(model.now) || Date.now()) - (Date.parse(deliveredAt(r.item)) || Date.now()))) : null
+  // 超过 7 天的交付不再算进“最久等了”，也不标红；单独提示在每日十分钟里一起处理。
+  const waits = ripe.map((r) => (Date.parse(model.now) || Date.now()) - (Date.parse(deliveredAt(r.item)) || Date.now()))
+  const freshWaits = waits.filter((w) => w < STALE_REVIEW_MS)
+  const staleRipe = waits.length - freshWaits.length
+  const oldestWait = freshWaits.length ? Math.max(0, ...freshWaits) : null
   const results = harvest ? harvest.ids.map((id) => harvestResult(id, model.buildings)) : []
   const goHarvest = (ids: string[], index: number) => {
     setHarvest({ ids, index })
@@ -995,7 +1000,8 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
         {!props.replaying && <button type="button" className={`town-basket${ripe.length ? ' has-ripe' : ''}`} onClick={startHarvest} disabled={!ripe.length && !harvest}
           title={`${ripe.length ? `熟了 ${ripe.length} 棵：一棵一棵打开验收卡片，收下或退回` : '现在没有熟了的菜（没有待验收的工作项）'}。菜地只放待验收交付；Agent 交给你的事在右侧“待审阅／验收”，卡住的工作在“每日十分钟”。`}>收菜 {ripe.length}</button>}
         {!props.replaying && oldestWait != null && <span className={`town-basket-wait${oldestWait >= OVERDUE_MS ? ' is-overdue' : ''}`} role="status"
-          title="最早熟的那棵从交付到现在的时间；超过 30 分钟变红">最久等了 {waitedText(oldestWait)}</span>}
+          title="最早熟的那棵从交付到现在的时间；超过 30 分钟变红，超过 7 天的另算">最久等了 {waitedText(oldestWait)}</span>}
+        {!props.replaying && staleRipe > 0 && <span className="town-basket-wait is-stale" role="status" title="交付超过 7 天还没收的；可以在每日十分钟里一起暂停提醒">另有 {staleRipe} 件超过 7 天</span>}
         <span className="town-guide-anchor">
           <button type="button" {...{ [POPOVER_ATTR]: 'guide' }} aria-pressed={guide} className={guide ? 'is-on' : undefined} onClick={() => (guide ? setGuide(false) : openGuide())} title="小镇怎么看：地图上的东西、怎么操作、每天怎么用">怎么看</button>
           {!guideSeen && !guide && <span className="town-guide-bubble" role="note">第一次来？点这里看怎么用</span>}

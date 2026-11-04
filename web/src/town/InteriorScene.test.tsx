@@ -73,7 +73,7 @@ describe('项目室内 · 核心功能面板', () => {
       feature({ id: 'x', repo_id: 2, title: '别的项目的功能' }),
     ])
     expect(html).toContain('aria-label="demo-repo 项目结构"')
-    for (const t of ['3 项功能', '你已验收 0 · Agent 报验证通过 1', '项目概况', '功能地图', '当前推进', '验证依据']) expect(html).toContain(t)
+    for (const t of ['3 项功能', '你已确认 0 · Agent 自报通过 1（未经你确认）', '项目概况', '功能地图', '当前推进', '验证依据']) expect(html).toContain(t)
     expect(html).not.toContain('别的项目的功能')
     expect(html).toContain('工作项 W-1 正在做')
     // 面板必须在 SVG 之外，原生 WebKit 的滚动合成不再经过 foreignObject 坐标系。

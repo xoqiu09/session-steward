@@ -6,7 +6,7 @@ import { AgentBadge, CopyButton, ErrorLine, useAction } from '../bits'
 import { ago, providerLabel } from '../model'
 import { MergeCard } from '../Queue'
 import { WorkStatusActions } from '../ui/WorkStatusActions'
-import { QuickClose } from '../ui/QuickClose'
+import { PauseStale, QuickClose, staleDeliveries } from '../ui/QuickClose'
 import { managementLabel } from '../workManagement'
 import { buildToday, type DecideRow, type Grade, type ReviewRow, type StuckRow } from './todayModel'
 import './today.css'
@@ -75,6 +75,7 @@ export function TodayView({ snap, onSelectItem, onOpenTown, device }: { snap: Sn
 
         {t.review.length > 0 && <section id="today-review" className="today-card">
           <h2><i className="dot is-review" />有交付，等你处理 <small>{t.review.length} · 有可核对证据的排在前面</small></h2>
+          <PauseStale items={staleDeliveries(t.review.map((r) => r.item), snap.now)} />
           {t.review.map((r) => <ReviewLine key={r.item.id} r={r} snap={snap} onSelectItem={onSelectItem} />)}
         </section>}
 

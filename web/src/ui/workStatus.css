@@ -9,3 +9,5 @@
 @media (max-width: 640px) { .work-status-actions { width: 100%; } .work-management-form { width: 100%; } }
 .quick-close { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .quick-close .hint { flex-basis: 100%; margin: 0; }
+.pause-stale { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 4px 0 8px; }
+.pause-stale .hint { margin: 0; }

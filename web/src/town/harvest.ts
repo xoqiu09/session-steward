@@ -2,7 +2,7 @@
 // 待开始=种子，Agent 在干=发芽，等你决定=缺水，待验收=熟了，受阻=生虫。熟了的由你一棵一棵收（验收）。
 import type { Approval, WorkItem } from '../types'
 import type { BuildingView } from './townModel'
-import { attentionManaged } from '../workManagement'
+import { attentionManaged, awaitingAcceptance, deliveredAt } from '../workManagement'
 
 export type CropStage = 'seed' | 'sprout' | 'thirsty' | 'ripe' | 'bug'
 
@@ -21,7 +21,7 @@ export function cropKindOf(repoId: number | null | undefined): CropKind {
 
 /** 菜地最多种几棵，其余只计数。 */
 export const FIELD_MAX = 9
-/** 熟了这么久还没收，会发蔫提醒。 */
+/** 交付后这么久还没收，会发蔫提醒（按交付时间算）。 */
 export const OVERRIPE_MS = 2 * 86400_000
 
 export interface Crop { item: WorkItem; stage: CropStage; overripe: boolean }
@@ -37,18 +37,19 @@ export function cropStage(item: WorkItem, b: BuildingView, pending: readonly App
 }
 
 export function cropsOf(b: BuildingView, pending: readonly Approval[], now: number): { crops: Crop[]; more: number } {
-  const open = b.items.filter((w) => !attentionManaged(w) && w.status !== 'done' && w.status !== 'abandoned')
+  // 例行整理的待验收轮次会自动收进历史，不画成熟了的菜，和队列、每日十分钟一致。
+  const open = b.items.filter((w) => !attentionManaged(w) && w.status !== 'done' && w.status !== 'abandoned' && !(w.status === 'review' && !awaitingAcceptance(w)))
   const all = open.map((item) => {
     const stage = cropStage(item, b, pending)
-    return { item, stage, overripe: stage === 'ripe' && now - Date.parse(item.updated_at) > OVERRIPE_MS }
+    return { item, stage, overripe: stage === 'ripe' && now - Date.parse(deliveredAt(item)) > OVERRIPE_MS }
   }).sort((x, y) => ORDER[x.stage] - ORDER[y.stage] || x.item.id.localeCompare(y.item.id))
   return { crops: all.slice(0, FIELD_MAX), more: Math.max(0, all.length - FIELD_MAX) }
 }
 
 /** 收菜顺序：按给定的项目顺序（地图巡游的顺序），每块地里先收熟得最久的。 */
 export function ripeQueue(buildings: readonly BuildingView[]): { item: WorkItem; buildingKey: string }[] {
-  return buildings.flatMap((b) => b.items.filter((w) => !attentionManaged(w) && w.status === 'review')
-    .sort((x, y) => x.updated_at.localeCompare(y.updated_at) || x.id.localeCompare(y.id))
+  return buildings.flatMap((b) => b.items.filter(awaitingAcceptance)
+    .sort((x, y) => deliveredAt(x).localeCompare(deliveredAt(y)) || x.id.localeCompare(y.id))
     .map((item) => ({ item, buildingKey: b.key })))
 }
 
