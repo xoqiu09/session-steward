@@ -7,7 +7,7 @@ import { repoLabel } from './workbench'
 import { ItemDetail, WorkItemsPanel, SessionDetail, SessionList } from './Panels'
 import { Queue } from './Queue'
 import { groupByRepo, itemStatusLabel, projectQueueCounts, providerLabel, queueCounts, sessionBuckets, type SessionScope } from './model'
-import type { ItemStatus } from './types'
+import type { ItemStatus, Snapshot } from './types'
 import { AttributionPanel } from './AttributionPanel'
 import { scopedAttributions } from './attribution'
 import { actorLabel, liveSummary, parseDeepLink, projectActorRows, resolveDeepLink, type Deep } from './live'
@@ -78,6 +78,9 @@ function PanelApp() {
   const [sessionScope, setSessionScope] = useState<SessionScope>('recent')
   const [attributionOpen, setAttributionOpen] = useState(false)
   const [projectsOpen, setProjectsOpen] = useState<ProjectScope | null>(null)
+  const [projectsFilter, setProjectsFilter] = useState<'all' | 'suspect'>('all')
+  // “发现 N 个可能误登记的目录”只提示一次：关掉后，数量变多时才再出现。只存在这个浏览器里。
+  const [suspectSeen, setSuspectSeen] = useState(() => { try { return Number(localStorage.getItem('ss.suspect-dirs.seen') || 0) } catch { return 0 } })
   const [settingsOpen, setSettingsOpen] = useState(false)
   // 每日十分钟已经列出了关注队列的内容：侧栏默认只留详情位置，需要时再展开原来的标签页。
   const [todaySideTabs, setTodaySideTabs] = useState(false)
@@ -151,13 +154,19 @@ function PanelApp() {
 
   // 这台电脑能从面板启动 Agent 时才给“新建会话”；原因写在“设置”里。
   const canLaunch = (snap.agents?.length ?? 0) > 0 && !snap.managed_unavailable
+  const suspectCount = suspectDirectories(snap)
+  const dismissSuspect = () => { setSuspectSeen(suspectCount); try { localStorage.setItem('ss.suspect-dirs.seen', String(suspectCount)) } catch { /* 隐私模式：只在本页有效 */ } }
   const projectShortcuts = <span className="pm-shortcuts" role="group" aria-label="项目管理入口">
-    <button className="btn small" onClick={() => setProjectsOpen('active')}>项目管理</button>
+    <button className="btn small" onClick={() => { setProjectsFilter('all'); setProjectsOpen('active') }}>项目管理</button>
+    {!isRemote() && suspectCount >= 5 && suspectCount > suspectSeen && <span className="pm-suspect-hint">
+      <button className="btn small" title="没有会话、不是 Git、没有待办的目录，多半是 Agent 顺手进过的；看看要不要移入回收站" onClick={() => { setProjectsFilter('suspect'); setProjectsOpen('active') }}>发现 {suspectCount} 个可能误登记的目录</button>
+      <button className="btn small" aria-label="不再提示" title="不再提示（数量变多时再提示）" onClick={dismissSuspect}>×</button>
+    </span>}
     {/* 为 0 时不占位置；项目管理里仍能看到三个分类。 */}
     {(snap.archived_projects ?? 0) > 0 && <button className="btn small pm-counter" title="查看和恢复本机已归档的项目" onClick={() => setProjectsOpen('archived')}>已归档 {snap.archived_projects}</button>}
     {(snap.trashed_projects ?? 0) > 0 && <button className="btn small pm-counter" title="查看和恢复本机已删除的项目" onClick={() => setProjectsOpen('trash')}>回收站 {snap.trashed_projects}</button>}
   </span>
-  const projectManager = projectsOpen && <ProjectsPanel initialScope={projectsOpen} device={hub.status?.device} onClose={() => { setProjectsOpen(null); setRepoId('all'); setSel(null) }} />
+  const projectManager = projectsOpen && <ProjectsPanel initialScope={projectsOpen} initialFilter={projectsFilter} device={hub.status?.device} onClose={() => { setProjectsOpen(null); setRepoId('all'); setSel(null) }} />
   const settings = settingsOpen && <HooksSettings onClose={() => setSettingsOpen(false)} />
 
   if (route.kiosk) {
@@ -328,3 +337,14 @@ function ItemTable({ groups, onSelect }: { groups: ReturnType<typeof groupByRepo
     </div>
   )
 }
+
+/** 快照里可能是误登记的目录：不是 Git、从没有会话或请求、没有未完成工作、功能登记和结构资料。与项目管理里的筛选同一口径。 */
+export function suspectDirectories(snap: Snapshot): number {
+  const busy = new Set<number>()
+  for (const w of snap.work_items ?? []) if (w.repo_id != null && !['done', 'abandoned'].includes(w.status)) busy.add(w.repo_id)
+  for (const f of snap.features ?? []) busy.add(f.repo_id)
+  for (const st of snap.structures ?? []) busy.add(st.repo_id)
+  for (const a of snap.approvals ?? []) if (a.repo_id != null && a.status === 'pending') busy.add(a.repo_id)
+  return (snap.repos ?? []).filter((r) => !r.is_git && !r.last_activity_at && !busy.has(r.id) && !r.device).length
+}
+

@@ -25,6 +25,9 @@ type ProjectInfo struct {
 	Sessions           int    `json:"sessions"`
 	Running            int    `json:"running"`
 	Pending            int    `json:"pending"`
+	// Features、HasStructure 用来判断“可能是误登记的目录”：一项功能、一份结构资料都没有。
+	Features     int  `json:"features"`
+	HasStructure bool `json:"has_structure"`
 }
 
 func (c *Core) Projects(ctx context.Context) ([]ProjectInfo, error) {
@@ -32,7 +35,9 @@ func (c *Core) Projects(ctx context.Context) ([]ProjectInfo, error) {
 	 (SELECT COUNT(*) FROM work_items w WHERE w.repo_id=r.id AND w.status NOT IN ('done','abandoned')),
 	 (SELECT COUNT(*) FROM sessions s WHERE s.repo_id=r.id),
 	 (SELECT COUNT(*) FROM sessions s WHERE s.repo_id=r.id AND s.data_source='live' AND s.state IN ('running','waiting_permission')),
-	 (SELECT COUNT(*) FROM approvals a WHERE a.repo_id=r.id AND a.status='pending'), COALESCE(t.v,'')
+	 (SELECT COUNT(*) FROM approvals a WHERE a.repo_id=r.id AND a.status='pending'), COALESCE(t.v,''),
+	 (SELECT COUNT(*) FROM project_features f WHERE f.repo_id=r.id),
+	 EXISTS(SELECT 1 FROM meta s WHERE s.k='project_structure:'||r.id)
 	 FROM repos r LEFT JOIN meta m ON m.k='repo_archive:'||r.id
 	 LEFT JOIN meta t ON t.k='repo_trash:'||r.id
 	 WHERE r.id NOT IN (SELECT repo_id FROM repo_aliases) ORDER BY r.name,r.id`)
@@ -44,7 +49,7 @@ func (c *Core) Projects(ctx context.Context) ([]ProjectInfo, error) {
 	for rows.Next() {
 		var p ProjectInfo
 		var raw string
-		if err := rows.Scan(&p.ID, &p.Name, &p.CommonDir, &p.IsGit, &p.TargetRef, &p.ArchivedAt, &p.OpenItems, &p.Sessions, &p.Running, &p.Pending, &raw); err != nil {
+		if err := rows.Scan(&p.ID, &p.Name, &p.CommonDir, &p.IsGit, &p.TargetRef, &p.ArchivedAt, &p.OpenItems, &p.Sessions, &p.Running, &p.Pending, &raw, &p.Features, &p.HasStructure); err != nil {
 			return nil, err
 		}
 		if raw != "" {

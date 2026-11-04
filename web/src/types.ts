@@ -20,6 +20,8 @@ export type RepoActivity = 'active' | 'quiet' | 'dormant'
 export interface Worktree { path: string; branch?: string; head: string; main: boolean; removable: boolean; reason?: string }
 
 export interface ProjectInfo extends Repo {
+  features?: number
+  has_structure?: boolean
   archived_at: string
   trashed_at?: string
   trashed_from_archive?: boolean

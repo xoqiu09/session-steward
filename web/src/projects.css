@@ -72,3 +72,5 @@
 .pm-activity-badge.is-dormant { background: #f3eee6; color: #6b5a3c; }
 .privacy-notes { margin-top: 18px; border-top: 1px solid var(--line); padding-top: 12px; }
 .privacy-notes ul { margin: 6px 0; padding-left: 18px; display: grid; gap: 4px; font-size: 13px; }
+.pm-suspect-hint { display: inline-flex; gap: 2px; }
+.pm-suspect-hint .btn:first-child { background: #fff8ea; border-color: #e9c989; }
