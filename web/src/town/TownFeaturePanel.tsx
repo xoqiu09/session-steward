@@ -1,4 +1,5 @@
 import { useId, useRef, useState } from 'react'
+import { ago } from '../model'
 import type { RoomFocus } from './roomRequest'
 import { houseInfo, featureStatus } from './houseInfo'
 import type { PurposeFeature } from './featureCategories'
@@ -28,6 +29,7 @@ export function TownFeaturePanel({ b, features, structure, writeable = false, on
   focus?: RoomFocus
 }) {
   const info = houseInfo(b, features, structure)
+  const now = new Date().toISOString()
   const document = info.structure?.document
   const mine = (features ?? []).filter(f => f.repo_id === b.repo?.id)
   const [tab, setTab] = useState<Tab>('overview')
@@ -41,7 +43,7 @@ export function TownFeaturePanel({ b, features, structure, writeable = false, on
   return <section className="town-house-features town-project-room" aria-label={`${b.name} 项目结构`} onPointerDown={e => e.stopPropagation()} onClick={e => e.stopPropagation()} onWheel={e => e.stopPropagation()}>
     <div className="town-house-features-head">项目结构</div>
     <div className="town-house-features-counts">{document ? `${document.groups.length} 类用途 · ` : ''}{all.length} 项功能</div>
-    <div className="town-house-features-counts">你已验收 {all.filter(f => f.accepted).length} · Agent 报验证通过 {all.filter(f => f.reportedPassed).length}</div>
+    <div className="town-house-features-counts">你已确认 {all.filter(f => f.accepted).length} · Agent 自报通过 {all.filter(f => f.reportedPassed).length}（未经你确认）</div>
     <div className="town-room-tabs" ref={tabs} role="tablist" aria-label="项目阅读方式">
       {TABS.map((t, i) => <button type="button" key={t.id} role="tab" id={`${id}-${t.id}`} aria-controls={`${id}-panel`} aria-selected={tab === t.id} tabIndex={tab === t.id ? 0 : -1} onClick={() => setTab(t.id)} onKeyDown={e => {
         const n = e.key === 'ArrowRight' ? (i + 1) % TABS.length : e.key === 'ArrowLeft' ? (i + TABS.length - 1) % TABS.length : e.key === 'Home' ? 0 : e.key === 'End' ? TABS.length - 1 : -1
@@ -82,12 +84,12 @@ export function TownFeaturePanel({ b, features, structure, writeable = false, on
         <p className="town-house-features-note">实现、验证是 Agent 回报；用户验收单独记录。测试通过不等于部署或实际运行。</p>
         {!mine.length && <p>尚未登记功能验证依据。</p>}
         <ul>{mine.map(f => <li key={f.id}><details className="town-feature-detail"><summary><span className="town-house-features-name">{f.title}</span><span className="town-house-features-status">{featureStatus(f)}</span><span className="town-feature-chevron" aria-hidden="true">›</span></summary><div className="town-feature-facts">
-          <p className="town-house-features-line">候选版本：{f.candidate || '未回报'}</p><p className="town-house-features-line">用户验收：{f.accepted ? `你已验收${f.accepted_at ? ` · ${f.accepted_at}` : ''}` : '尚未记录'}</p>
-          {!f.contributions.length && <p>尚无 Agent 依据回报。</p>}{f.contributions.map((c, i) => <div className="town-room-evidence" key={`${c.id}/${c.run_id}/${i}`}><p>{c.evidence || '本次没有附验证说明'}</p><small>{c.provider} 回报 · {c.at} · {c.candidate || '版本未回报'}</small></div>)}
+          <p className="town-house-features-line">候选版本：{f.candidate || '未回报'}</p><p className="town-house-features-line">你的确认：{f.accepted ? <>你已确认{f.accepted_at && <> · <time dateTime={f.accepted_at} title={f.accepted_at}>{ago(f.accepted_at, now)}</time></>}</> : '尚未确认'}</p>
+          {!f.contributions.length && <p>尚无 Agent 依据回报。</p>}{f.contributions.map((c, i) => <div className="town-room-evidence" key={`${c.id}/${c.run_id}/${i}`}><p>{c.evidence || '本次没有附验证说明'}</p><small>{c.provider} 自报 · <time dateTime={c.at} title={c.at}>{ago(c.at, now)}</time> · {c.candidate || '版本未回报'}</small></div>)}
           <p className="town-house-features-note">实际运行与部署范围需查看原回报，不从以上状态自动推断。</p>
         </div></details></li>)}</ul>
       </>}
-      {document && <details className="town-room-sources"><summary>结构整理依据 · {document.prepared_at}</summary><p>依据版本：<code>{document.basis_version}</code></p><p>{info.structure?.author === 'user' ? '用户整理' : 'Agent 建议'} · {info.structure?.updated_at}。这是日期化结构说明，未自动刷新源码或运行状态。</p>
+      {document && <details className="town-room-sources"><summary>结构整理依据 · {document.prepared_at}</summary><p>依据版本：<code>{document.basis_version}</code></p><p>{info.structure?.author === 'user' ? '用户整理' : 'Agent 建议'} · {info.structure?.updated_at ? <time dateTime={info.structure.updated_at} title={info.structure.updated_at}>{ago(info.structure.updated_at, now)}</time> : '时间未记录'}。这是日期化结构说明，未自动刷新源码或运行状态。</p>
         <ul>{document.sources.map((s, i) => <li key={`${s.path}/${i}`}><code>{s.path}{s.line_start ? `:${s.line_start}${s.line_end ? `–${s.line_end}` : ''}` : ''}</code><span>{s.kind === 'source' ? '源码依据' : '文档依据'}{s.note ? ` · ${s.note}` : ''}</span></li>)}</ul>{!document.sources.length && <p>手工填写，尚未附源码或文档依据。</p>}
       </details>}
       {receipt && <p role="status">{receipt}</p>}

@@ -4,7 +4,7 @@ import { FEATURE_GROUP_LABEL, agentLine, type FeatureGroup, type HouseInfo } fro
 import { clip } from './townModel'
 import './houseCard.css'
 
-const GROUPS: FeatureGroup[] = ['done', 'building', 'todo']
+const GROUPS: FeatureGroup[] = ['done', 'reported', 'building', 'todo']
 const PER_GROUP = 4
 
 export function HouseCard({ info, style }: { info: HouseInfo; style?: CSSProperties }) {

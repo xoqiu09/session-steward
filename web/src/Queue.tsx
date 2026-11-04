@@ -1,6 +1,6 @@
 import { isRemote, remoteReadOnlyMessage } from './access'
 import { attentionSummary, summaryText } from './today/todayModel'
-import { QuickClose } from './ui/QuickClose'
+import { PauseStale, QuickClose, staleDeliveries } from './ui/QuickClose'
 import { useEffect, useState } from 'react'
 import type { Approval, MergePayload, MergeSyncStatus, Snapshot } from './types'
 import { api } from './api'
@@ -304,6 +304,7 @@ export function Queue({ snap, onSelectItem, repoId = 'all', provider = 'all', re
     <details className="review-queue" open={reviewOpen || undefined} onToggle={e => { if (e.currentTarget.open !== reviewOpen) onReviewOpenChange?.(e.currentTarget.open) }} aria-label="普通待审阅与验收">
       <summary>待审阅／验收 <span className="count">{lanes.counts.review} 项工作</span></summary>
       <p className="hint">交付与功能回报集中在这里。下一步写了“你”，不会自动变成工具审批；每个工作项只计一次。</p>
+      <PauseStale items={staleDeliveries(lanes.review.flatMap(g => g.item ? [g.item] : []), snap.now)} />
       {lanes.review.length ? lanes.review.map(g => <ReviewCard key={g.id} group={g} snap={snap} onSelectItem={onSelectItem} />) : <p className="hint">当前没有待审阅交付。</p>}
     </details>
     {lanes.counts.tracking > 0 && <details className="followup-queue"><summary>执行进展与待跟进 <span className="count">{lanes.counts.tracking}</span></summary>

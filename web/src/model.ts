@@ -1,6 +1,6 @@
 import type { Approval, BriefField, Dep, ItemStatus, Session, Snapshot, WorkItem } from './types'
 import { briefMatches } from './brief'
-import { attentionManaged, managementLabel } from './workManagement'
+import { attentionManaged, managementLabel, awaitingAcceptance } from './workManagement'
 import { attentionCount, mergeGroups, organizeAttention, periodicView, queueLanes, repoLabel } from './workbench'
 
 export const itemStatusLabel: Record<ItemStatus, string> = {
@@ -209,7 +209,7 @@ export function attention(s: Snapshot) {
     attention: by('attention'),
     reported,
     blocked: items.filter((w) => !attentionManaged(w) && (!!w.automatic_issue || w.status === 'blocked' || (!w.ready && !['done', 'abandoned'].includes(w.status)))),
-    review: items.filter((w) => !attentionManaged(w) && w.status === 'review' && w.completion_policy !== 'auto_history'),
+    review: items.filter(awaitingAcceptance),
   }
 }
 

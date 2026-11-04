@@ -6,9 +6,10 @@ import { AGENTS, agentCounts, type Agent } from './agents'
 import { featureSections, type FeatureSection } from './featureCategories'
 import type { BuildingView } from './townModel'
 
-export type FeatureGroup = 'done' | 'building' | 'todo'
+export type FeatureGroup = 'done' | 'reported' | 'building' | 'todo'
 
-export const FEATURE_GROUP_LABEL: Record<FeatureGroup, string> = { done: '已完成', building: '开发中', todo: '未开始' }
+// “已完成”只给你确认过的；Agent 自报实现并验证通过的单列，避免把自述当成结论。
+export const FEATURE_GROUP_LABEL: Record<FeatureGroup, string> = { done: '你已确认', reported: 'Agent 报完成', building: '开发中', todo: '未开始' }
 
 export interface HouseFeature {
   id: string
@@ -52,10 +53,10 @@ export function latestContribution(f: ProjectFeature): FeatureContribution | nul
   return f.contributions.reduce<FeatureContribution | null>((best, p) => (!best || p.at > best.at ? p : best), null)
 }
 
-/** 功能归到哪一组：accepted 或（已实现且 Agent 报验证通过、无冲突）算已完成。 */
+/** 功能归到哪一组：只有你验收过的算已确认；已实现且 Agent 报验证通过、无冲突的是“Agent 报完成”。 */
 export function featureGroup(f: ProjectFeature): FeatureGroup {
   if (f.accepted) return 'done'
-  if (f.implementation === 'implemented' && f.validation === 'passed' && !f.conflict) return 'done'
+  if (f.implementation === 'implemented' && f.validation === 'passed' && !f.conflict) return 'reported'
   if (f.implementation === 'implementing' || f.implementation === 'implemented' || f.implementation === 'conflict') return 'building'
   return 'todo'
 }
@@ -65,7 +66,7 @@ export function featureStatus(f: ProjectFeature): string {
   if (f.accepted) return '你已验收'
   if (f.conflict || f.implementation === 'conflict') return '回报不一致，待对齐'
   if (f.implementation === 'implemented') {
-    if (f.validation === 'passed') return '已实现 · Agent 报验证通过'
+    if (f.validation === 'passed') return '已实现 · Agent 自报通过，待你确认'
     if (f.validation === 'failed') return '验证失败'
     if (f.validation === 'validating') return '已实现 · 验证中'
     return '已实现 · 待验证'
@@ -127,7 +128,7 @@ export function houseInfo(b: BuildingView, features: readonly ProjectFeature[] |
   const active = agentCounts({ ...b, characters: b.characters.filter((c) => IN_PLAY.has(c.status)) })
   const agents = AGENTS.filter((a) => total[a.key] > 0).map((a) => ({ ...a, active: active[a.key], total: total[a.key] }))
   const mine = b.repo ? (features ?? []).filter((f) => f.repo_id === b.repo!.id) : []
-  const groups: Record<FeatureGroup, HouseFeature[]> = { done: [], building: [], todo: [] }
+  const groups: Record<FeatureGroup, HouseFeature[]> = { done: [], reported: [], building: [], todo: [] }
   for (const f of [...mine].sort((x, y) => x.title.localeCompare(y.title))) {
     const h = toHouseFeature(f)
     groups[h.group].push(h)
