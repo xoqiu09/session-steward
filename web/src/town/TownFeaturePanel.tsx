@@ -1,4 +1,5 @@
 import { useId, useRef, useState } from 'react'
+import type { RoomFocus } from './roomRequest'
 import { houseInfo, featureStatus } from './houseInfo'
 import type { PurposeFeature } from './featureCategories'
 import type { BuildingView } from './townModel'
@@ -21,14 +22,16 @@ const TABS = [{ id: 'overview', label: '项目概况' }, { id: 'map', label: '�
 type Tab = typeof TABS[number]['id']
 
 /** Shared reader; structure is metadata, all progress comes from existing facts. */
-export function TownFeaturePanel({ b, features, structure, writeable = false, onOpenItem }: {
+export function TownFeaturePanel({ b, features, structure, writeable = false, onOpenItem, focus }: {
   b: BuildingView; features: readonly ProjectFeature[] | null; structure?: ProjectStructure | null; writeable?: boolean; onOpenItem?: (id: string) => void
+  /** 从右键菜单进来时直接展开的区块。 */
+  focus?: RoomFocus
 }) {
   const info = houseInfo(b, features, structure)
   const document = info.structure?.document
   const mine = (features ?? []).filter(f => f.repo_id === b.repo?.id)
   const [tab, setTab] = useState<Tab>('overview')
-  const [editing, setEditing] = useState(false)
+  const [editing, setEditing] = useState(focus === 'organize' && writeable)
   const [receipt, setReceipt] = useState('')
   const tabs = useRef<HTMLDivElement>(null)
   const id = useId()
@@ -89,7 +92,7 @@ export function TownFeaturePanel({ b, features, structure, writeable = false, on
       </details>}
       {receipt && <p role="status">{receipt}</p>}
       {writeable && b.repo && <details className="town-room-organize" open={editing} onToggle={e => setEditing(e.currentTarget.open)}><summary>整理项目</summary>{editing && <ProjectStructureEditor repo={b.repo.id} name={b.name} features={mine} current={info.structure} onSaved={() => { setEditing(false); setReceipt('目录已保存。') }} />}</details>}
-      {writeable && b.repo && <ProjectHousekeeping repo={b.repo} name={b.name} />}
+      {writeable && b.repo && <ProjectHousekeeping repo={b.repo} name={b.name} initialOpen={focus === 'housekeeping'} />}
       {!writeable && !document && <p className="town-house-features-note">请在项目所属设备的本机实时视图整理结构资料。</p>}
     </div>
   </section>

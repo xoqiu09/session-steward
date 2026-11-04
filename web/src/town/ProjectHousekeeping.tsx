@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { api } from '../api'
 import { isRemote } from '../access'
 import { ErrorLine, useAction } from '../bits'
@@ -8,13 +8,16 @@ import type { Repo, Worktree } from '../types'
 // 归档、移入回收站只改显示，可以恢复；删除工作目录要逐个确认，只移到废纸篓，分支和提交都保留。
 type Pending = { kind: 'archive' | 'trash' } | { kind: 'worktree'; path: string }
 
-export function ProjectHousekeeping({ repo, name }: { repo: Repo; name: string }) {
-  const [open, setOpen] = useState(false)
+export function ProjectHousekeeping({ repo, name, initialOpen = false }: { repo: Repo; name: string; initialOpen?: boolean }) {
+  const [open, setOpen] = useState(initialOpen)
+  const box = useRef<HTMLDetailsElement>(null)
   const [list, setList] = useState<Worktree[] | null>(null)
   const [trash, setTrash] = useState(true)
   const [pending, setPending] = useState<Pending | null>(null)
   const [receipt, setReceipt] = useState('')
   const act = useAction()
+  // 从右键菜单直接打开时，读取工作目录并滚到这里。远程视图下组件不渲染，也不读取。
+  useEffect(() => { if (initialOpen && !isRemote()) { box.current?.scrollIntoView({ block: 'nearest' }); load() } }, []) // eslint-disable-line react-hooks/exhaustive-deps
   if (isRemote()) return null
   const load = () => act.run(async () => {
     if (!repo.is_git) { setList([]); return }
@@ -35,7 +38,7 @@ export function ProjectHousekeeping({ repo, name }: { repo: Repo; name: string }
     })
   }
   const others = (list ?? []).filter(w => !w.main)
-  return <details className="town-room-organize project-housekeeping" open={open} onToggle={e => { setOpen(e.currentTarget.open); if (e.currentTarget.open && !list) load() }}>
+  return <details ref={box} className="town-room-organize project-housekeeping" open={open} onToggle={e => { setOpen(e.currentTarget.open); if (e.currentTarget.open && !list) load() }}>
     <summary>归档、删除与工作目录</summary>
     <p className="hint">归档和移入回收站只是从小镇、待办和通知里收起 {name}，代码目录、会话和验收记录都保留，可以恢复。</p>
     <div className="row wrap">

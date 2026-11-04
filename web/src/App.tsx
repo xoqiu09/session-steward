@@ -25,6 +25,9 @@ import { fullPanelHref, kioskHref, parseTownRoute, worldTownRoute } from './town
 import { shownNo } from './hub/ids'
 import { DispatchDesk } from './dispatch/DispatchDesk'
 import { HooksSettings } from './HooksSettings'
+import { useProjectMenu, REPO_ATTR } from './ui/ProjectMenu'
+import { requestRoom } from './town/roomRequest'
+import { inactiveRepo } from './town/activity'
 
 type Tab = 'queue' | 'items' | 'sessions' | 'launch' | 'review'
 type Sel = { kind: 'item'; id: string } | { kind: 'session'; id: number } | null
@@ -103,6 +106,18 @@ function PanelApp() {
 
   const groups = useMemo(() => (snap ? groupByRepo(snap, { query, showDone, repoId, provider }) : []), [snap, query, showDone, repoId, provider])
 
+  // 项目推进卡片和小镇房子的右键菜单：查看、整理和收起都在这里，危险操作再确认。
+  const projectMenu = useProjectMenu({ snap: hub.merged ?? snap ?? null, current: repoId, remote: isRemote(), actions: {
+    onFilter: (r) => { setRepoId(r.id); setSel(null); setAttributionOpen(false); setTab('queue') },
+    onShowAll: () => setRepoId('all'),
+    onReview: (r) => { setRepoId(r.id); setSel(null); setAttributionOpen(false); setTab('queue'); setQueueFocus('review') },
+    onEnterRoom: (r, focus) => {
+      // 默认收起的不活跃项目要先选中，地图上才有它的房子。
+      if (inactiveRepo(r)) setRepoId(r.id)
+      if (view !== 'town' || !route.world) openTown()
+      requestRoom(r.id, focus)
+    },
+  } })
   if (conn === 'unauthorized') {
     return <div className="center"><h1>Session Steward</h1><p>需要登录。请在终端运行 <code>steward open</code>。</p></div>
   }
@@ -157,7 +172,7 @@ function PanelApp() {
               <a className="btn small" href={fullPanelHref(path, null)} title="回到 Session Steward 完整面板">退出桌面模式</a>
             </span>} />
         </main>
-        {projectManager}
+        {projectManager}{projectMenu}
         {settings}
         {drawer && <div className="kiosk-scrim" onClick={closeDrawer} aria-hidden />}
         {drawer && (
@@ -223,7 +238,7 @@ function PanelApp() {
         })()}
         <div className={view === 'overview' || view === 'today' || view === 'canvas' ? 'workbench-overview overview-hidden' : 'workbench-overview'}>
           <div className="overview-line"><strong>项目推进</strong><span>{totalItems} 个工作项</span><span>{sessionBuckets(snap, provider, repoId).recent.length} 个近期会话</span><button onClick={() => { setSel(null); setAttributionOpen(false); setTab('queue') }}>审批／决定 {counts.action} · 待审阅／验收 {counts.review}</button></div>
-          <div className="project-shortcuts">{groups.map((g) => <button key={g.key} disabled={g.repoId == null} className={repoId === g.repoId ? 'on' : ''} onClick={() => { if (g.repoId != null) { setRepoId(g.repoId); setSel(null); setAttributionOpen(false); setTab('queue') } }} title={g.name}><strong>{g.name}</strong><small>工作项 {g.items.length} · 待关联 {g.sessions.length}{projectQueueCounts(snap, g.repoId).action ? ` · 需审批 ${projectQueueCounts(snap, g.repoId).action}` : ''}</small></button>)}</div>
+          <div className="project-shortcuts">{groups.map((g) => <button key={g.key} {...(g.repoId != null ? { [REPO_ATTR]: g.repoId } : {})} disabled={g.repoId == null} className={repoId === g.repoId ? 'on' : ''} onClick={() => { if (g.repoId != null) { setRepoId(g.repoId); setSel(null); setAttributionOpen(false); setTab('queue') } }} title={g.name}><strong>{g.name}</strong><small>工作项 {g.items.length} · 待关联 {g.sessions.length}{projectQueueCounts(snap, g.repoId).action ? ` · 需审批 ${projectQueueCounts(snap, g.repoId).action}` : ''}</small></button>)}</div>
         </div>
         <div className="stage">
           {view === 'town' && hubToast}
@@ -265,7 +280,7 @@ function PanelApp() {
           </>
         ))}
       </aside>
-      {projectManager}
+      {projectManager}{projectMenu}
       {settings}
     </div>
   )
