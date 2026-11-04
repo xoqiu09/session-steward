@@ -40,6 +40,7 @@ export function TodayView({ snap, onSelectItem, onOpenTown, device }: { snap: Sn
   const ok = t.review.filter((r) => r.grade === 'ok').length
   const userNext = t.stuck.filter((s) => s.tone === 'user').length
   const stuckItems = new Set(t.stuck.map(row => row.item.id)).size
+  const handoffs = t.decide.filter((d) => d.kind === 'handoff').length
   const empty = !t.decide.length && !t.review.length && !t.stuck.length
   const markSeen = () => { writeSeen(snap.now); setSeen(snap.now) }
   return (
@@ -59,7 +60,7 @@ export function TodayView({ snap, onSelectItem, onOpenTown, device }: { snap: Sn
         {isRemote() && <p className="today-note">{remoteReadOnlyMessage}</p>}
 
         <nav className="today-stats" aria-label="四件事">
-          <a href="#today-decide"><span>要你决定</span><b className="is-decide">{t.decide.length}</b><small>{t.decide.length ? 'Agent 停着等你' : '没有'}</small></a>
+          <a href="#today-decide"><span>要你回应</span><b className="is-decide">{t.decide.length}</b><small>{t.decide.length ? `正式请求 ${t.decide.length - handoffs} · Agent 交给你 ${handoffs}` : '没有'}</small></a>
           <a href="#today-review"><span>有交付，等你处理</span><b className="is-review">{t.review.length}</b><small>{t.review.length ? `有可核对证据的 ${ok} 件` : '没有'}</small></a>
           <a href="#today-stuck"><span>卡住了</span><b className="is-stuck">{stuckItems}</b><small>{userNext ? `${userNext} 件下一步在你` : t.stuck.length ? '在等上游或外部' : '没有'}</small></a>
           <a href="#today-quiet"><span>正在做</span><b className="is-run">{t.running.length}</b><small>不用管</small></a>
@@ -68,7 +69,7 @@ export function TodayView({ snap, onSelectItem, onOpenTown, device }: { snap: Sn
         {empty && <section className="today-empty"><h2>没有要你处理的事</h2><p className="muted">没有等你决定的请求，没有等你处理的交付，也没有卡住的工作。</p></section>}
 
         {t.decide.length > 0 && <section id="today-decide" className="today-card">
-          <h2><i className="dot is-decide" />要你决定 <small>{t.decide.length} · Agent 停着等你，先处理这里</small></h2>
+          <h2><i className="dot is-decide" />要你回应 <small>{t.decide.length} · 正式请求 {t.decide.length - handoffs} · Agent 交给你 {handoffs}，先处理这里</small></h2>
           {t.decide.map((d) => <DecideLine key={d.key} d={d} snap={snap} onSelectItem={onSelectItem} />)}
         </section>}
 

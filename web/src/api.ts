@@ -50,6 +50,7 @@ export const api = {
   projects: () => call<ProjectInfo[]>('GET', '/api/projects'),
   archiveProjects: (ids: number[], archived: boolean) => call('POST', '/api/projects/archive', { ids, archived }),
   trashProjects: (ids: number[], trashed: boolean) => call('POST', '/api/projects/trash', { ids, trashed }),
+  keepArchived: (ids: number[]) => call('POST', '/api/projects/keep-archived', { ids }),
   worktrees: (repo: number) => call<{ worktrees: Worktree[]; trash_available: boolean }>('GET', `/api/projects/${repo}/worktrees`),
   removeWorktree: (repo: number, path: string) => call('POST', `/api/projects/${repo}/worktrees/remove`, { path }),
   mergeSync: () => call<MergeSyncStatus[]>('GET', '/api/merge-sync'),

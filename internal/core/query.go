@@ -142,6 +142,8 @@ type Snapshot struct {
 	Agents            []string           `json:"agents"`
 	AgentInfo         []AgentInfo        `json:"agent_info"`
 	ManagedNote       string             `json:"managed_unavailable,omitempty"`
+	AccessIssues      []AccessIssue      `json:"access_issues,omitempty"`
+	ArchivedActivity  []ArchivedActivity `json:"archived_activity,omitempty"`
 	MergeJobs         []MergeJob         `json:"merge_jobs"`
 	CheckedRepos      []int64            `json:"checked_repos"`
 	SessionUsage      []SessionUsage     `json:"session_usage"`
@@ -394,8 +396,14 @@ func (c *Core) Snapshot(ctx context.Context) (*Snapshot, error) {
 		snap.Agents, snap.AgentInfo = c.AgentNames(), c.AgentInfos()
 	}
 	snap.ManagedNote = c.ManagedUnavailable
+	if issues := c.AccessIssues(); len(issues) > 0 {
+		snap.AccessIssues = issues
+	}
 	c.applyRoutinePolicies(snap)
 	if err := projectVisibility(tx, snap); err != nil {
+		return nil, err
+	}
+	if snap.ArchivedActivity, err = archivedActivity(tx); err != nil {
 		return nil, err
 	}
 	return snap, nil

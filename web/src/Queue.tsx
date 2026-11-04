@@ -1,4 +1,5 @@
 import { isRemote, remoteReadOnlyMessage } from './access'
+import { attentionSummary, summaryText } from './today/todayModel'
 import { QuickClose } from './ui/QuickClose'
 import { useEffect, useState } from 'react'
 import type { Approval, MergePayload, MergeSyncStatus, Snapshot } from './types'
@@ -273,6 +274,8 @@ function ReviewCard({ group, snap, onSelectItem }: { group: ReviewGroup; snap: S
 export function Queue({ snap, onSelectItem, repoId = 'all', provider = 'all', reviewOpen = false, onReviewOpenChange }: { snap: Snapshot; onSelectItem: (id: string) => void; repoId?: number | 'all'; provider?: string; reviewOpen?: boolean; onReviewOpenChange?: (open: boolean) => void }) {
   const q = scopedAttention(snap, repoId, provider)
   const lanes = queueLanes(q, snap.now)
+  const deliveries = lanes.review.filter(g => (g.item ?? snap.work_items?.find(w => w.id === g.id))?.status === 'review').length
+  const summary = attentionSummary(snap)
   const recent = (snap.approvals ?? []).filter(a => a.status !== 'pending' && a.status !== 'decided').slice(0, 8)
   const byRepo = new Map<string, MergeGroup[]>()
   for (const g of lanes.merge) {
@@ -282,8 +285,9 @@ export function Queue({ snap, onSelectItem, repoId = 'all', provider = 'all', re
   return <div className="queue">
     <div className="queue-counts" aria-label="分别统计审批与验收">
       <div className={lanes.counts.action ? 'has-actions' : ''}><strong>{lanes.counts.action}</strong><span>需审批／决定</span></div>
-      <div><strong>{lanes.counts.review}</strong><span>待审阅／验收</span></div>
+      <div><strong>{lanes.counts.review}</strong><span>待审阅／验收</span>{lanes.counts.review > 0 && <small>待验收交付 {deliveries} · Agent 交给你 {lanes.counts.review - deliveries}</small>}</div>
     </div>
+    {repoId === 'all' && <p className="queue-total" title={summaryText(summary)}>合计要你处理 <b>{summary.total}</b> 件：{summaryText(summary)}。卡住的工作在“每日十分钟”。</p>}
     <p className="hint">“需审批／决定”是当前正式请求；“待审阅／验收”是交付或建议，不是故障数。每项工作只计一次，成功的例行整理收进历史。批准合并和验收交付分别记录。</p>
     <section className="action-queue" aria-label="需审批或决定的事项">
       {lanes.counts.action === 0 && <p className="empty-actions">当前没有需要你审批或决定的正式请求。</p>}
