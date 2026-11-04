@@ -123,6 +123,7 @@ func serve() error {
 	c.StaleAfter = time.Duration(cfg.StaleAfterMin) * time.Minute
 	c.SignalGapAfter = time.Duration(cfg.SignalGapAfterMin) * time.Minute
 	c.Agents, c.StewardHome, c.WorktreeRoot = map[string]core.AgentSpec{}, config.Home(), cfg.WorktreeRoot
+	c.TrashPath = macTrash()
 	for name, a := range config.NormalizeAgents(cfg.Agents) {
 		c.Agents[name] = core.AgentSpec{Argv: a.Argv, Provider: a.Provider, Hooks: a.Hooks, PromptArg: a.PromptArg}
 	}
@@ -768,4 +769,25 @@ func findCodex(configured string) string {
 		}
 	}
 	return ""
+}
+
+// macTrash 用 macOS 自带的 /usr/bin/trash（macOS 15 起提供）把工作目录移到废纸篓，可以放回原处。
+// 没有这个命令时返回 nil，界面会说明不提供删除，而不是直接删除文件。
+func macTrash() core.TrashPath {
+	const bin = "/usr/bin/trash"
+	if runtime.GOOS != "darwin" {
+		return nil
+	}
+	if info, err := os.Stat(bin); err != nil || info.IsDir() {
+		return nil
+	}
+	return func(ctx context.Context, path string) error {
+		if out, err := exec.CommandContext(ctx, bin, path).CombinedOutput(); err != nil {
+			return fmt.Errorf("%w: %s", err, strings.TrimSpace(string(out)))
+		}
+		if _, err := os.Stat(path); err == nil {
+			return errors.New("目录仍在原处")
+		}
+		return nil
+	}
 }

@@ -10,7 +10,14 @@ export interface Repo {
   common_dir: string
   is_git: boolean
   target_ref: string
+  /** 只决定默认显示位置；旧快照或其他设备没有时按活跃处理。 */
+  activity?: RepoActivity
+  last_activity_at?: string
 }
+
+export type RepoActivity = 'active' | 'quiet' | 'dormant'
+
+export interface Worktree { path: string; branch?: string; head: string; main: boolean; removable: boolean; reason?: string }
 
 export interface ProjectInfo extends Repo {
   archived_at: string

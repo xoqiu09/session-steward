@@ -45,3 +45,7 @@
 
 .town-room-task-links > summary { cursor: pointer; min-height: 40px; box-sizing: border-box; padding: 9px 0; color: var(--town-muted, #6b5a44); font-size: 11px; }
 .town-project-room .town-room-task-links li { padding: 3px 0; border: 0; font-size: 11px; }
+.project-housekeeping h4 { margin: 12px 0 4px; font-size: 13px; }
+.housekeeping-worktrees { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; }
+.housekeeping-worktrees li { display: grid; gap: 2px; }
+.housekeeping-worktrees code { word-break: break-all; font-size: 12px; }

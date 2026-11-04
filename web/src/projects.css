@@ -65,3 +65,8 @@
   .pm-batch > div { width: 100%; justify-content: flex-start; }
   .pm-confirm { padding: 14px; }
 }
+.pm-activity { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 10px; }
+.pm-activity .btn.on { border-color: #39634f; background: #eaf2eb; color: #24412f; }
+.pm-activity-badge { display: inline-block; margin-right: 6px; padding: 0 6px; border-radius: 999px; font-size: 12px; background: #eef2f6; color: #4a5563; }
+.pm-activity-badge.is-active { background: #e6f2e8; color: #2f5d3d; }
+.pm-activity-badge.is-dormant { background: #f3eee6; color: #6b5a3c; }

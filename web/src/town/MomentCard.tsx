@@ -1,10 +1,12 @@
+import type { WorkItem } from '../types'
+import { QuickClose } from '../ui/QuickClose'
 import type { TownMoment } from './moments'
 
 const KIND_LABEL: Record<TownMoment['kind'], string> = { decision: '等你决定', returned: '你回来过', stalled: '停在你手上', ripe: '菜熟了', merged: '合并完成', progress: '有进展' }
 
 /** HTML 浮层。权限决定仍在 SS 的原有卡片里完成；“你回来过”可以在这里直接收下或退回，也可以不理它。 */
-export function MomentCard({ moment, ripeCount, onOpen, onHarvest, onLater, onAcknowledge, onResolve, busy = false, error = '' }: {
-  moment: TownMoment; ripeCount: number; onOpen: () => void; onHarvest: () => void; onLater: () => void; onAcknowledge: () => void
+export function MomentCard({ moment, item, ripeCount, onOpen, onHarvest, onLater, onAcknowledge, onResolve, busy = false, error = '' }: {
+  moment: TownMoment; item?: WorkItem; ripeCount: number; onOpen: () => void; onHarvest: () => void; onLater: () => void; onAcknowledge: () => void
   onResolve?: (status: 'done' | 'in_progress') => void; busy?: boolean; error?: string
 }) {
   const resolve = (status: 'done' | 'in_progress') => onResolve?.(status)
@@ -27,6 +29,7 @@ export function MomentCard({ moment, ripeCount, onOpen, onHarvest, onLater, onAc
       {moment.local && moment.kind === 'ripe' && ripeCount > 0 && <button type="button" onClick={onHarvest}>开始收菜（{ripeCount} 棵）</button>}
       <button type="button" onClick={moment.kind === 'merged' ? onAcknowledge : onLater}>{moment.kind === 'merged' ? '好的' : '稍后'}</button>
     </div>}
+    {moment.kind === 'stalled' && moment.local && item && <QuickClose item={item} only={['paused', 'abandoned', 'accepted']} />}
     {moment.kind === 'returned' && !moment.local && <div className="town-moment-actions"><button type="button" onClick={onLater}>稍后</button></div>}
   </aside>
 }
