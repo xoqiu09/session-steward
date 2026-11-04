@@ -368,7 +368,7 @@ export function Building({ plot: p, b, selected, dimClass, onSelect, signScale =
   }
   const long = p.facing === 'x' ? p.w : p.d
   return (
-    <g className={`town-obj town-building${selected ? ' is-selected' : ''}${dimClass}`}
+    <g className={`town-obj town-building${selected ? ' is-selected' : ''}${dimClass}`} data-repo-id={b.repo?.id}
       aria-label={`项目建筑 ${b.name}：${b.characters.length} 个会话，${active} 个未完成任务${hidden ? `，另有 ${hidden} 个会话不在画面中` : ''}`} {...activate(onSelect)}>
       <IsoTile gx={p.gx - 0.4} gy={p.gy - 0.4} w={p.w + 0.8} d={p.d + 0.8} fill="#c9b48e" opacity={0.5} />
       <IsoBox gx={p.gx} gy={p.gy} w={p.w} d={p.d} h={H} top={shape.walls.top} left={p.facing === 'x' ? shape.walls.front : shape.walls.side} right={p.facing === 'x' ? shape.walls.side : shape.walls.front} stroke={shape.walls.edge} />

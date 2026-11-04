@@ -1,5 +1,6 @@
 // 小镇世界：每个项目一个街区，中间是广场。远景只画街区名牌和计数，近景画小人、包裹和任务。只读。
 import { useEffect, useMemo, useRef, useState, type PointerEvent as RPointerEvent } from 'react'
+import { onRoomRequest, takeRoomRequest, type RoomFocus, type RoomRequest } from './roomRequest'
 import { IsoBox, IsoTile, iso, type Pt } from './iso'
 import { attentionManaged } from '../workManagement'
 import { characterStatusLabel, type BuildingView, type Highlight, type ParcelView, type TownModel } from './townModel'
@@ -621,6 +622,18 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
     return () => window.removeEventListener('keydown', onKey)
   }, [inside])
   const enter = (key: string) => { stop(); lastTouch.current = Date.now(); setArrived(null); setProjectsOpen(false); setInside(key) }
+  // 右键菜单等从小镇外请求进入房间：等房子出现在地图上再进去，并展开指定区块。
+  const [roomReq, setRoomReq] = useState<RoomRequest | null>(() => takeRoomRequest())
+  const [roomFocus, setRoomFocus] = useState<{ key: string; focus?: RoomFocus; nonce: number } | null>(null)
+  useEffect(() => onRoomRequest((r) => { takeRoomRequest(); setRoomReq(r) }), [])
+  useEffect(() => {
+    if (!roomReq) return
+    const key = `repo-${roomReq.repoId}`
+    if (!model.buildings.some((b) => b.key === key)) return
+    enter(key)
+    setRoomFocus({ key, focus: roomReq.focus, nonce: roomReq.nonce })
+    setRoomReq(null)
+  }, [roomReq, model]) // eslint-disable-line react-hooks/exhaustive-deps
   // 只有房子本体（和明确的“进入工作室”）才进室内；名牌、片区名牌走 navigate。
   // 验收台：只有一个项目在等就直接去它门口；几个项目在等时列出来挑；一件都没有时照旧打开关注队列。
   const openDesk = (s: Selection) => {
@@ -957,7 +970,8 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
         <>
           <InteriorScene b={insideB} model={model} selected={props.selected} highlight={props.highlight} onSelect={props.onSelect} changed={props.changed} offline={props.offline}
             features={props.snapshot?.features ?? null} structure={props.snapshot?.structures?.find(s => s.repo_id === insideB.repo?.id)}
-            writeable={!remoteAccess() && !props.replaying && !props.offline && !!insideB.repo && insideB.repo.id < 1_000_000_000} />
+            writeable={!remoteAccess() && !props.replaying && !props.offline && !!insideB.repo && insideB.repo.id < 1_000_000_000}
+            focus={roomFocus?.key === insideB.key ? roomFocus : null} />
           <div className="town-world-tools is-inside" onPointerDown={(e) => e.stopPropagation()}>
             <button type="button" onClick={() => setInside(null)} title="回到世界（Esc）">← 回到世界</button>
             <button type="button" aria-haspopup="dialog" aria-expanded={structure} onClick={e => openStructure(e.currentTarget)} title={insideB ? "查看这个项目的目标、功能关系与验证依据" : "查看 SS 自身的结构说明首版样本"}>结构说明</button>

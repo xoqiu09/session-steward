@@ -1,6 +1,7 @@
 // 项目室内：走进一栋建筑，看这个项目里的事。工作台 = 工作项，会话小人站在自己的工作台前，
 // 待验收的箱子放在台上，墙上白板是这个项目里等你决定的事。只读：点任何东西都打开 SS 原有详情。
 import { IsoBox, IsoTile, iso, pts, type Pt } from './iso'
+import type { RoomFocus } from './roomRequest'
 import { characterStatusLabel, clip, itemStatusLabel, type BuildingView, type Highlight, type TownModel } from './townModel'
 import {
   Character, Crate, Parcel, StatusPill, Tag, activate, buildingColors, charLook, charMatches, onReviewDesk, parcelMatches, parcelTitle,
@@ -92,7 +93,7 @@ export function interiorViewBox(): string {
   return `${x0} ${y0} ${x1 - x0} ${y1 - y0}`
 }
 
-export function InteriorScene({ b, model, selected, highlight, onSelect, changed = new Set(), offline = false, features, structure, writeable = false }: {
+export function InteriorScene({ b, model, selected, highlight, onSelect, changed = new Set(), offline = false, features, structure, writeable = false, focus }: {
   b: BuildingView
   model: TownModel
   selected: Selection | null
@@ -104,6 +105,8 @@ export function InteriorScene({ b, model, selected, highlight, onSelect, changed
   features?: readonly ProjectFeature[] | null
   structure?: ProjectStructure | null
   writeable?: boolean
+  /** 从右键菜单进来时要直接展开的房间区块；nonce 变化时重新展开。 */
+  focus?: { focus?: RoomFocus; nonce: number } | null
 }) {
   const isSel = (kind: Selection['kind'], key: string) => selected?.kind === kind && selected.key === key
   const dim = (match: boolean) => (highlight && !match ? ' is-dim' : '')
@@ -272,7 +275,7 @@ export function InteriorScene({ b, model, selected, highlight, onSelect, changed
   return <div className="town-interior-layout">
     <div className="town-interior-grid">
       <div className="town-interior-room">{room}</div>
-      <TownFeaturePanel key={b.key} b={b} features={features} structure={structure} writeable={writeable} onOpenItem={id => onSelect({ kind: 'item', key: id })} />
+      <TownFeaturePanel key={`${b.key}-${focus?.nonce ?? 0}`} b={b} features={features} structure={structure} writeable={writeable} focus={focus?.focus} onOpenItem={id => onSelect({ kind: 'item', key: id })} />
     </div>
   </div>
 }
