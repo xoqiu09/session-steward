@@ -1,4 +1,5 @@
 import { isRemote, remoteReadOnlyMessage } from './access'
+import { QuickClose } from './ui/QuickClose'
 import { useEffect, useState } from 'react'
 import type { Approval, MergePayload, MergeSyncStatus, Snapshot } from './types'
 import { api } from './api'
@@ -142,6 +143,7 @@ export function DecisionCard({ a, snap }: { a: Approval; snap: Snapshot }) {
         {s?.resume_command && <CopyButton text={s.resume_command} label="复制恢复命令" />}
         {s?.cwd && <CopyButton text={`cd ${JSON.stringify(s.cwd)}`} label="复制目录" />}
         <button disabled={isRemote()} className="btn small" onClick={() => act.run(() => api.dismiss(a.id, low ? 'ignored' : 'resolved'))}>{low ? '忽略' : memory ? '我已在原会话处理' : '已处理'}</button>
+        {!low && !memory && <button disabled={isRemote()} className="btn small" title="只收起这条提醒，不改工作状态" onClick={() => act.run(() => api.dismiss(a.id, 'ignored'))}>忽略这条提醒</button>}
       </div>
       <ErrorLine msg={act.error} />
     </div>
@@ -254,7 +256,7 @@ function AdvisoryCard({ group, snap, onSelectItem }: { group: AdviceGroup; snap:
         {sessionOf(snap,p.session_id)?.resume_command && <CopyButton text={sessionOf(snap,p.session_id)!.resume_command} label="复制恢复命令" />}
       </div>)}
     </details>
-    <button className="btn small" onClick={() => onSelectItem(group.id)}>查看工作项与验收</button>
+    <div className="row wrap"><button className="btn small" onClick={() => onSelectItem(group.id)}>查看工作项与验收</button>{w && <QuickClose item={w} />}</div>
   </div>
 }
 
@@ -264,7 +266,7 @@ function ReviewCard({ group, snap, onSelectItem }: { group: ReviewGroup; snap: S
     <div className="q-meta"><span className="pill">{group.id}</span><span className="muted">{w?.completion_policy === 'auto_history' ? '自动任务需要回应' : w?.status === 'review' ? '待验收' : 'Agent 请你审阅'}</span></div>
     <strong>{w?.title || '工作回报'}</strong>
     {group.advice && <details><summary>查看回报与来源 · {group.advice.reported.length + group.advice.features.length} 条</summary><AdvisoryCard group={group.advice} snap={snap} onSelectItem={onSelectItem} /></details>}
-    <button className="btn small" onClick={() => onSelectItem(group.id)}>{w?.completion_policy === 'auto_history' ? '查看问题与来源' : '查看交付与验收'}</button>
+    <div className="row wrap"><button className="btn small" onClick={() => onSelectItem(group.id)}>{w?.completion_policy === 'auto_history' ? '查看问题与来源' : '查看交付与验收'}</button>{w && <QuickClose item={w} />}</div>
   </div>
 }
 

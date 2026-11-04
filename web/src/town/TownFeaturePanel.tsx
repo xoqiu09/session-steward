@@ -5,6 +5,7 @@ import type { BuildingView } from './townModel'
 import { itemStatusLabel } from './townModel'
 import type { ProjectFeature, ProjectStructure } from '../types'
 import { ProjectStructureEditor } from './ProjectStructureEditor'
+import { ProjectHousekeeping } from './ProjectHousekeeping'
 import './projectRoom.css'
 
 function FeatureDetail({ feature: f }: { feature: PurposeFeature }) {
@@ -88,6 +89,7 @@ export function TownFeaturePanel({ b, features, structure, writeable = false, on
       </details>}
       {receipt && <p role="status">{receipt}</p>}
       {writeable && b.repo && <details className="town-room-organize" open={editing} onToggle={e => setEditing(e.currentTarget.open)}><summary>整理项目</summary>{editing && <ProjectStructureEditor repo={b.repo.id} name={b.name} features={mine} current={info.structure} onSaved={() => { setEditing(false); setReceipt('目录已保存。') }} />}</details>}
+      {writeable && b.repo && <ProjectHousekeeping repo={b.repo} name={b.name} />}
       {!writeable && !document && <p className="town-house-features-note">请在项目所属设备的本机实时视图整理结构资料。</p>}
     </div>
   </section>

@@ -133,7 +133,10 @@ describe('TodayView', () => {
     expect(html).not.toContain('做完了，等你验收')
     expect(html).toContain('npm publish --tag beta')
     expect(html).toContain('允许这一次')
-    expect((html.match(/>已处理</g) ?? []).length).toBe(3)
+    // 交付、决定卡片各自的“已处理”仍在；卡住的工作另有统一的收起选项，每个都要再确认一次。
+    expect((html.match(/>已处理</g) ?? []).length).toBeGreaterThanOrEqual(3)
+    expect(html).toContain('>暂停提醒<')
+    expect(html).toContain('>不再跟进<')
     expect(html).toContain('Agent 说：')
     expect(html).toContain('有验证失败')
     expect(html).toContain('只有 Agent 自述')

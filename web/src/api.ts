@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { isRemote, remoteReadOnlyMessage } from './access'
-import type { AISummary, AttributionDecision, BriefEdit, DayDetail, Handoff, HistoryResp, HubStatus, ManagedSession, MergeJob, MergeSyncStatus, ProjectInfo, ProjectStructure, ProjectStructureDocument, Review, SessionUsageDetail, Snapshot } from './types'
+import type { AISummary, AttributionDecision, BriefEdit, DayDetail, Handoff, HistoryResp, HubStatus, ManagedSession, MergeJob, MergeSyncStatus, ProjectInfo, ProjectStructure, ProjectStructureDocument, Review, Worktree, SessionUsageDetail, Snapshot } from './types'
 import { snapshotRefresher } from './snapshotRefresh'
 import { publishNativeSnapshot } from './nativeBridge'
 
@@ -50,6 +50,8 @@ export const api = {
   projects: () => call<ProjectInfo[]>('GET', '/api/projects'),
   archiveProjects: (ids: number[], archived: boolean) => call('POST', '/api/projects/archive', { ids, archived }),
   trashProjects: (ids: number[], trashed: boolean) => call('POST', '/api/projects/trash', { ids, trashed }),
+  worktrees: (repo: number) => call<{ worktrees: Worktree[]; trash_available: boolean }>('GET', `/api/projects/${repo}/worktrees`),
+  removeWorktree: (repo: number, path: string) => call('POST', `/api/projects/${repo}/worktrees/remove`, { path }),
   mergeSync: () => call<MergeSyncStatus[]>('GET', '/api/merge-sync'),
   confirmFeatureScope: (repo: number, id: string, revision: string) => call('POST', `/api/features/${repo}/${encodeURIComponent(id)}/confirm-scope`, { revision }),
   acceptFeature: (repo: number, id: string, candidate: string, revision: string, decision: 'accepted' | 'changes_requested') => call('POST', `/api/features/${repo}/${encodeURIComponent(id)}/accept`, { candidate, revision, decision }),

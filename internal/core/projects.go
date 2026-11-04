@@ -57,7 +57,20 @@ func (c *Core) Projects(ctx context.Context) ([]ProjectInfo, error) {
 		}
 		out = append(out, p)
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	rows.Close()
+	activity, err := repoActivities(c.St.R())
+	if err != nil {
+		return nil, err
+	}
+	now := c.St.Now()
+	for i := range out {
+		a := activity[out[i].ID]
+		out[i].Activity, out[i].LastActivityAt = a.tier(now), a.Last
+	}
+	return out, nil
 }
 
 func (c *Core) ArchiveProjects(ctx context.Context, ids []int64, archived bool) error {

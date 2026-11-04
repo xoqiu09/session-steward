@@ -6,6 +6,7 @@ import { AgentBadge, CopyButton, ErrorLine, useAction } from '../bits'
 import { ago, providerLabel } from '../model'
 import { MergeCard } from '../Queue'
 import { WorkStatusActions } from '../ui/WorkStatusActions'
+import { QuickClose } from '../ui/QuickClose'
 import { managementLabel } from '../workManagement'
 import { buildToday, type DecideRow, type Grade, type ReviewRow, type StuckRow } from './todayModel'
 import './today.css'
@@ -86,7 +87,7 @@ export function TodayView({ snap, onSelectItem, onOpenTown, device }: { snap: Sn
             <Title id={w.id} title={w.title} onSelectItem={onSelectItem} tag={<span className="tag is-muted">{managementLabel(w)}</span>} />
             {w.management?.note && <p>{w.management.note}</p>}
             <span className="today-meta">你的记录 · {ago(w.management?.at || w.updated_at, snap.now)}</span>
-          </div><div className="today-acts"><WorkStatusActions item={w} /><button className="btn" onClick={() => onSelectItem(w.id)}>看详情</button></div></div>)}
+          </div><div className="today-acts"><QuickClose item={w} /><WorkStatusActions item={w} /><button className="btn" onClick={() => onSelectItem(w.id)}>看详情</button></div></div>)}
         </details>}
 
         <section id="today-quiet" className="today-quiet">
@@ -161,7 +162,7 @@ function DecideLine({ d, snap, onSelectItem }: { d: DecideRow; snap: Snapshot; o
       <p><span className="muted">需要你：</span>{d.need}</p>
       <span className="today-meta">{d.repo} · Agent 自述 · {ago(d.at, snap.now)}</span>
     </div>
-    <div className="today-acts"><WorkStatusActions item={d.item} /><button className="btn" type="button" onClick={() => onSelectItem(d.item.id)}>看详情</button></div>
+    <div className="today-acts"><QuickClose item={d.item} /><WorkStatusActions item={d.item} /><button className="btn" type="button" onClick={() => onSelectItem(d.item.id)}>看详情</button></div>
   </div>
 }
 
@@ -190,7 +191,7 @@ function ReviewLine({ r, snap, onSelectItem }: { r: ReviewRow; snap: Snapshot; o
       <ErrorLine msg={act.error} />
     </div>
     {remote ? <div className="today-acts"><span className="muted small">远程只读</span></div> : <div className="today-acts">
-      <WorkStatusActions item={r.item} />
+      <QuickClose item={r.item} only={['paused', 'abandoned']} /><WorkStatusActions item={r.item} />
       <button className="btn" type="button" onClick={() => onSelectItem(r.item.id)}>详情</button>
       <button className={r.grade === 'failed' ? 'btn primary' : 'btn'} type="button" disabled={act.busy} onClick={() => set('in_progress')}>退回</button>
       <button className={r.grade === 'failed' ? 'btn' : 'btn primary'} type="button" disabled={act.busy} onClick={() => set('done')}>已处理</button>
@@ -206,6 +207,6 @@ function StuckLine({ s, snap, onSelectItem }: { s: StuckRow; snap: Snapshot; onS
       {s.next && <p><span className="muted">下一步：</span>{s.next}</p>}
       <span className="today-meta">{s.repo} · {ago(s.at, snap.now)}</span>
     </div>
-    <div className="today-acts"><WorkStatusActions item={s.item} /><button className="btn" type="button" onClick={() => onSelectItem(s.item.id)}>看详情</button></div>
+    <div className="today-acts"><QuickClose item={s.item} /><WorkStatusActions item={s.item} /><button className="btn" type="button" onClick={() => onSelectItem(s.item.id)}>看详情</button></div>
   </div>
 }

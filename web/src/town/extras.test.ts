@@ -11,8 +11,8 @@ describe('小镇显示开关', () => {
 
   it('只认明确的 true，写进去能原样读回', () => {
     const store = new Map<string, string>()
-    writeExtras({ chips: true, replay: false, parcels: true }, { setItem: (k, v) => store.set(k, v) })
-    expect(readExtras({ getItem: (k) => store.get(k) ?? null })).toEqual({ chips: true, replay: false, parcels: true })
+    writeExtras({ chips: true, replay: false, parcels: true, inactive: true }, { setItem: (k, v) => store.set(k, v) })
+    expect(readExtras({ getItem: (k) => store.get(k) ?? null })).toEqual({ chips: true, replay: false, parcels: true, inactive: true })
     expect(readExtras({ getItem: (k) => (k === EXTRAS_KEY ? '{"chips":"yes"}' : null) }).chips).toBe(false)
   })
 })

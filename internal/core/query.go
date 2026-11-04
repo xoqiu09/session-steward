@@ -17,6 +17,9 @@ type Repo struct {
 	TargetRef string `json:"target_ref"`
 	// Device 只在“全部设备”合并视图里有：项目在哪台电脑上。
 	Device string `json:"device,omitempty"`
+	// Activity 是 active / quiet / dormant，只决定默认显示位置；旧快照或其他设备可能为空，按活跃处理。
+	Activity       string `json:"activity,omitempty"`
+	LastActivityAt string `json:"last_activity_at,omitempty"`
 }
 
 type Session struct {
@@ -174,6 +177,9 @@ func (c *Core) Snapshot(ctx context.Context) (*Snapshot, error) {
 		snap.Repos = append(snap.Repos, r)
 	}
 	rows.Close()
+	if err := applyRepoActivity(tx, c.St.Now(), snap.Repos); err != nil {
+		return nil, err
+	}
 
 	staleBefore := c.St.Now().Add(-c.StaleAfter).UTC().Format("2006-01-02T15:04:05.000000000Z")
 	rows, err = tx.Query(`SELECT s.id, s.host_id, s.provider, s.provider_session_id, s.client, s.version, s.cwd, s.worktree, s.branch, s.repo_id,

@@ -1004,7 +1004,7 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
         <button type="button" onClick={feed.dismissAway}>知道了</button>
       </div>}
       {visibleMoment && <div className="town-moment-overlay town-world-ui">
-        <MomentCard moment={visibleMoment} ripeCount={ripe.length}
+        <MomentCard moment={visibleMoment} ripeCount={ripe.length} item={visibleMoment.itemId ? model.buildings.flatMap((b) => b.items).find((w) => w.id === visibleMoment.itemId) : undefined}
           onOpen={() => { setMoment(null); props.onSelect(visibleMoment.approvalId ? { kind: 'approval', key: visibleMoment.approvalId } : { kind: 'item', key: visibleMoment.itemId! }) }}
           onHarvest={() => { const ids = [visibleMoment.itemId!, ...ripe.map((r) => r.item.id).filter((id) => id !== visibleMoment.itemId)]; setMoment(null); goHarvest(ids, 0) }}
           onLater={() => setMoment(null)} onAcknowledge={() => { feed.acknowledge(visibleMoment.key); setMoment(null) }}

@@ -3,7 +3,7 @@ import { api } from './api'
 import { isRemote } from './access'
 import { ErrorLine, useAction } from './bits'
 import { ago } from './model'
-import type { MergeSyncStatus, ProjectInfo } from './types'
+import type { MergeSyncStatus, ProjectInfo, RepoActivity } from './types'
 import './projects.css'
 
 export type ProjectScope = 'active' | 'archived' | 'trash'
@@ -12,6 +12,11 @@ const scopeNames: Record<ProjectScope, string> = { active: '使用中', archived
 const actionNames: Record<ProjectAction, string> = { archive: '归档', unarchive: '恢复到使用中', trash: '移入回收站', restore: '恢复到原分类' }
 const projectScope = (p: ProjectInfo): ProjectScope => p.trashed_at ? 'trash' : p.archived_at ? 'archived' : 'active'
 const projectPath = (p: ProjectInfo) => p.common_dir.replace(/\/\.git$/, '').replace(/^dir:/, '')
+type ActivityFilter = 'all' | RepoActivity
+const activityNames: Record<RepoActivity, string> = { active: '活跃', quiet: '安静', dormant: '沉睡' }
+const activityHelp: Record<ActivityFilter, string> = { all: '全部', active: '7 天内有动静或有待办', quiet: '7–30 天没有动静', dormant: '超过 30 天没有动静' }
+export const activityOf = (p: Pick<ProjectInfo, 'activity'>): RepoActivity => p.activity ?? 'active'
+const activityLine = (p: ProjectInfo) => `${activityNames[activityOf(p)]}${p.last_activity_at ? ` · 最近活动 ${ago(p.last_activity_at, new Date().toISOString())}` : ' · 还没有会话'}`
 const dateLabel = (at: string) => Number.isNaN(Date.parse(at)) ? '时间待核对' : new Date(at).toLocaleString('zh-CN')
 
 export function ProjectsPanel({ onClose, initialScope = 'active', device }: { onClose: () => void; initialScope?: ProjectScope; device?: string }) {
@@ -61,6 +66,7 @@ export function ProjectManager({ projects, statuses, readOnly = false, initialSc
   const act = useAction()
   const [mode, setMode] = useState<ProjectScope>(initialScope)
   const [query, setQuery] = useState('')
+  const [activity, setActivity] = useState<ActivityFilter>('all')
   const [selected, setSelected] = useState<Set<number>>(new Set())
   const [confirm, setConfirm] = useState<{ kind: ProjectAction; projects: ProjectInfo[] } | null>(null)
   const [notice, setNotice] = useState('')
@@ -71,7 +77,10 @@ export function ProjectManager({ projects, statuses, readOnly = false, initialSc
   }, [confirm])
   const counts: Record<ProjectScope, number> = { active: 0, archived: 0, trash: 0 }
   for (const p of projects) counts[projectScope(p)]++
-  const visible = projects.filter(p => projectScope(p) === mode && `${p.name} ${p.common_dir}`.toLowerCase().includes(query.trim().toLowerCase()))
+  const inScope = projects.filter(p => projectScope(p) === mode)
+  const activityCounts: Record<ActivityFilter, number> = { all: inScope.length, active: 0, quiet: 0, dormant: 0 }
+  for (const p of inScope) activityCounts[activityOf(p)]++
+  const visible = inScope.filter(p => (mode !== 'active' || activity === 'all' || activityOf(p) === activity) && `${p.name} ${p.common_dir}`.toLowerCase().includes(query.trim().toLowerCase()))
   const chosen = visible.filter(p => selected.has(p.id))
   const syncs = new Map(statuses.map(s => [s.repo_id, s]))
   const locked = act.busy || confirm !== null
@@ -93,15 +102,18 @@ export function ProjectManager({ projects, statuses, readOnly = false, initialSc
   return <>
     {readOnly && <p className="warn-box">请在项目所在的电脑上管理。归档和移除状态会随多设备摘要同步。</p>}
     <div className="pm-scopes" role="group" aria-label="项目范围">
-      {(['active', 'archived', 'trash'] as const).map(scope => <button key={scope} aria-pressed={mode === scope} disabled={locked} className={mode === scope ? 'on' : ''} onClick={() => { setMode(scope); clear() }}><span>{scopeNames[scope]} {counts[scope]}</span><small>{scope === 'active' ? '显示在小镇与待办中' : scope === 'archived' ? '暂时收起，随时继续' : '已移除，可恢复到原分类'}</small></button>)}
+      {(['active', 'archived', 'trash'] as const).map(scope => <button key={scope} aria-pressed={mode === scope} disabled={locked} className={mode === scope ? 'on' : ''} onClick={() => { setMode(scope); setActivity('all'); clear() }}><span>{scopeNames[scope]} {counts[scope]}</span><small>{scope === 'active' ? '显示在小镇与待办中' : scope === 'archived' ? '暂时收起，随时继续' : '已移除，可恢复到原分类'}</small></button>)}
     </div>
     <div className="pm-tools"><input type="search" aria-label="搜索项目" placeholder="搜索项目名或目录" value={query} disabled={locked} onChange={e => { setQuery(e.target.value); clear() }} /><span className="muted">{query ? `找到 ${visible.length} 个项目` : `${visible.length} 个项目`}</span></div>
-    <p className="pm-explanation">{mode === 'trash' ? '回收站中的项目已从小镇和待办移除。恢复后回到删除前的分类，保留时间不设自动清理。' : mode === 'archived' ? '归档项目已从小镇和待办收起。在这里恢复，也可以选中后移入回收站。' : '勾选一个或多个项目，就能一起归档或删除。每一行右侧也可以单独操作。'}</p>
+    {mode === 'active' && <div className="pm-activity" role="group" aria-label="按活跃度筛选">
+      {(['all', 'active', 'quiet', 'dormant'] as const).map(a => <button key={a} className={`btn small ${activity === a ? 'on' : ''}`} aria-pressed={activity === a} disabled={locked} title={activityHelp[a]} onClick={() => { setActivity(a); clear() }}>{a === 'all' ? '全部' : activityNames[a]} {activityCounts[a]}</button>)}
+    </div>}
+    <p className="pm-explanation">{mode === 'active' && activity !== 'all' && activity !== 'active' ? `${activityNames[activity]}的项目（${activityHelp[activity]}）默认不在小镇上显示，有新会话会自动回来；不再需要的可以全选后归档。` : mode === 'trash' ? '回收站中的项目已从小镇和待办移除。恢复后回到删除前的分类，保留时间不设自动清理。' : mode === 'archived' ? '归档项目已从小镇和待办收起。在这里恢复，也可以选中后移入回收站。' : '勾选一个或多个项目，就能一起归档或删除。每一行右侧也可以单独操作。'}</p>
     <div className="pm-list" aria-label={`${scopeNames[mode]}项目`}>
       {visible.length > 0 && <label className="pm-select-all"><input type="checkbox" disabled={readOnly || locked} checked={chosen.length === visible.length} ref={el => { if (el) el.indeterminate = chosen.length > 0 && chosen.length < visible.length }} onChange={e => setSelected(new Set(e.target.checked ? visible.map(p => p.id) : []))} />全选当前显示的 {visible.length} 个项目</label>}
       {visible.map(p => { const sync = syncs.get(p.id); return <article className={`pm-project ${selected.has(p.id) ? 'is-selected' : ''}`} key={p.id}>
         <label className="pm-project-choice"><input type="checkbox" aria-label={`选择项目 ${p.name} ${p.common_dir}`} disabled={readOnly || locked} checked={selected.has(p.id)} onChange={e => setSelected(previous => { const next = new Set(previous); if (e.target.checked) next.add(p.id); else next.delete(p.id); return next })} />
-          <span><strong>{p.name}</strong><small className="pm-path">{projectPath(p)}</small><small>{p.open_items} 项未完成 · {p.sessions} 个会话{p.pending > 0 ? ` · 待批准 ${p.pending}` : ''}{p.running > 0 ? ` · 会话状态显示运行中 ${p.running}` : ''}</small>
+          <span><strong>{p.name}</strong><small className="pm-path">{projectPath(p)}</small><small>{mode === 'active' && <span className={`pm-activity-badge is-${activityOf(p)}`}>{activityLine(p)}</span>}{p.open_items} 项未完成 · {p.sessions} 个会话{p.pending > 0 ? ` · 待批准 ${p.pending}` : ''}{p.running > 0 ? ` · 会话状态显示运行中 ${p.running}` : ''}</small>
             {mode === 'archived' && <small>归档于 {dateLabel(p.archived_at)}</small>}
             {mode === 'trash' && <small>移除于 {dateLabel(p.trashed_at!)} · 恢复至{p.trashed_from_archive ? '已归档' : '使用中'}</small>}
           </span>

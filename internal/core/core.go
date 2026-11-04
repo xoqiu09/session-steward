@@ -38,6 +38,8 @@ type Core struct {
 	Term   Terminal
 	// ManagedUnavailable 非空时替代“未找到 tmux”，说明为何不能从面板启动托管会话（例如合成演示）。
 	ManagedUnavailable string
+	// TrashPath 为 nil 时不提供删除工作目录（测试、演示、非 macOS）。
+	TrashPath TrashPath
 	// SyntheticSessions：会话全是虚构的，快照不生成恢复命令，避免用虚构 ID 启动真实 Agent。
 	SyntheticSessions bool
 	StewardHome       string

@@ -19,6 +19,7 @@ import { acceptSnapshot } from './feed'
 import { clampPage, needsYou, pageBuildings, pageOfCharacter } from './paging'
 import { DEFAULT_ROTATE_S } from './route'
 import { EXTRA_LABELS, readExtras, writeExtras, type TownExtras } from './extras'
+import { hideInactive } from './activity'
 import './town.css'
 import './townView.css'
 
@@ -202,7 +203,8 @@ export function TownView({ snap, conn, repoId, provider, sel, onSelectItem, onSe
     writeExtras(next)
     if (key === 'chips' && !on) setHighlight(null)
   }
-  const slice = useMemo(() => townSlice(view, repoId, provider), [view, repoId, provider])
+  const quiet = useMemo(() => hideInactive(view, repoId), [view, repoId])
+  const slice = useMemo(() => townSlice(extras.inactive ? view : quiet.snap, repoId, provider), [view, quiet, extras.inactive, repoId, provider])
   const model = useMemo(() => buildTown(slice, replay && replaySnap ? replaySnap.now : clientNow), [slice, clientNow, replay, replaySnap])
   const changed = useChanged(model, source)
   const offline = conn === 'offline'
@@ -321,7 +323,7 @@ export function TownView({ snap, conn, repoId, provider, sel, onSelectItem, onSe
           <summary title="首屏默认收起不常用的东西，要用时在这里打开">显示</summary>
           <div className="town-extras-menu">
             {EXTRA_LABELS.filter((x) => x.key !== 'replay' || !noReplay).map((x) => (
-              <label key={x.key} title={x.help}><input type="checkbox" checked={extras[x.key]} onChange={(e) => setExtra(x.key, e.target.checked)} />{x.label}</label>
+              <label key={x.key} title={x.help}><input type="checkbox" checked={extras[x.key]} onChange={(e) => setExtra(x.key, e.target.checked)} />{x.label}{x.key === 'inactive' && quiet.hidden > 0 ? `（${quiet.hidden}）` : ''}</label>
             ))}
           </div>
         </details>
