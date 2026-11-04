@@ -73,6 +73,20 @@ func (s *Server) projectRoutes(mux *http.ServeMux) {
 		}
 		writeJSON(w, 200, map[string]bool{"ok": true})
 	}))
+	mux.HandleFunc("POST /api/projects/keep-archived", s.panel(func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			IDs []int64 `json:"ids"`
+		}
+		if err := readJSON(r, &body); err != nil {
+			writeErr(w, err)
+			return
+		}
+		if err := s.Core.KeepArchived(r.Context(), body.IDs); err != nil {
+			writeErr(w, err)
+			return
+		}
+		writeJSON(w, 200, map[string]bool{"ok": true})
+	}))
 	mux.HandleFunc("POST /api/projects/trash", s.panel(func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
 			IDs     []int64 `json:"ids"`

@@ -52,6 +52,11 @@ func (c *Core) ProjectWorktrees(ctx context.Context, repo int64) ([]Worktree, er
 	}
 	out, err := gitx.Run(ctx, common, "worktree", "list", "--porcelain")
 	if err != nil {
+		if home, _ := os.UserHomeDir(); protectedRoot(common, home) != "" {
+			// 多半是 macOS 在等你允许访问这个位置；立即探测一次，让面板显示说明。
+			go c.ProbeAccess(context.WithoutCancel(ctx))
+			return nil, fmt.Errorf("读取工作目录失败：macOS 可能在等你允许 steward 访问 %s（系统设置 → 隐私与安全性 → 文件与文件夹）: %w", protectedRoot(common, home), err)
+		}
 		return nil, fmt.Errorf("读取工作目录失败: %w", err)
 	}
 	var list []Worktree

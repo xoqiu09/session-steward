@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import type { Approval, BriefField, FeatureContribution, ProjectFeature, Session, Snapshot, WorkItem } from '../types'
-import { buildToday } from './todayModel'
+import { attentionSummary, buildToday, summaryText } from './todayModel'
 import { TodayView } from './TodayView'
 import { itemSignal, reportedHandoffs } from '../model'
 import { liveSummary } from '../live'
@@ -128,7 +128,8 @@ describe('用户管理日常提醒', () => {
 describe('TodayView', () => {
   it('每件交付旁边直接能标记已处理和退回，证据和 Agent 说的分开写', () => {
     const html = renderToStaticMarkup(<TodayView snap={snap} onSelectItem={() => {}} onOpenTown={() => {}} />)
-    expect(html).toContain('要你决定')
+    expect(html).toContain('要你回应')
+    expect(html).toContain('正式请求')
     expect(html).toContain('有交付，等你处理')
     expect(html).not.toContain('做完了，等你验收')
     expect(html).toContain('npm publish --tag beta')
@@ -153,3 +154,15 @@ describe('TodayView', () => {
     expect(renderToStaticMarkup(<TodayView snap={snap} onSelectItem={() => {}} onOpenTown={() => {}} device="Mac Studio" />)).toContain('这一页只列本机（Mac Studio）的工作')
   })
 })
+
+describe('统一的“要你处理”口径', () => {
+  it('合计等于正式请求、Agent 交给你、待验收交付、卡住四项之和，并与每日十分钟一致', () => {
+    const s = attentionSummary(snap)
+    const t = buildToday(snap, '')
+    expect(s.total).toBe(s.requests + s.handoffs + s.deliveries + s.stuck)
+    expect(s.requests + s.handoffs).toBe(t.decide.length)
+    expect(s.deliveries).toBe(t.review.length)
+    expect(summaryText(s)).toContain(`Agent 交给你 ${s.handoffs}`)
+  })
+})
+

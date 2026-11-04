@@ -124,3 +124,19 @@ export function buildToday(snap: Snapshot, lastSeen: string): Today {
   const unregistered = [...recent, ...quiet].filter((s) => !s.work_item_id).length
   return { decide, review, stuck, running, managed, acceptedSince, unregistered }
 }
+
+// 全站统一的“要你处理”口径：正式请求（权限、提问、合并）+ Agent 交给你的下一步 + 待验收交付 + 卡住的工作。
+// 顶部入口、每日十分钟、右侧队列都用这套说法，数字能互相对上。
+export interface AttentionSummary { requests: number; handoffs: number; deliveries: number; stuck: number; total: number }
+
+export function attentionSummary(snap: Snapshot): AttentionSummary {
+  const t = buildToday(snap, '')
+  const handoffs = t.decide.filter((d) => d.kind === 'handoff').length
+  const requests = t.decide.length - handoffs
+  const deliveries = t.review.length
+  const stuck = new Set(t.stuck.map((row) => row.item.id)).size
+  return { requests, handoffs, deliveries, stuck, total: requests + handoffs + deliveries + stuck }
+}
+
+export const summaryText = (s: AttentionSummary) => `正式请求 ${s.requests} · Agent 交给你 ${s.handoffs} · 待验收交付 ${s.deliveries} · 卡住 ${s.stuck}`
+

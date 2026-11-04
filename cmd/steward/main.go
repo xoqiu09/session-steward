@@ -181,6 +181,22 @@ func serve() error {
 		}
 	}()
 
+	// 受保护位置（外置盘、文稿等）：每两分钟试着打开一次，系统在等授权时在面板上说明。
+	go func() {
+		t := time.NewTicker(2 * time.Minute)
+		defer t.Stop()
+		for {
+			if err := c.ProbeAccess(ctx); err != nil && ctx.Err() == nil {
+				log.Printf("读取权限探测失败: %v", err)
+			}
+			select {
+			case <-ctx.Done():
+				return
+			case <-t.C:
+			}
+		}
+	}()
+
 	// 外部合并：每分钟只取待合并项目的远端证据，不更新工作分支。
 	go func() {
 		t := time.NewTicker(time.Minute)

@@ -20,12 +20,13 @@ import { HubSwitch } from './hub/HubSwitch'
 import { TownView } from './town/TownView'
 import { TodayView } from './today/TodayView'
 import { ProjectsPanel, type ProjectScope } from './ProjectsPanel'
-import { buildToday } from './today/todayModel'
+import { attentionSummary, summaryText } from './today/todayModel'
 import { fullPanelHref, kioskHref, parseTownRoute, worldTownRoute } from './town/route'
 import { shownNo } from './hub/ids'
 import { DispatchDesk } from './dispatch/DispatchDesk'
 import { HooksSettings } from './HooksSettings'
 import { useProjectMenu, REPO_ATTR } from './ui/ProjectMenu'
+import { NoticeBar } from './ui/NoticeBar'
 import { requestRoom } from './town/roomRequest'
 import { inactiveRepo } from './town/activity'
 
@@ -126,8 +127,9 @@ function PanelApp() {
   const totalItems = groups.reduce((sum, g) => sum + g.items.length, 0)
   const providers = [...new Set((snap.sessions ?? []).map((s) => s.provider))]
   const counts = queueCounts(snap, repoId, provider)
-  const todayLeft = (() => { const t = buildToday(snap, ''); return t.decide.length + t.review.length + new Set(t.stuck.map(row => row.item.id)).size })()
-  const todayEntry = <a className="btn small today-entry" href={`${window.location.pathname}?view=today`} onClick={(e) => { if (!route.kiosk) { e.preventDefault(); setView('today') } }} title="每日十分钟：要你决定、等你验收、卡住了的，一页看完">{todayLeft ? `要你处理 ${todayLeft} 件` : '每日十分钟'}</a>
+  const summary = attentionSummary(snap)
+  const todayLeft = summary.total
+  const todayEntry = <a className="btn small today-entry" href={`${window.location.pathname}?view=today`} onClick={(e) => { if (!route.kiosk) { e.preventDefault(); setView('today') } }} title={`每日十分钟 · 要你处理 ${summary.total} 件：${summaryText(summary)}`}>{todayLeft ? `要你处理 ${todayLeft} 件` : '每日十分钟'}</a>
   const actors = projectActorRows(snap, groups, provider)
   const quietCount = sessionBuckets(snap, provider, repoId).quiet.length
   const attributionRecords = scopedAttributions(snap, repoId, provider)
@@ -172,7 +174,7 @@ function PanelApp() {
               <a className="btn small" href={fullPanelHref(path, null)} title="回到 Session Steward 完整面板">退出桌面模式</a>
             </span>} />
         </main>
-        {projectManager}{projectMenu}
+        {projectManager}{projectMenu}<NoticeBar snap={snap} />
         {settings}
         {drawer && <div className="kiosk-scrim" onClick={closeDrawer} aria-hidden />}
         {drawer && (
@@ -280,7 +282,7 @@ function PanelApp() {
           </>
         ))}
       </aside>
-      {projectManager}{projectMenu}
+      {projectManager}{projectMenu}<NoticeBar snap={snap} />
       {settings}
     </div>
   )

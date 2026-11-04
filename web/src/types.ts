@@ -204,6 +204,10 @@ export interface Approval {
 }
 
 export interface Snapshot {
+  /** 读取时卡住的受保护位置（外置盘、文稿等），多半是 macOS 在等授权。 */
+  access_issues?: { path: string; since: string }[]
+  /** 归档以后又有新会话活动的项目。 */
+  archived_activity?: { repo_id: number; name: string; common_dir: string; archived_at: string; last_activity_at: string }[]
   signal_gap_after_min?: number
   archived_projects?: number
   trashed_projects?: number
