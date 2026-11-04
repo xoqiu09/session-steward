@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -151,6 +152,8 @@ type Coverage struct {
 	Skipped   []string `json:"skipped"`
 	Reason    string   `json:"reason,omitempty"`
 	ReadError bool     `json:"read_error,omitempty"`
+	// Untrusted 是 Codex 里还没有信任记录的 Steward 条目数；只能检测“有没有记录”，以 Codex 的提示为准。
+	Untrusted int `json:"untrusted,omitempty"`
 }
 
 // CheckCoverage 只返回事件名与受控诊断，不公开命令、路径、配置或其他工具条目。
@@ -216,7 +219,13 @@ func (m *Monitor) Snapshot(ctx context.Context) []Coverage {
 			cached = versionCache{value: version, at: now}
 			m.versions[target.Provider] = cached
 		}
-		out = append(out, CheckCoverage(target, cached.value))
+		c := CheckCoverage(target, cached.value)
+		if target.Name == "codex" && len(c.Installed) > 0 {
+			if _, untrusted, err := CodexTrust(target, filepath.Join(filepath.Dir(target.Path), "config.toml")); err == nil {
+				c.Untrusted = len(untrusted)
+			}
+		}
+		out = append(out, c)
 	}
 	return out
 }

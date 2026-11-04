@@ -1,5 +1,7 @@
 // 小镇视图：用 SS 的实时快照画工作小镇。只读；点选对象复用 SS 原有的工作项/会话详情与审批入口。
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type TouchEvent } from 'react'
+import type { HookCoverage } from '../api'
+import { SetupChecklist } from '../ui/SetupChecklist'
 import type { Conn } from '../api'
 import type { Repo, Run, Snapshot } from '../types'
 import { groupByRepo, scopedAttention, sessionBuckets } from '../model'
@@ -132,8 +134,10 @@ function useMedia(query: string): boolean {
 
 const PER_PAGE: Record<LayoutName, number> = { wide: 3, portrait: 1 }
 
-export function TownView({ snap, conn, repoId, provider, sel, onSelectItem, onSelectSession, onSelectRepo, onAllRepos, onQueue, kiosk = false, rotateMs = DEFAULT_ROTATE_S * 1000, paused = false, layout, bar, world = false, replayDay, noReplay = false, scope = 'here', onScope, selfDevice }: {
+export function TownView({ snap, conn, repoId, provider, sel, onSelectItem, onSelectSession, onSelectRepo, onAllRepos, onQueue, kiosk = false, rotateMs = DEFAULT_ROTATE_S * 1000, paused = false, layout, bar, world = false, replayDay, noReplay = false, scope = 'here', onScope, selfDevice, coverage = null }: {
   snap: Snapshot
+  /** 接入情况，空小镇按它说明还差哪一步。 */
+  coverage?: HookCoverage[] | null
   conn: Conn
   repoId: number | 'all'
   provider: string
@@ -339,7 +343,7 @@ export function TownView({ snap, conn, repoId, provider, sel, onSelectItem, onSe
         {offline && <div className="town-offline" role="status"><strong>状态待更新</strong><span>连接中断，画面停在 {hm(shown.now)}，不代表 Agent 仍在工作。</span></div>}
         {!offline && model.buildings.length === 0 && <div className="town-empty" role="status">
           <strong>这台电脑还没有工作记录</strong>
-          <span>数据只存在本机的 ~/.steward，不会随代码同步到别的电脑。先用演示数据看看，或运行 steward install 后让 Claude Code / Codex 干活，项目和小人就会出现在这里。</span>
+          <SetupChecklist coverage={coverage} hasSessions={(shown.sessions ?? []).length > 0} fallback="数据只存在本机的 ~/.steward，不会随代码同步到别的电脑。先用演示数据看看，或运行 steward install 后让 Claude Code / Codex 干活，项目和小人就会出现在这里。" />
         </div>}
         {asWorld
           ? <WorldStage model={model} needsYou={urgent} selected={selected} highlight={highlight} onSelect={onSelect} changed={changed} offline={offline}

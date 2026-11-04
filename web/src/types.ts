@@ -204,6 +204,8 @@ export interface Approval {
 }
 
 export interface Snapshot {
+  /** 服务端填写：这台电脑能不能用派活台。没有时按可用处理。 */
+  dispatch_available?: boolean
   /** 读取时卡住的受保护位置（外置盘、文稿等），多半是 macOS 在等授权。 */
   access_issues?: { path: string; since: string }[]
   /** 归档以后又有新会话活动的项目。 */

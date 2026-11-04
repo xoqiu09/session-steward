@@ -37,3 +37,12 @@ func TestWorktreeRoutesStayLocalAndAuthenticated(t *testing.T) {
 		t.Fatal("empty path accepted", code)
 	}
 }
+
+func TestSnapshotReportsDispatchAvailability(t *testing.T) {
+	ts, _, s := start(t)
+	code, body := panelReq(t, ts, "GET", "/api/snapshot", nil)
+	if code != http.StatusOK || !strings.Contains(string(body), `"dispatch_available":false`) {
+		t.Fatal("snapshot without a dispatch desk should say so", code)
+	}
+	_ = s
+}

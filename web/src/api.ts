@@ -42,7 +42,7 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<T>
   return data as T
 }
 
-export interface HookCoverage { provider: string; version: string; installed: string[]; missing: string[]; skipped: string[]; reason?: string; read_error?: boolean }
+export interface HookCoverage { provider: string; version: string; installed: string[]; missing: string[]; skipped: string[]; reason?: string; read_error?: boolean; untrusted?: number }
 
 export const api = {
   hookCoverage: () => call<HookCoverage[]>('GET', '/api/hooks/status'),
