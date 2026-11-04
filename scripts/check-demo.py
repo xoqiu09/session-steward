@@ -97,6 +97,8 @@ def check(binary, output, sample):
         assert len(before['work_items']) == 3
         assert all(r['name'].startswith('示例-') and r['common_dir'].startswith('dir:' + str(directory.resolve())) for r in before['repos'])
         assert not any(f['accepted'] for f in before['features'])
+        assert not any(session['resume_command'] for session in before['sessions'])
+        assert before.get('managed_unavailable')
         checks['fresh_fixture_and_no_owner_acceptance'] = True
         denied(address, '', '/api/snapshot', 401)
         denied(address, token, '/hook/ping', 403)
@@ -133,8 +135,14 @@ def check(binary, output, sample):
                                    env=environment, capture_output=True, timeout=10)
         assert collision.returncode != 0 and not occupied.exists()
         checks['existing_data_and_occupied_port_preserved'] = True
+        # An open browser tab holds an event stream; it must not delay shutdown.
+        stream = urllib.request.urlopen(urllib.request.Request('http://' + address + '/api/stream',
+                                        headers={'Cookie': 'steward_panel=' + token}), timeout=5)
+        stopping = time.monotonic()
         proc.send_signal(signal.SIGTERM)
         assert proc.wait(timeout=8) == 0
+        stream.close()
+        assert time.monotonic() - stopping < 2, 'open event stream delayed shutdown'
         try:
             api(address, token, '/api/snapshot')
         except OSError:

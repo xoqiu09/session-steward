@@ -31,7 +31,9 @@ function Context({ a, snap }: { a: Approval; snap: Snapshot }) {
   const item = (snap.work_items ?? []).find((w) => w.id === (a.work_item_id || s?.work_item_id))
   const own = item && s && item.brief?.by_session ? { ...item, brief: item.brief.by_session[String(s.id)] } : item
   const p = own && field(own, 'progress')
-  const [why, after] = WHY[a.kind]
+  const [why, usual] = WHY[a.kind]
+  // 没有恢复命令（例如合成演示里的虚构会话）时，不提示去复制它。
+  const after = a.kind === 'decision' && !s?.resume_command ? '回到原会话回答；不需要时点“已处理”关闭。' : usual
   return <div className="q-context">
     {item && <div><b>目前：</b>{p ? <>{p.text} <span className={`src ${sourceTag(p).cls}`}>{sourceTag(p).mark} {sourceTag(p).label}</span> <small className="muted">{ago(p.at, snap.now)}</small></> : <span className="muted">暂无内容回报</span>}</div>}
     <div><b>为什么现在：</b>{why}</div>

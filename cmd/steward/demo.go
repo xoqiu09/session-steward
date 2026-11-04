@@ -88,8 +88,10 @@ func prepareDemo(ctx context.Context, requestedDir, listen string) (_ *demoInsta
 		// clear/reuse a user directory or trust STEWARD_HOME for a demo.
 		err = os.Mkdir(instance.dir, 0o700)
 	}
-	if err != nil {
+	if errors.Is(err, fs.ErrExist) {
 		return nil, fmt.Errorf("演示需要一个不存在的新目录，未清理或覆盖原路径: %w", err)
+	} else if err != nil {
+		return nil, fmt.Errorf("无法创建演示目录（父目录需已存在且可写）: %w", err)
 	}
 	if instance.dir, err = filepath.EvalSymlinks(instance.dir); err != nil {
 		return nil, err
@@ -119,6 +121,8 @@ func prepareDemo(ctx context.Context, requestedDir, listen string) (_ *demoInsta
 	}
 	instance.core = core.New(instance.store, demodata.Locator{})
 	instance.core.StewardHome = instance.dir
+	instance.core.SyntheticSessions = true
+	instance.core.ManagedUnavailable = demoNoAgents
 	if err = demodata.Seed(ctx, instance.core, instance.dir); err != nil {
 		return nil, err
 	}
@@ -129,10 +133,12 @@ func prepareDemo(ctx context.Context, requestedDir, listen string) (_ *demoInsta
 	instance.server = &server.Server{
 		BuildCommit: BuildCommit, Core: instance.core, IngestToken: secrets["ingest.token"],
 		PanelToken: secrets["panel.token"], Static: static, Listen: listener.Addr().String(),
-		DispatchUnavailable: "合成演示不接入真实 Agent；请退出演示后在正式 App 中使用。",
+		DispatchUnavailable: demoNoAgents,
 	}
 	return instance, nil
 }
+
+const demoNoAgents = "合成演示不接入真实 Agent；请退出演示后在正式 App 中使用。"
 
 func (instance *demoInstance) close() {
 	if instance.listener != nil {
@@ -146,9 +152,17 @@ func (instance *demoInstance) close() {
 	}
 }
 
-func (instance *demoInstance) handler() http.Handler {
+// handler ends event streams once stopping is cancelled: Shutdown waits for
+// handlers, and an open browser tab would otherwise hold it until the timeout.
+func (instance *demoInstance) handler(stopping context.Context) http.Handler {
 	next := instance.server.Handler()
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/stream" {
+			ctx, cancel := context.WithCancel(r.Context())
+			defer context.AfterFunc(stopping, cancel)()
+			defer cancel()
+			r = r.WithContext(ctx)
+		}
 		// The conversation resolver normally consults the real Agent home.
 		// Demo sessions are fictional; never resolve them or ingest live hooks.
 		if strings.HasPrefix(r.URL.Path, "/hook/") ||
@@ -170,8 +184,8 @@ func runDemo(ctx context.Context, dir, listen string, launchBrowser bool, output
 	defer instance.close()
 	base := "http://" + instance.listener.Addr().String()
 	panel := base + "/?view=town&world=1"
-	srv := &http.Server{Handler: instance.handler(), ReadHeaderTimeout: 10 * time.Second}
 	shutdownSignal, stop := context.WithCancel(ctx)
+	srv := &http.Server{Handler: instance.handler(shutdownSignal), ReadHeaderTimeout: 10 * time.Second}
 	stopped := make(chan struct{})
 	go func() {
 		defer close(stopped)
@@ -187,7 +201,7 @@ func runDemo(ctx context.Context, dir, listen string, launchBrowser bool, output
 	defer func() { stop(); <-stopped }()
 	served := make(chan error, 1)
 	go func() { served <- srv.Serve(instance.listener) }()
-	fmt.Fprintf(output, "合成演示已启动：%s\n三个示例项目、模拟进展；不安装 hooks、不读取真实会话、不启动 Agent。\n演示数据：%s\n按 Ctrl+C 停止；数据保留，重新运行会创建另一份新演示。\n", panel, instance.dir)
+	fmt.Fprintf(output, "合成演示已启动：%s\n三个示例项目、模拟进展；不安装 hooks、不读取真实会话、不启动 Agent。\n演示数据：%s\n按 Ctrl+C 停止；数据保留，重新运行会创建另一份新演示。\n上面的地址需要先登录；浏览器会自动带登录凭据打开。\n", panel, instance.dir)
 	if launchBrowser {
 		login := base + "/login?t=" + url.QueryEscape(instance.server.PanelToken) + "&next=" + url.QueryEscape("/?view=town&world=1")
 		command := "open"
@@ -204,7 +218,7 @@ func runDemo(ctx context.Context, dir, listen string, launchBrowser bool, output
 				fmt.Fprintln(output, "浏览器未打开。请保持此终端运行，在另一终端指定上述 STEWARD_HOME，用当前 steward 程序执行 open。")
 			} else {
 				quote := func(value string) string { return "'" + strings.ReplaceAll(value, "'", "'\\''") + "'" }
-				fmt.Fprintf(output, "浏览器未打开。请保持此终端运行，在另一终端执行：\nSTEWARD_HOME=%s %s open\n", quote(instance.dir), quote(binary))
+				fmt.Fprintf(output, "浏览器未打开。请保持此终端运行，在另一终端执行：\nSTEWARD_HOME=%s %s open\n它会打印并打开登录链接（含本次演示凭据，不要转发），进入后点顶部“小镇”。\n", quote(instance.dir), quote(binary))
 			}
 		}
 	}

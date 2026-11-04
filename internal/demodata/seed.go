@@ -94,7 +94,7 @@ func projects() []project {
 			name: "示例-素材册", workID: "ASSET-001", task: "合成演示：整理第一个项目目录", provider: "codex", status: "in_progress",
 			goal:     "按用途保存素材，并能在需要时找回来。",
 			progress: "已登记两项合成功能，还没有结构资料。",
-			next:     "按首次使用说明导入素材册目录，再看概况与功能关系。",
+			next:     "按首次使用说明练习整理目录，再读概况与功能关系；保存目录不改变这项工作的状态。",
 			features: []feature{
 				{"collect-assets", "保存素材与来源", "implemented", "not_verified"},
 				{"find-assets", "按用途查找素材", "implementing", "not_verified"},

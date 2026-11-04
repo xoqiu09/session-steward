@@ -48,6 +48,9 @@ func TestDemoUsesFreshDataAndNeverReusesExistingDirectories(t *testing.T) {
 	if _, err := prepareDemo(ctx, "relative-demo", "127.0.0.1:0"); err == nil {
 		t.Fatal("relative path accepted")
 	}
+	if _, err := prepareDemo(ctx, filepath.Join(t.TempDir(), "missing", "demo"), "127.0.0.1:0"); err == nil || !strings.Contains(err.Error(), "父目录") {
+		t.Fatal("missing parent not explained", err)
+	}
 	fresh := filepath.Join(t.TempDir(), "new demo with spaces")
 	instance, err := prepareDemo(ctx, fresh, "127.0.0.1:0")
 	if err != nil {
@@ -96,6 +99,14 @@ func TestDemoFirstProjectStructureFlowUsesExistingContracts(t *testing.T) {
 			assetRepo = r.ID
 		}
 	}
+	for _, session := range before.Sessions {
+		if session.ResumeCommand != "" {
+			t.Fatal("fictional session offers a real Agent resume command", session.ResumeCommand)
+		}
+	}
+	if before.ManagedNote == "" {
+		t.Fatal("demo does not explain why Agents cannot be started")
+	}
 	for _, f := range before.Features {
 		if f.Accepted || len(f.Contributions) == 0 {
 			t.Fatal("synthetic Agent report became real acceptance", f)
@@ -141,7 +152,7 @@ func TestDemoFirstProjectStructureFlowUsesExistingContracts(t *testing.T) {
 	if _, err = instance.core.SaveProjectStructure(ctx, assetRepo, raw, manual.Revision, "agent"); err == nil {
 		t.Fatal("Agent overwrote the user's directory")
 	}
-	api := httptest.NewServer(instance.handler())
+	api := httptest.NewServer(instance.handler(context.Background()))
 	defer api.Close()
 	response, err := http.Get(api.URL + "/api/snapshot")
 	if err != nil {
@@ -209,6 +220,16 @@ func TestDemoServerStopsWithoutLeavingListener(t *testing.T) {
 	if response.StatusCode != http.StatusOK {
 		t.Fatal(response.StatusCode)
 	}
+	// An open browser tab keeps an event stream; it must not delay shutdown.
+	stream, _ := http.NewRequest("GET", "http://"+configuration.Listen+"/api/stream", nil)
+	stream.AddCookie(&http.Cookie{Name: "steward_panel", Value: strings.TrimSpace(string(token))})
+	streaming, err := http.DefaultClient.Do(stream)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer streaming.Body.Close()
+	go io.Copy(io.Discard, streaming.Body)
+	stopping := time.Now()
 	cancel()
 	select {
 	case err := <-done:
@@ -217,6 +238,9 @@ func TestDemoServerStopsWithoutLeavingListener(t *testing.T) {
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("demo did not stop")
+	}
+	if elapsed := time.Since(stopping); elapsed > 2*time.Second {
+		t.Fatal("open event stream delayed shutdown", elapsed)
 	}
 	if conn, err := net.DialTimeout("tcp", configuration.Listen, time.Second); err == nil {
 		conn.Close()

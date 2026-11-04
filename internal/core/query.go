@@ -138,6 +138,7 @@ type Snapshot struct {
 	Dispatch          []DispatchMark     `json:"dispatch"`
 	Agents            []string           `json:"agents"`
 	AgentInfo         []AgentInfo        `json:"agent_info"`
+	ManagedNote       string             `json:"managed_unavailable,omitempty"`
 	MergeJobs         []MergeJob         `json:"merge_jobs"`
 	CheckedRepos      []int64            `json:"checked_repos"`
 	SessionUsage      []SessionUsage     `json:"session_usage"`
@@ -215,7 +216,9 @@ func (c *Core) Snapshot(ctx context.Context) (*Snapshot, error) {
 		if s.Freshness == "live" && active && s.Worktree != "" {
 			activeWorktrees[s.Worktree]++
 		}
-		s.ResumeCommand = resumeCommand(s.Provider, s.ProviderSessionID)
+		if !c.SyntheticSessions {
+			s.ResumeCommand = resumeCommand(s.Provider, s.ProviderSessionID)
+		}
 		snap.Sessions = append(snap.Sessions, s)
 	}
 	rows.Close()
@@ -384,6 +387,7 @@ func (c *Core) Snapshot(ctx context.Context) (*Snapshot, error) {
 	if c.Term != nil {
 		snap.Agents, snap.AgentInfo = c.AgentNames(), c.AgentInfos()
 	}
+	snap.ManagedNote = c.ManagedUnavailable
 	c.applyRoutinePolicies(snap)
 	if err := projectVisibility(tx, snap); err != nil {
 		return nil, err

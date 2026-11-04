@@ -120,7 +120,7 @@ bin/steward service uninstall  # 停止服务并删除这份 plist
 - 用 `launchctl bootstrap gui/$UID` / `bootout gui/$UID/<标签>` 加载和卸载，`restart` 用 `launchctl kickstart -k`。
 - `steward service` 不能用 `go run` 运行：`go run` 的二进制是临时文件，会被删除。请先构建。
 
-**同一个数据目录和端口只能有一个 `serve`。** 两个 `serve` 共用 `STEWARD_HOME` 会同时写同一个 SQLite 库；后启动的那个绑定端口失败后退出，launchd 又会每隔约 10 秒拉起一次。因此 `service install` 发现监听地址已被占用、而服务尚未加载时会拒绝安装，并提示先停止已有的 `steward serve`（Ctrl-C 或结束该进程）。确认占用端口的不是 steward 时，可加 `--force` 跳过这项检查。服务装好后不要再手动运行 `steward serve`。用 `STEWARD_HOME=/tmp/steward-demo` 和另一个端口运行演示不受影响；后台服务只有一个，用另一个 `STEWARD_HOME` 再运行 `service install` 会把它切换过去。
+**同一个数据目录和端口只能有一个 `serve`。** 两个 `serve` 共用 `STEWARD_HOME` 会同时写同一个 SQLite 库；后启动的那个绑定端口失败后退出，launchd 又会每隔约 10 秒拉起一次。因此 `service install` 发现监听地址已被占用、而服务尚未加载时会拒绝安装，并提示先停止已有的 `steward serve`（Ctrl-C 或结束该进程）。确认占用端口的不是 steward 时，可加 `--force` 跳过这项检查。服务装好后不要再手动运行 `steward serve`。合成演示用 `steward demo`，它有自己的新目录和端口，不读取 `STEWARD_HOME`，也不受此限制；后台服务只有一个，用另一个 `STEWARD_HOME` 再运行 `service install` 会把它切换过去。
 
 **更新 steward：**
 

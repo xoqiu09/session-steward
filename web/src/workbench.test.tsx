@@ -81,6 +81,17 @@ describe('workbench deduplication', () => {
     s.approvals = [approval('p1', 'A-1', 'permission'), approval('p2', 'A-1', 'permission'), approval('d1', 'A-1', 'decision')]
     expect(queueCount(s)).toBe(3)
   })
+  it('only suggests copying a resume command when the session offers one', () => {
+    const s = snap([item('A-1', 'one')]); s.work_items![0].status = 'in_progress'
+    const session = { id: 7, provider: 'codex', provider_session_id: 'synthetic-demo-1', cwd: '/synthetic/demo', resume_command: '' } as unknown as NonNullable<Snapshot['sessions']>[number]
+    s.sessions = [session]
+    s.approvals = [{ ...approval('d1', 'A-1', 'decision'), session_id: 7 }]
+    const html = renderToStaticMarkup(<Queue snap={s} onSelectItem={() => {}} />)
+    expect(html).not.toContain('复制恢复命令')
+    expect(html).toContain('回到原会话回答')
+    s.sessions = [{ ...session, resume_command: 'codex resume synthetic-demo-1' }]
+    expect(renderToStaticMarkup(<Queue snap={s} onSelectItem={() => {}} />)).toContain('复制恢复命令')
+  })
   it('counts multiple feature handoffs and review of the same item once, preserving every source', () => {
     const s = snap([item('A-1', 'one')])
     s.features = ['feature-a', 'feature-b'].map(id => ({ repo_id: 1, id, title: id, acceptance: '', scope_basis: '', scope_status: 'documented', scope_version: '1', candidate: 'a', revision: '1', implementation: 'implemented', validation: 'not_verified', conflict: false, stale: false, accepted: false, work_item_ids: ['A-1'], contributions: [{ id, candidate: 'a', next_owner: 'user', next: 'Review '+id, session_id: 7, run_id: 1, work_item_id: 'A-1', provider: 'codex', at, active: true }] }))

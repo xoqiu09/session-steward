@@ -222,6 +222,7 @@ export interface Snapshot {
   dispatch?: DispatchMark[] | null
   agents?: string[] | null
   agent_info?: AgentInfo[] | null
+  managed_unavailable?: string
   merge_jobs?: MergeJob[] | null
   checked_repos?: number[] | null
   session_usage?: SessionUsage[] | null
