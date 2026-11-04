@@ -175,6 +175,7 @@ func projectVisibility(tx *sql.Tx, s *Snapshot) error {
 	s.Deps = keepRows(s.Deps, func(d Dep) bool { return !items[d.Upstream] && !items[d.Downstream] })
 	s.Attributions = keepRows(s.Attributions, func(a Attribution) bool { return !sessions[a.SessionID] && !items[a.WorkItemID] })
 	s.Features = keepRows(s.Features, func(f ProjectFeature) bool { return !hidden[f.RepoID] })
+	s.Structures = keepRows(s.Structures, func(p ProjectStructure) bool { return !hidden[p.RepoID] })
 	s.Managed = keepRows(s.Managed, func(m ManagedSession) bool { return !hidden[m.RepoID] && !items[m.WorkItemID] })
 	s.MergeJobs = keepRows(s.MergeJobs, func(m MergeJob) bool { return !hidden[m.RepoID] && !items[m.WorkItemID] })
 	s.SessionUsage = keepRows(s.SessionUsage, func(u SessionUsage) bool { return !sessions[u.SessionID] })

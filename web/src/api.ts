@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { isRemote, remoteReadOnlyMessage } from './access'
-import type { AISummary, AttributionDecision, BriefEdit, DayDetail, Handoff, HistoryResp, HubStatus, ManagedSession, MergeJob, MergeSyncStatus, ProjectInfo, Review, SessionUsageDetail, Snapshot } from './types'
+import type { AISummary, AttributionDecision, BriefEdit, DayDetail, Handoff, HistoryResp, HubStatus, ManagedSession, MergeJob, MergeSyncStatus, ProjectInfo, ProjectStructure, ProjectStructureDocument, Review, SessionUsageDetail, Snapshot } from './types'
 import { snapshotRefresher } from './snapshotRefresh'
 import { publishNativeSnapshot } from './nativeBridge'
 
@@ -46,6 +46,7 @@ export interface HookCoverage { provider: string; version: string; installed: st
 
 export const api = {
   hookCoverage: () => call<HookCoverage[]>('GET', '/api/hooks/status'),
+  saveProjectStructure: (repo: number, document: ProjectStructureDocument, base_revision: string) => call<{ structure: ProjectStructure }>('PUT', `/api/projects/${repo}/structure`, { document, base_revision }),
   projects: () => call<ProjectInfo[]>('GET', '/api/projects'),
   archiveProjects: (ids: number[], archived: boolean) => call('POST', '/api/projects/archive', { ids, archived }),
   trashProjects: (ids: number[], trashed: boolean) => call('POST', '/api/projects/trash', { ids, trashed }),

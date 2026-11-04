@@ -182,6 +182,11 @@ func (c *Core) HubCombine(ctx context.Context, selfID, selfName string, others *
 	merged.Deps = append(merged.Deps, others.Deps...)
 	merged.Runs = append(merged.Runs, others.Runs...)
 	merged.Approvals = append(merged.Approvals, others.Approvals...)
+	local, err := c.Snapshot(ctx)
+	if err != nil {
+		return nil, err
+	}
+	merged.Features, merged.Structures = local.Features, local.Structures
 	return merged, nil
 }
 

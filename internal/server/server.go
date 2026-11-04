@@ -59,7 +59,7 @@ func hostOnly(h string) string {
 
 // remoteBlocked：远程全局只读。新增 API 默认不能从远程写入；终端画面也仅本机可见。
 func remoteBlocked(method, path string) bool {
-	if strings.HasPrefix(path, "/api/managed") || strings.HasPrefix(path, "/api/dispatch") || strings.HasSuffix(path, "/conversation") {
+	if strings.HasPrefix(path, "/api/managed") || strings.HasPrefix(path, "/api/dispatch") || strings.HasPrefix(path, "/api/orchestration") || strings.HasSuffix(path, "/conversation") {
 		return true // 包括只读终端画面：终端可能显示敏感内容
 	}
 	return method != http.MethodGet && method != http.MethodHead
@@ -261,7 +261,9 @@ func (s *Server) Handler() http.Handler {
 	}))
 	s.managedRoutes(mux)
 	s.projectRoutes(mux)
+	s.projectStructureRoutes(mux)
 	s.dispatchRoutes(mux)
+	s.orchestrationRoutes(mux)
 	mux.HandleFunc("GET /login", s.handleLogin)
 
 	if s.Static != nil {

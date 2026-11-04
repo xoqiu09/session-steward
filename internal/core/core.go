@@ -17,6 +17,12 @@ type Locator interface {
 }
 
 type Core struct {
+	OrchHostID string // authenticated execution-device identity, never taken from a request
+
+	OrchExecutor OrchestrationExecutor // nil: no background execution
+	orchMu       sync.Mutex            // serializes orchestration passes; no background model calls
+	orchWatchAt  time.Time
+
 	St  *store.Store
 	Loc Locator
 
@@ -28,12 +34,16 @@ type Core struct {
 	BriefStaleAfter  time.Duration
 
 	// 托管会话：Agents 为面板可启动的 Agent 名→命令（只来自服务配置）。Term 为 nil 时不可启动。
-	Agents       map[string]AgentSpec
-	Term         Terminal
-	StewardHome  string
-	ManagedEnv   []string
-	WorktreeRoot string
-	launchMu     sync.Mutex
+	Agents map[string]AgentSpec
+	Term   Terminal
+	// ManagedUnavailable 非空时替代“未找到 tmux”，说明为何不能从面板启动托管会话（例如合成演示）。
+	ManagedUnavailable string
+	// SyntheticSessions：会话全是虚构的，快照不生成恢复命令，避免用虚构 ID 启动真实 Agent。
+	SyntheticSessions bool
+	StewardHome       string
+	ManagedEnv        []string
+	WorktreeRoot      string
+	launchMu          sync.Mutex
 	// 检查门合并：仓库名或 common dir → 检查命令；AutoMerge 时批准后自动运行。
 	Checks       map[string][][]string
 	AutoMerge    bool

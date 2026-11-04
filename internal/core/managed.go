@@ -158,6 +158,9 @@ func (c *Core) launch(ctx context.Context, in LaunchInput, o launchOpts) (*Manag
 	if o.native {
 		in.Agent, argv = "codex", []string{"codex", "app-server"}
 	} else {
+		if c.ManagedUnavailable != "" {
+			return nil, fmt.Errorf("%w: %s", ErrBadRequest, c.ManagedUnavailable)
+		}
 		if c.Term == nil {
 			return nil, fmt.Errorf("%w: 本机未找到 tmux，无法启动托管会话", ErrBadRequest)
 		}

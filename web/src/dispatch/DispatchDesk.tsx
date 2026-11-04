@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import './dispatch.css'
+import { OrchestrationPanel } from './OrchestrationPanel'
 import {
   canHandoff, canResume, canStart, desktopHref, eventText, taskLabel, townHref,
   type DispatchDeskState, type DispatchPending, type DispatchTask,
@@ -72,7 +73,7 @@ export function DispatchDesk() {
       let d = await req<DispatchDeskState>('/api/dispatch')
       const left = Date.parse(d.lease_until) - Date.now()
       // 没人控制或者自己的租约快到期时自动续上；别人正在控制时不抢，等用户点“接过来”。
-      if ((!d.owner || left <= 0) || (d.owner === client && left < 45000)) d = await req<DispatchDeskState>('/api/dispatch/acquire', { client })
+      if (((!d.owner || left <= 0) && !d.background_control) || (d.owner === client && left < 45000)) d = await req<DispatchDeskState>('/api/dispatch/acquire', { client })
       deskRef.current = d
       setDesk(d)
       setFatal('')
@@ -123,10 +124,10 @@ export function DispatchDesk() {
     finally { setBusy(false) }
   }
 
-  if (fatal) return <main className="dispatch-desk"><DeskHeader /><div className="dd-card dd-blocked" role="alert"><h2>派活台打不开</h2><p>{fatal}</p></div></main>
+  if (fatal) return <main className="dispatch-desk"><DeskHeader /><div className="dd-card dd-blocked" role="alert"><h2>派活台打不开</h2><p>{fatal}</p></div><OrchestrationPanel /></main>
   if (!desk) return <main className="dispatch-desk"><DeskHeader /><p role="status">正在连接派活台…</p></main>
 
-  const other = !!desk.owner && desk.owner !== client && Date.parse(desk.lease_until) > Date.now()
+  const other = !!desk.owner && desk.owner !== client
   const task = detail && detail.id === selected ? detail : desk.tasks.find((t) => t.id === selected) ?? null
   return <main className="dispatch-desk">
     <DeskHeader />
@@ -135,10 +136,12 @@ export function DispatchDesk() {
       <h1>任务在 {desk.host} 上执行</h1>
       <p className="muted">{desk.codex_version || 'Codex'} · 用这台电脑上你自己的 Codex 设置。关掉页面任务照常跑，回来能看到进展。</p>
       <p className={`dd-control${other ? ' is-other' : ''}`}>
-        {owns ? '这个页面正在控制' : other ? '另一个页面正在控制，这里只能看' : '正在取得控制…'}
-        {other && <button className="btn small" disabled={busy} onClick={() => void takeOver()}>接过来</button>}
+        {owns ? '这个页面正在控制' : other ? '另一个页面正在控制，这里只能看' : desk.background_control ? '后台正在按授权推进，你随时可以接过来' : '正在取得控制…'}
+        {(other || desk.background_control && !desk.owner) && <button className="btn small" disabled={busy} onClick={() => void takeOver()}>接过来</button>}
+        {owns && desk.background_control && <button className="btn small" disabled={busy} onClick={async () => { setBusy(true); try { const next = await req<DispatchDeskState>('/api/dispatch/release-background', { client, epoch: desk.epoch }); deskRef.current = next; setDesk(next) } catch (e) { setError((e as Error).message) } finally { setBusy(false) } }}>交回后台</button>}
       </p>
     </div>
+    <OrchestrationPanel />
     {error && <div className="dd-alert" role="alert">{error}</div>}
     <div className="dd-grid">
       <aside className="dd-list" aria-label="任务列表">

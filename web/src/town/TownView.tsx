@@ -8,6 +8,7 @@ import { orderedProjects } from '../projectActivity'
 import { resolveDeepLink } from '../live'
 import TownScene, { type LayoutName, type Selection } from './TownScene'
 import { WorldStage, type ViewContext } from './WorldScene'
+import { TownStructure } from './TownStructure'
 import { ReplayBar, minuteLabel, replayISO, startPos, type ReplayPos } from './ReplayBar'
 import { api } from '../api'
 import { planWorld } from './clusters'
@@ -209,6 +210,11 @@ export function TownView({ snap, conn, repoId, provider, sel, onSelectItem, onSe
   const narrow = useMedia(PORTRAIT_QUERY)
   const shape: LayoutName = layout ?? (narrow ? 'portrait' : 'wide')
   const asWorld = world && shape === 'wide'
+  // 窄屏沿用原有分页场景，提供同一份说明，不为阅读说明改变地图布局。
+  const [structure, setStructure] = useState(false)
+  const structureTrigger = useRef<HTMLButtonElement | null>(null)
+  const closeStructure = () => setStructure(false)
+  useEffect(() => { if (!structure) structureTrigger.current?.focus({ preventScroll: true }) }, [structure])
   const urgent = useCallback((b: BuildingView) => needsYou(b, model.pendingApprovals), [model])
   // 村庄与野外按完整快照里近 7 天的活动和关联来分；只在快照变化时重算，位置才稳定。
   const plan = useMemo(() => planWorld(model.buildings.filter((b) => b.repo).map((b) => b.repo!), shown, Date.parse(shown.now) || Date.now()), [model, shown])
@@ -216,7 +222,7 @@ export function TownView({ snap, conn, repoId, provider, sel, onSelectItem, onSe
   const [pageRaw, setPage] = useState(0)
   const page = clampPage(pageRaw, pages.length)
   const turn = (step: number) => setPage(((page + step) % pages.length + pages.length) % pages.length)
-  const rotating = kiosk && !paused && pages.length > 1 && !asWorld
+  const rotating = kiosk && !paused && !structure && pages.length > 1 && !asWorld
   useEffect(() => {
     if (!rotating) return
     const t = window.setTimeout(() => setPage((p) => (clampPage(p, pages.length) + 1) % pages.length), rotateMs)
@@ -225,15 +231,16 @@ export function TownView({ snap, conn, repoId, provider, sel, onSelectItem, onSe
   // 从深链或列表选中一个会话时，翻到它所在的那页。
   const selKey = sel?.kind === 'session' ? `session-${sel.id}` : ''
   useEffect(() => {
-    if (!selKey) return
+    if (!selKey || structure) return
     const i = pageOfCharacter(pages, selKey)
     if (i >= 0) setPage(i)
   }, [selKey])
   const swipe = useRef<{ x: number; y: number } | null>(null)
-  const onTouchStart = (e: TouchEvent) => { const t = e.touches[0]; swipe.current = t ? { x: t.clientX, y: t.clientY } : null }
+  const onTouchStart = (e: TouchEvent) => { if (structure) return; const t = e.touches[0]; swipe.current = t ? { x: t.clientX, y: t.clientY } : null }
   const onTouchEnd = (e: TouchEvent) => {
     const a = swipe.current, t = e.changedTouches[0]
     swipe.current = null
+    if (structure) return
     if (!a || !t || pages.length < 2) return
     const dx = t.clientX - a.x, dy = t.clientY - a.y
     if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.5) turn(dx < 0 ? 1 : -1)
@@ -278,6 +285,7 @@ export function TownView({ snap, conn, repoId, provider, sel, onSelectItem, onSe
   const pinned = pages.length > 1 ? pages[0].filter((b) => pages.every((pg) => pg.includes(b))).length : 0
   // 点建筑或项目卡片后整个面板只看这个项目：在小镇里写明，一键回到全部，不然像是别的项目都不见了。
   const scopedRepo = repoId === 'all' ? null : (shown.repos ?? []).find((r) => r.id === repoId)?.name ?? `项目 #${repoId}`
+  const structureBuilding = repoId === 'all' ? undefined : model.buildings.find(b => b.repo?.id === repoId)
   return (
     <div className={`town-view${offline ? ' is-offline' : ''}${kiosk ? ' is-kiosk' : ''}${extras.parcels ? '' : ' hide-parcels'}`}>
       <div className="town-bar">
@@ -318,6 +326,7 @@ export function TownView({ snap, conn, repoId, provider, sel, onSelectItem, onSe
           </div>
         </details>
         {extras.replay && !replay && !noReplay && <button type="button" className="town-replay-open" onClick={() => { setReplay(startPos()); setPlaying(false) }} title="拖到过去某个时刻，看当时小镇的样子">回放</button>}
+        {!asWorld && <button type="button" className="town-structure-entry" aria-haspopup="dialog" aria-expanded={structure} onClick={e => { structureTrigger.current = e.currentTarget; swipe.current = null; setStructure(true) }} title={structureBuilding ? "查看这个项目的目标、功能关系与验证依据" : "查看 SS 自身的结构说明首版样本"}>结构说明</button>}
         {bar}
       </div>
       <div className="town-diorama" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
@@ -330,7 +339,7 @@ export function TownView({ snap, conn, repoId, provider, sel, onSelectItem, onSe
         </div>}
         {asWorld
           ? <WorldStage model={model} needsYou={urgent} selected={selected} highlight={highlight} onSelect={onSelect} changed={changed} offline={offline}
-              kiosk={kiosk} rotateMs={rotateMs} paused={paused || sel != null} focusKey={selKey} plan={plan} replaying={!!replay} snapshot={shown}
+              kiosk={kiosk} rotateMs={rotateMs} paused={paused || structure || sel != null} focusKey={selKey} plan={plan} replaying={!!replay} snapshot={shown}
               source={source} selfDevice={selfDevice} context={context} onRestoreContext={restoreContext} />
           : <TownScene model={model} buildings={pages[page]} layout={shape} selected={selected} highlight={highlight} onSelect={onSelect} changed={changed} offline={offline} />}
         <ul className="town-legend" aria-label="图例">
@@ -340,6 +349,7 @@ export function TownView({ snap, conn, repoId, provider, sel, onSelectItem, onSe
           <li><i className="lg-board" />告示栏 = 等你决定</li>
         </ul>
       </div>
+      {structure && <TownStructure onClose={closeStructure} project={structureBuilding ? { b: structureBuilding, features: shown.features ?? null, structure: shown.structures?.find(s => s.repo_id === structureBuilding.repo?.id) } : undefined} />}
     </div>
   )
 }

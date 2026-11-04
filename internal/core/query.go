@@ -122,27 +122,29 @@ type Approval struct {
 }
 
 type Snapshot struct {
-	SignalGapAfterMin int              `json:"signal_gap_after_min,omitempty"`
-	Cursor            int64            `json:"cursor"`
-	Now               string           `json:"now"`
-	Repos             []Repo           `json:"repos"`
-	Sessions          []Session        `json:"sessions"`
-	WorkItems         []WorkItem       `json:"work_items"`
-	Deps              []Dep            `json:"deps"`
-	Runs              []Run            `json:"runs"`
-	Approvals         []Approval       `json:"approvals"`
-	Attributions      []Attribution    `json:"attributions"`
-	Features          []ProjectFeature `json:"features"`
-	Managed           []ManagedSession `json:"managed"`
-	Dispatch          []DispatchMark   `json:"dispatch"`
-	Agents            []string         `json:"agents"`
-	AgentInfo         []AgentInfo      `json:"agent_info"`
-	MergeJobs         []MergeJob       `json:"merge_jobs"`
-	CheckedRepos      []int64          `json:"checked_repos"`
-	SessionUsage      []SessionUsage   `json:"session_usage"`
-	ItemUsage         []ItemUsage      `json:"item_usage"`
-	Handoffs          []Handoff        `json:"handoffs"`
-	SummaryRepos      []int64          `json:"summary_repos"`
+	SignalGapAfterMin int                `json:"signal_gap_after_min,omitempty"`
+	Cursor            int64              `json:"cursor"`
+	Now               string             `json:"now"`
+	Repos             []Repo             `json:"repos"`
+	Sessions          []Session          `json:"sessions"`
+	WorkItems         []WorkItem         `json:"work_items"`
+	Deps              []Dep              `json:"deps"`
+	Runs              []Run              `json:"runs"`
+	Approvals         []Approval         `json:"approvals"`
+	Attributions      []Attribution      `json:"attributions"`
+	Features          []ProjectFeature   `json:"features"`
+	Structures        []ProjectStructure `json:"structures"`
+	Managed           []ManagedSession   `json:"managed"`
+	Dispatch          []DispatchMark     `json:"dispatch"`
+	Agents            []string           `json:"agents"`
+	AgentInfo         []AgentInfo        `json:"agent_info"`
+	ManagedNote       string             `json:"managed_unavailable,omitempty"`
+	MergeJobs         []MergeJob         `json:"merge_jobs"`
+	CheckedRepos      []int64            `json:"checked_repos"`
+	SessionUsage      []SessionUsage     `json:"session_usage"`
+	ItemUsage         []ItemUsage        `json:"item_usage"`
+	Handoffs          []Handoff          `json:"handoffs"`
+	SummaryRepos      []int64            `json:"summary_repos"`
 	// ReplayAt 非空表示这是回放快照（小镇时间条），只读。
 	ReplayAt string `json:"replay_at,omitempty"`
 	// Devices 只在“全部设备”合并视图里有。
@@ -214,7 +216,9 @@ func (c *Core) Snapshot(ctx context.Context) (*Snapshot, error) {
 		if s.Freshness == "live" && active && s.Worktree != "" {
 			activeWorktrees[s.Worktree]++
 		}
-		s.ResumeCommand = resumeCommand(s.Provider, s.ProviderSessionID)
+		if !c.SyntheticSessions {
+			s.ResumeCommand = resumeCommand(s.Provider, s.ProviderSessionID)
+		}
 		snap.Sessions = append(snap.Sessions, s)
 	}
 	rows.Close()
@@ -351,6 +355,9 @@ func (c *Core) Snapshot(ctx context.Context) (*Snapshot, error) {
 	if snap.Features, err = c.readFeatures(tx); err != nil {
 		return nil, err
 	}
+	if snap.Structures, err = readProjectStructures(tx, snap.Repos); err != nil {
+		return nil, err
+	}
 	if snap.Managed, err = c.readManaged(tx); err != nil {
 		return nil, err
 	}
@@ -380,6 +387,7 @@ func (c *Core) Snapshot(ctx context.Context) (*Snapshot, error) {
 	if c.Term != nil {
 		snap.Agents, snap.AgentInfo = c.AgentNames(), c.AgentInfos()
 	}
+	snap.ManagedNote = c.ManagedUnavailable
 	c.applyRoutinePolicies(snap)
 	if err := projectVisibility(tx, snap); err != nil {
 		return nil, err

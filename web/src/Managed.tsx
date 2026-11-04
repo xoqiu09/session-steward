@@ -14,6 +14,7 @@ export function NewManaged({ snap, initialRepoId, onLaunched }: { snap: Snapshot
   const [agent, setAgent] = useState(agents[0] ?? '')
   const [title, setTitle] = useState('')
   const act = useAction()
+  if (snap.managed_unavailable) return <p className="hint">{snap.managed_unavailable}</p>
   if (!agents.length) return <p className="hint">本机服务未找到 tmux，暂时不能从面板启动托管会话；已有会话照常显示。</p>
   if (!repos.length) return <p className="hint">还没有已登记的 Git 项目。先在项目中运行一次 Agent，或让 Agent 用 begin 登记。</p>
   return <form className="new-item compact managed-new" aria-label="新建托管会话" onSubmit={(e) => {

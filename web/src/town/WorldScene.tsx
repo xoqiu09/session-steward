@@ -15,6 +15,7 @@ import {
 import type { WorldPlan } from './clusters'
 import { InteriorScene } from './InteriorScene'
 import { TownGuide } from './TownGuide'
+import { TownStructure } from './TownStructure'
 import { Bush, Campfire, Fence, Flowers, Lakes, Mound, Pine, Pond, Reeds, Rock, Windmill, YARD_TINT, terrainOf, type Terrain } from './scenery'
 import { cellsInView, gridOfView, sceneryOf, terrainAtCell, tintBlob, type CellScenery } from './terrain'
 import { statusChips, statusOf, sumStatus, type StatusCounts } from './status'
@@ -602,6 +603,8 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
   const [harvest, setHarvest] = useState<{ ids: string[]; index: number } | null>(null)
   // 使用说明：第一次来时按钮旁冒一个小提示，打开过一次就不再提示（只记在这个浏览器里）。
   const [guide, setGuide] = useState(false)
+  const [structure, setStructure] = useState(false)
+  const structureTrigger = useRef<HTMLButtonElement | null>(null)
   const [guideSeen, setGuideSeen] = useState(() => { try { return localStorage.getItem(GUIDE_SEEN) === '1' } catch { return true } })
   const openGuide = () => { setGuide(true); setGuideSeen(true); try { localStorage.setItem(GUIDE_SEEN, '1') } catch { /* 隐私模式：下次再提示 */ } }
   useEffect(() => {
@@ -696,6 +699,15 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
   }, [source])
   useEffect(() => { shownCam.current = camera })
   const stop = () => { if (anim.current != null) cancelAnimationFrame(anim.current); anim.current = null }
+  const openStructure = (trigger: HTMLButtonElement) => {
+    structureTrigger.current = trigger
+    stop(); drag.current = null; setCam(camera); lastTouch.current = Date.now()
+    setGuide(false); setStructure(true)
+  }
+  const closeStructure = () => { lastTouch.current = Date.now(); setStructure(false) }
+  useEffect(() => {
+    if (!structure) structureTrigger.current?.focus({ preventScroll: true })
+  }, [structure])
   const flyTo = (to: Camera, ms = 900) => {
     stop()
     if (reducedMotion) { setCam(clampCamera(to, world.bounds)); return }
@@ -716,7 +728,7 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
 
   // 选中某个会话时飞到它的街区。
   useEffect(() => {
-    if (!focusKey) return
+    if (!focusKey || structure) return
     const d = world.districts.find((x) => x.b.characters.some((c) => c.key === focusKey))
     if (d) flyTo(fitCamera(cellBox(d.ox, d.oy), aspect, 1.15))
   }, [focusKey])
@@ -811,11 +823,11 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
   }
   const feed = useMoments(props.snapshot, (batch) => {
     if (!canAutoFollow({ now: Date.now(), lastTouch: lastTouch.current, lastFlight: lastFlight.current,
-      paused, inside: !!inside, harvesting: !!harvest, replaying: !!props.replaying, guide, hidden: document.hidden, offline: !!props.offline, presenting: !!moment || showMoments })) return
+      paused, inside: !!inside, harvesting: !!harvest, replaying: !!props.replaying, guide: guide || structure, hidden: document.hidden, offline: !!props.offline, presenting: !!moment || showMoments })) return
     const first = batch.find((m) => autoMoment(m, feed.preferences) && world.districts.some((d) => d.key === m.buildingKey))
     if (first) visitMoment(first)
   }, (progress) => {
-    if (!reducedMotion && !props.replaying && !inside && !guide) setSparks(new Set(progress.map((m) => m.buildingKey)))
+    if (!reducedMotion && !props.replaying && !inside && !guide && !structure) setSparks(new Set(progress.map((m) => m.buildingKey)))
   }, source, (handled) => {
     if (props.replaying) return
     setDoneMs(10_000)
@@ -836,7 +848,7 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
   const remoteRipe = remoteAway.filter((m) => m.kind === 'ripe').length
   const remoteDecisions = remoteAway.filter((m) => m.kind === 'decision').length
   const awayFirst = localAway[0] ?? remoteAway[0]
-  const visibleMoment = !inside && !paused && !guide && !harvest && !props.replaying ? moment : null
+  const visibleMoment = !inside && !paused && !guide && !structure && !harvest && !props.replaying ? moment : null
   useEffect(() => { if (moment && !feed.queue.some((m) => m.key === moment.key)) setMoment(null) }, [moment, feed.queue])
   useEffect(() => { setResolving({ busy: false, error: '' }) }, [moment?.key])
   useEffect(() => {
@@ -853,13 +865,13 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
   // 当前这棵收下或退回了：稍等一下，自动去下一棵还没收的。
   const current = harvest ? results[harvest.index] : undefined
   useEffect(() => {
-    if (!harvest || current === 'pending') return
+    if (!harvest || structure || current === 'pending') return
     const t = window.setTimeout(() => {
       const n = nextPending(harvest.index, 1)
       if (n >= 0) goHarvest(harvest.ids, n)
     }, 900)
     return () => window.clearTimeout(t)
-  }, [harvest?.index, current])
+  }, [harvest?.index, current, structure])
   useEffect(() => {
     if (!harvest) return
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !inside) setHarvest(null) }
@@ -869,7 +881,7 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
   const [stopIndex, setStopIndex] = useState(0)
   const [tick, setTick] = useState(0)
   useEffect(() => {
-    if (!kiosk || paused || inside || harvest || guide || showMoments || props.replaying || props.offline || document.hidden || stops.length < 2) return
+    if (!kiosk || paused || inside || harvest || guide || structure || showMoments || props.replaying || props.offline || document.hidden || stops.length < 2) return
     const resumeDelay = Math.max(0, followUntil.current - Date.now(), 30_000 - (Date.now() - lastTouch.current))
     const t = window.setTimeout(() => {
       // 刚拖过或缩放过：这一轮先不动，过一会儿再试。
@@ -881,7 +893,7 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
       flyTo(stops[next], 1400)
     }, moment ? resumeDelay : rotateMs)
     return () => window.clearTimeout(t)
-  }, [kiosk, paused, inside, harvest, guide, showMoments, props.replaying, props.offline, moment, stops, stopIndex, rotateMs, tick])
+  }, [kiosk, paused, inside, harvest, guide, structure, showMoments, props.replaying, props.offline, moment, stops, stopIndex, rotateMs, tick])
 
   // 滚轮缩放：以光标为中心。
   useEffect(() => {
@@ -889,7 +901,7 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
     if (!el) return
     const onWheel = (e: WheelEvent) => {
       // 说明面板里滚轮是翻页，不缩放地图。
-      if (inside || (e.target as Element | null)?.closest?.('.town-guide, .town-world-ui, .town-harvest-bar')) return
+      if (structure || inside || (e.target as Element | null)?.closest?.('.town-guide, .town-world-ui, .town-harvest-bar')) return
       e.preventDefault()
       stop(); lastTouch.current = Date.now(); leaveNav()
       const r = el.getBoundingClientRect()
@@ -908,7 +920,7 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
   }
   const hoverB = hover && !inside ? model.buildings.find((b) => b.key === hover.key) ?? null : null
   const onPointerDown = (e: RPointerEvent<HTMLDivElement>) => {
-    if (e.button !== 0 || inside) return
+    if (e.button !== 0 || inside || structure) return
     drag.current = { x: e.clientX, y: e.clientY, cam: camera, moved: false, id: e.pointerId }
   }
   const onPointerMove = (e: RPointerEvent<HTMLDivElement>) => {
@@ -938,16 +950,19 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
     <div className={`town-world${moment ? ' has-moment' : ''}`} ref={box} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp}
       onPointerDownCapture={() => { lastTouch.current = Date.now(); stop() }} onKeyDownCapture={() => { lastTouch.current = Date.now(); stop() }}
       onClickCapture={(e) => { if (swallowClick.current) { swallowClick.current = false; e.stopPropagation(); e.preventDefault() } }}>
+      <div className="town-world-surface" inert={structure}>
       <div className="town-moment-status" role="status" aria-live="polite" aria-atomic="true">{visibleMoment?.message ?? ''}</div>
-      {hoverB && hover && <HouseCard info={houseInfo(hoverB, props.snapshot?.features)} style={{ left: Math.max(8, hover.x), top: hover.y }} />}
+      {hoverB && hover && <HouseCard info={houseInfo(hoverB, props.snapshot?.features, props.snapshot?.structures?.find(s => s.repo_id === hoverB.repo?.id))} style={{ left: Math.max(8, hover.x), top: hover.y }} />}
       {insideB ? (
         <>
           <InteriorScene b={insideB} model={model} selected={props.selected} highlight={props.highlight} onSelect={props.onSelect} changed={props.changed} offline={props.offline}
-            features={props.snapshot?.features ?? null} />
+            features={props.snapshot?.features ?? null} structure={props.snapshot?.structures?.find(s => s.repo_id === insideB.repo?.id)}
+            writeable={!remoteAccess() && !props.replaying && !props.offline && !!insideB.repo && insideB.repo.id < 1_000_000_000} />
           <div className="town-world-tools is-inside" onPointerDown={(e) => e.stopPropagation()}>
             <button type="button" onClick={() => setInside(null)} title="回到世界（Esc）">← 回到世界</button>
+            <button type="button" aria-haspopup="dialog" aria-expanded={structure} onClick={e => openStructure(e.currentTarget)} title={insideB ? "查看这个项目的目标、功能关系与验证依据" : "查看 SS 自身的结构说明首版样本"}>结构说明</button>
           </div>
-          <p className="town-world-hint">{insideB.name} · 室内：工作台是工作项，点任何东西看详情</p>
+          <p className="town-world-hint is-inside">{insideB.name} · 室内：工作台是工作项，点任何东西看详情</p>
           {guide && <TownGuide onClose={() => setGuide(false)} follow={feed.preferences} onFollowChange={feed.savePreferences} />}
         </>
       ) : (
@@ -968,6 +983,7 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
           <button type="button" aria-pressed={guide} className={guide ? 'is-on' : undefined} onClick={() => (guide ? setGuide(false) : openGuide())} title="小镇怎么看：地图上的东西、怎么操作、每天怎么用">怎么看</button>
           {!guideSeen && !guide && <span className="town-guide-bubble" role="note">第一次来？点这里看怎么用</span>}
         </span>
+        <button type="button" aria-haspopup="dialog" aria-expanded={structure} onClick={e => openStructure(e.currentTarget)} title={insideB ? "查看这个项目的目标、功能关系与验证依据" : "查看 SS 自身的结构说明首版样本"}>结构说明</button>
         <button type="button" aria-pressed={byAgent} className={byAgent ? 'is-on' : undefined} onClick={() => { setByAgent(!byAgent); setAgentFocus(null) }} title="按会话来自哪个 Agent 着色">按 Agent 看</button>
         <button type="button" aria-expanded={projectsOpen} className={projectsOpen ? 'is-on' : undefined} onClick={() => { setDeskOpen(false); setProjectsOpen(!projectsOpen) }}
           title="按片区列出全部项目：点项目名去它的房子和门前花园">项目 {world.districts.length}</button>
@@ -1032,6 +1048,8 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
         onReopen={() => goHarvest(harvest.ids, harvest.index)} onEnd={() => setHarvest(null)} />}
         </>
       )}
+      </div>
+      {structure && <TownStructure onClose={closeStructure} project={insideB ? { b: insideB, features: props.snapshot?.features ?? null, structure: props.snapshot?.structures?.find(s => s.repo_id === insideB.repo?.id) } : undefined} />}
     </div>
   )
 }

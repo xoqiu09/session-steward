@@ -30,6 +30,7 @@ vi.mock('react', async (original) => ({ ...await original<typeof import('react')
   useCallback: (fn: (...args: any[]) => any, deps: any[]) => host.memo(() => fn, deps) }))
 import { WorldScene, WorldStage, type NavTarget } from './WorldScene'
 import { InteriorScene } from './InteriorScene'
+import { TownStructure } from './TownStructure'
 import { TownView } from './TownView'
 import { api } from '../api'
 import { buildTown } from './townModel'
@@ -312,6 +313,84 @@ describe('导航零业务写入', () => {
     for (const c of calls) expect(c).not.toHaveBeenCalled()
     expect(fetch).not.toHaveBeenCalled(); expect(setItem).not.toHaveBeenCalled(); expect(selected).not.toHaveBeenCalled()
     expect(snap.work_items!.map((w) => w.status)).toEqual(['in_progress', 'blocked'])
+  })
+})
+
+describe('结构说明保留阅读现场', () => {
+  const explanation = () => nodes(tree).find(n => n.type === TownStructure)
+  const open = (focus = vi.fn()) => {
+    touch(); button(tree, '结构说明')!.props.onClick({ currentTarget: { focus } }); render()
+    return focus
+  }
+  const close = () => { explanation()!.props.onClose(); render() }
+  it('地图保留 SS 样本，房间读取自己的结构；关闭保留房间和原入口焦点', () => {
+    render(); const before = view(); const focus = open()
+    expect(explanation()).toBeDefined(); expect(explanation()!.props.project).toBeUndefined()
+    expect(nodes(tree).find(n => n.props.className === 'town-world-surface')!.props.inert).toBe(true)
+    close(); expect(view()).toEqual(before); expect(focus).toHaveBeenCalledWith({ preventScroll: true })
+    scene().props.onSelect({ kind: 'building', key: 'repo-1' }); render()
+    const roomFocus = open(); expect(inside()).toBe(true)
+    expect(explanation()!.props.project.b.repo.id).toBe(1)
+    expect(explanation()!.props.project.b.name).toBe('合成花园')
+    close(); expect(inside()).toBe(true); expect(roomFocus).toHaveBeenCalledOnce()
+    expect(selected).not.toHaveBeenCalled()
+  })
+  it('桌面巡游和选中会话的镜头跳转在阅读期间暂停，关闭后仍在原处', () => {
+    reduced = false; props = { plan, kiosk: true, rotateMs: 5000 }; render()
+    const before = view(); open(); walk(65_000)
+    props = { ...props, focusKey: 'session-41' }; render()
+    expect(requestAnimationFrame).not.toHaveBeenCalled(); expect(view()).toEqual(before)
+    close(); expect(view()).toEqual(before)
+    walk(29_000); expect(requestAnimationFrame).not.toHaveBeenCalled()
+    walk(11_000); expect(requestAnimationFrame).toHaveBeenCalled()
+  })
+  it('打开时停止尚未结束的飞行；阅读时新交付只入队，不自动飞走或开详情', () => {
+    reduced = false; render(); hit(plate('去门前花园：合成花园'))
+    expect(requestAnimationFrame).toHaveBeenCalledOnce()
+    open(); expect(cancelAnimationFrame).toHaveBeenCalledWith(1)
+    const before = view()
+    snap = { ...snap, cursor: 2, work_items: snap.work_items!.map(w => w.id === 'SYN-1' ? { ...w, status: 'review', updated_at: new Date().toISOString() } : w) }
+    render(); walk(35_000)
+    expect(view()).toEqual(before); expect(requestAnimationFrame).toHaveBeenCalledOnce()
+    expect(selected).not.toHaveBeenCalled()
+  })
+  it('浮层内滚轮不阻止正常滚动、不缩放；地图拖动也被保护', () => {
+    render()
+    const handlers = new Map<string, any>()
+    tree.props.ref.current = { getBoundingClientRect: () => ({ width: 800, height: 500, left: 0, top: 0 }), addEventListener: (name: string, fn: any) => handlers.set(name, fn), removeEventListener: (name: string) => handlers.delete(name) }
+    render(); open(); const before = view(); const preventDefault = vi.fn()
+    handlers.get('wheel')({ target: { closest: () => true }, preventDefault, deltaY: 300, clientX: 200, clientY: 200 })
+    tree.props.onPointerDown({ button: 0, clientX: 10, clientY: 10, pointerId: 1 }); tree.props.onPointerMove({ clientX: 60, clientY: 30, pointerId: 1 }); render()
+    expect(preventDefault).not.toHaveBeenCalled(); expect(view()).toEqual(before)
+  })
+  it('打开、阅读、关闭不产生接口请求或状态改写', () => {
+    const calls = Object.keys(api).filter(k => typeof (api as any)[k] === 'function').map(k => vi.spyOn(api as any, k))
+    render(); const before = JSON.stringify(snap); setItem.mockClear()
+    open(); walk(10_000); close()
+    for (const call of calls) expect(call).not.toHaveBeenCalled()
+    expect(fetch).not.toHaveBeenCalled(); expect(setItem).not.toHaveBeenCalled(); expect(selected).not.toHaveBeenCalled()
+    expect(JSON.stringify(snap)).toBe(before)
+  })
+  it('窄屏分页布局也能阅读同一样本，暂停自动翻页并恢复入口焦点', () => {
+    snap = { ...snap, work_items: [...snap.work_items!, ...repos.slice(1).map(r => fakeItem({ id: `SYN-PAGE-${r.id}`, title: '合成分页工作', repo_id: r.id, status: 'in_progress', updated_at: snap.now }))] }
+    const narrowRender = () => {
+      for (let i = 0; i < 12; i++) {
+        host.begin('narrow')
+        townTree = TownView({ snap, conn: 'live', repoId: 'all', provider: 'all', sel: null, layout: 'portrait', world: true, kiosk: true, rotateMs: 5000,
+          onSelectItem: selected, onSelectSession: noop, onSelectRepo: noop, onQueue: noop })
+        if (!host.commit()) return
+      }
+    }
+    narrowRender()
+    const page = () => nodes(townTree).find(n => n.props.role === 'group' && String(n.props['aria-label']).startsWith('项目分页'))!.props['aria-label']
+    const before = page(), focus = vi.fn()
+    button(townTree, '结构说明')!.props.onClick({ currentTarget: { focus } }); narrowRender()
+    expect(nodes(townTree).some(n => n.type === TownStructure)).toBe(true)
+    for (let i = 0; i < 60; i++) { vi.advanceTimersByTime(1000); narrowRender() }
+    expect(page()).toBe(before)
+    nodes(townTree).find(n => n.type === TownStructure)!.props.onClose(); narrowRender()
+    expect(page()).toBe(before); expect(focus).toHaveBeenCalledWith({ preventScroll: true })
+    expect(selected).not.toHaveBeenCalled(); expect(fetch).not.toHaveBeenCalled()
   })
 })
 

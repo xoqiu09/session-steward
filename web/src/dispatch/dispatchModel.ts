@@ -11,6 +11,7 @@ export interface DispatchTask {
 }
 export interface DispatchProject { repo_id: number; name: string; added_at: string }
 export interface DispatchDeskState {
+  background_control?: boolean
   host: string; codex_version: string; owner: string; epoch: number; lease_until: string
   desktop_handoff_enabled: boolean; projects: DispatchProject[]; tasks: DispatchTask[]
 }

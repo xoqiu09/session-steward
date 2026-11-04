@@ -124,6 +124,9 @@ describe('托管与非托管会话', () => {
   })
   it('only offers configured agents and explains when tmux is missing', () => {
     expect(renderToStaticMarkup(<NewManaged snap={base} onLaunched={() => {}} />)).toContain('未找到 tmux')
+    const demo = renderToStaticMarkup(<NewManaged snap={{ ...base, agents: ['codex'], managed_unavailable: '合成演示不启动真实 Agent。' }} onLaunched={() => {}} />)
+    expect(demo).toContain('合成演示不启动真实 Agent。')
+    expect(demo).not.toContain('未找到 tmux')
     const html = renderToStaticMarkup(<NewManaged snap={{ ...base, agents: ['claude', 'codex'] }} onLaunched={() => {}} />)
     expect(html).toContain('Claude')
     expect(html).toContain('Codex')

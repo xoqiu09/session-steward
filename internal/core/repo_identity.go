@@ -101,6 +101,13 @@ func (c *Core) ReconcileRepos(ctx context.Context) error {
 				if collisions > 0 {
 					continue
 				}
+				allowed, err := structureMergeAllowed(tx, e.id, winner.id)
+				if err != nil {
+					return err
+				}
+				if !allowed {
+					continue
+				}
 				if _, err = tx.Exec(`PRAGMA defer_foreign_keys=ON`); err != nil {
 					return err
 				}
@@ -123,6 +130,9 @@ func (c *Core) ReconcileRepos(ctx context.Context) error {
 					return err
 				}
 				if err = moveProjectVisibility(tx, e.id, winner.id); err != nil {
+					return err
+				}
+				if err = moveProjectStructure(tx, e.id, winner.id); err != nil {
 					return err
 				}
 				if _, err = tx.Exec(`INSERT INTO repo_identities(identity,repo_id) VALUES(?,?) ON CONFLICT(identity) DO UPDATE SET repo_id=excluded.repo_id`, e.identity, winner.id); err != nil {

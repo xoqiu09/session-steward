@@ -1,6 +1,7 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { InteriorScene, benchItems, benchSpot, interiorViewBox } from './InteriorScene'
+import { houseInfo } from './houseInfo'
 import { buildTown } from './townModel'
 import { fakeApproval, fakeItem, fakeRun, fakeSession } from './fixtures'
 import type { ProjectFeature, Snapshot } from '../types'
@@ -62,7 +63,7 @@ describe('项目室内 · 核心功能面板', () => {
   const render = (features?: ProjectFeature[] | null) =>
     renderToStaticMarkup(<InteriorScene b={b} model={model} selected={null} highlight={null} onSelect={() => {}} features={features} />)
 
-  it('有功能时列出本项目所有功能的名称、状态、验收标准和卡点', () => {
+  it('默认概况只显示本项目统计和阅读入口，工作台仍可使用', () => {
     const html = render([
       feature({ id: 'f1', repo_id: 1, title: '导入账单', implementation: 'implemented', validation: 'passed', acceptance: '导入 3 个样例文件无报错' }),
       feature({ id: 'f2', repo_id: 1, title: '分类规则', implementation: 'implementing', contributions: [
@@ -71,19 +72,34 @@ describe('项目室内 · 核心功能面板', () => {
       feature({ id: 'f3', repo_id: 1, title: '多币种', implementation: 'not_started' }),
       feature({ id: 'x', repo_id: 2, title: '别的项目的功能' }),
     ])
-    expect(html).toContain('aria-label="核心功能"')
-    for (const t of ['导入账单', '分类规则', '多币种', '已实现 · Agent 报验证通过', '开发中', '未开始', '导入 3 个样例文件无报错', '卡点：缺少样例文件', '已完成 1 · 开发中 1 · 未开始 1']) expect(html).toContain(t)
+    expect(html).toContain('aria-label="demo-repo 项目结构"')
+    for (const t of ['3 项功能', '你已验收 0 · Agent 报验证通过 1', '项目概况', '功能地图', '当前推进', '验证依据']) expect(html).toContain(t)
     expect(html).not.toContain('别的项目的功能')
     expect(html).toContain('工作项 W-1 正在做')
+    // 面板必须在 SVG 之外，原生 WebKit 的滚动合成不再经过 foreignObject 坐标系。
+    expect(html).not.toContain('<foreignObject')
+    expect(html).toMatch(/<\/svg><\/div><section class="town-house-features town-project-room"/)
+    expect(html).toContain(`viewBox="${interiorViewBox()}"`)
   })
 
   it('没有功能时显示空状态文字', () => {
-    for (const f of [[], null]) expect(render(f)).toContain('还没登记核心功能：Agent 用 steward-hook features 回报后会出现在这里')
+    for (const f of [[], null]) expect(render(f)).toContain('目标、用途和功能关系尚未整理。已有任务和功能回报仍可查看。')
   })
 
   it('不传 features 时不画面板，视野不变', () => {
     const html = render()
     expect(html).not.toContain('核心功能')
     expect(html).toContain(`viewBox="${interiorViewBox()}"`)
+  })
+  it('长清单完整留在功能地图的数据中，首屏不堆叠功能，只有一处独立 HTML 面板', () => {
+    const input = Array.from({ length: 36 }, (_, i) => feature({ id: `f-${i}`, repo_id: 1, title: `合成功能 ${i + 1}` }))
+    const html = render(input)
+    expect(houseInfo(b, input).sections.flatMap(s => s.items)).toHaveLength(36)
+    expect(html).toContain('36 项功能')
+    expect(html).not.toContain('合成功能 1')
+    expect(html.match(/aria-label="demo-repo 项目结构"/g)).toHaveLength(1)
+    expect(html.match(/role="tab"/g)).toHaveLength(4)
+    expect(html).not.toContain('<foreignObject')
+    expect(html).not.toMatch(/<form|<input|保存目录|派活/)
   })
 })
