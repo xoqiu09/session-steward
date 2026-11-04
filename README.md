@@ -4,7 +4,7 @@
 
 [首次使用](docs/FIRST-USE.zh-CN.md) · [合成演示](docs/DEMO.zh-CN.md) · [试用反馈](docs/TRYOUT.zh-CN.md) · [完整手册](docs/GUIDE.zh-CN.md) · [安全策略](SECURITY.md) · MIT · [English](#english-summary)
 
-> **v0.3.0-rc.1 试用预发布。** 这一版加入项目目录（概况、用途分类、功能关系）和独立的合成演示，安装包在 [v0.3.0-rc.1 Release](https://github.com/xoqiu09/session-steward/releases/tag/v0.3.0-rc.1)。它是预发布，可能还会调整；上一个正式版是 [v0.2.0](https://github.com/xoqiu09/session-steward/releases/tag/v0.2.0)。
+> **v0.3.0-rc.6 试用预发布。** 这一版加入项目目录（概况、用途分类、功能关系）、独立的合成演示、项目自动分档与右键整理，以及接入检查和统一的“要你处理”计数，安装包在 [v0.3.0-rc.6 Release](https://github.com/xoqiu09/session-steward/releases/tag/v0.3.0-rc.6)。它是预发布，可能还会调整；上一个正式版是 [v0.2.0](https://github.com/xoqiu09/session-steward/releases/tag/v0.2.0)。
 >
 > App 支持 macOS 13+（Apple 芯片 / Intel），界面为中文。默认资料留在本机，无遥测，不需要 SS 账号；首次接入需要你已有 Claude Code 或 Codex。
 
@@ -43,13 +43,15 @@
 
 ## 三步装好
 
-需要：macOS 13 或更新版本，以及 Claude Code 或 Codex（任一即可，桌面版和命令行版都行）。以下以 v0.3.0-rc.1 预发布为准；它在 Releases 页面里标为 Pre-release。
+需要：macOS 13 或更新版本，以及 Claude Code 或 Codex（任一即可，桌面版和命令行版都行）。以下以 v0.3.0-rc.6 预发布为准；它在 Releases 页面里标为 Pre-release。
 
-1. **下载。** 打开 [v0.3.0-rc.1 Release](https://github.com/xoqiu09/session-steward/releases/tag/v0.3.0-rc.1)，下载对应芯片的 `Session-Steward_v0.3.0-rc.1_macOS_arm64.app.zip`（Apple 芯片）或 `…_amd64.app.zip`（Intel）。解压后把 **Session Steward** 拖进“应用程序”。
+1. **下载。** 打开 [v0.3.0-rc.6 Release](https://github.com/xoqiu09/session-steward/releases/tag/v0.3.0-rc.6)，下载对应芯片的 `Session-Steward_v0.3.0-rc.6_macOS_arm64.app.zip`（Apple 芯片）或 `…_amd64.app.zip`（Intel）。解压后把 **Session Steward** 拖进“应用程序”。
 2. **第一次打开。** 这个版本没有 Apple 签名和公证，macOS 会拦一下：
    - 在“应用程序”里**右键 Session Steward → 打开 → 打开**；
    - 如果没有“打开”按钮（较新的 macOS）：先双击一次，再到“系统设置 → 隐私与安全性”，在下方找到 Session Steward，点“仍要打开”。
 3. **按引导点“安装 hooks 并开始”。** 引导会先说明要改哪两个文件（`~/.claude/settings.json` 和 `~/.codex/hooks.json`），改之前会备份，只添加 Steward 自己的条目。用 Codex 的话，还要在 Codex 里信任新加的 hooks。
+
+> 项目放在外置盘或“文稿”“桌面”等位置时，macOS 可能要求允许 steward 访问；每次升级换了程序签名后可能再问一次。没允许时面板底部会提示，到 系统设置 → 隐私与安全性 → 文件与文件夹 打开即可。
 
 装好后新开一个 Claude Code 或 Codex 会话，让它干点活，小镇里就会出现房子和小人。刚装好时小镇是空的，这是正常的：数据来自你自己的会话，作者电脑上的项目目录不会随安装包提供。想先看看效果，见下面的[合成演示](#先用演示数据看一眼)。
 
@@ -69,7 +71,7 @@ sh scripts/build-app.sh
 
 ## 先用演示数据看一眼
 
-装好 v0.3.0-rc.1 的 App 并完成第一次打开（上面第 2 步）后，不安装 hooks 也可以在终端直接运行：
+装好 v0.3.0-rc.6 的 App 并完成第一次打开（上面第 2 步）后，不安装 hooks 也可以在终端直接运行：
 
 ```sh
 "/Applications/Session Steward.app/Contents/MacOS/steward" demo
@@ -240,4 +242,4 @@ sh scripts/build-app.sh   # 打包 App 到 dist-app/
 
 Session Steward is a local project progress desk for Claude Code and Codex. Projects appear as houses in a town. Each room explains the project's purpose, feature groups and relationships, current work, and reported evidence. Descriptions require explicit input from the user or their existing development Agent; SS does not automatically scan every source repository. Agent reports and user acceptance remain separate.
 
-v0.3.0-rc.1 is a trial pre-release; download it from the [v0.3.0-rc.1 release](https://github.com/xoqiu09/session-steward/releases/tag/v0.3.0-rc.1). After opening the App once, run `"/Applications/Session Steward.app/Contents/MacOS/steward" demo`, or build `cmd/steward` with Go 1.26.5+ and run `bin/steward demo`, for fictional projects in a fresh isolated directory, without hooks, history scanning, models, or real Agent execution. App trials target macOS 13+, Apple Silicon and Intel, with a Chinese UI. There is no SS account or telemetry; optional integrations and the coding agents have their own network boundaries. See the [first-use walkthrough](docs/FIRST-USE.zh-CN.md) and [trial checklist](docs/TRYOUT.zh-CN.md).
+v0.3.0-rc.6 is a trial pre-release; download it from the [v0.3.0-rc.6 release](https://github.com/xoqiu09/session-steward/releases/tag/v0.3.0-rc.6). After opening the App once, run `"/Applications/Session Steward.app/Contents/MacOS/steward" demo`, or build `cmd/steward` with Go 1.26.5+ and run `bin/steward demo`, for fictional projects in a fresh isolated directory, without hooks, history scanning, models, or real Agent execution. App trials target macOS 13+, Apple Silicon and Intel, with a Chinese UI. There is no SS account or telemetry; optional integrations and the coding agents have their own network boundaries. See the [first-use walkthrough](docs/FIRST-USE.zh-CN.md) and [trial checklist](docs/TRYOUT.zh-CN.md).
