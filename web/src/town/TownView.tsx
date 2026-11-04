@@ -20,6 +20,7 @@ import { clampPage, needsYou, pageBuildings, pageOfCharacter } from './paging'
 import { DEFAULT_ROTATE_S } from './route'
 import { EXTRA_LABELS, readExtras, writeExtras, type TownExtras } from './extras'
 import { hideInactive } from './activity'
+import { useDismissibleDetails } from '../ui/useDismiss'
 import './town.css'
 import './townView.css'
 
@@ -203,6 +204,7 @@ export function TownView({ snap, conn, repoId, provider, sel, onSelectItem, onSe
     writeExtras(next)
     if (key === 'chips' && !on) setHighlight(null)
   }
+  const extrasMenu = useDismissibleDetails()
   const quiet = useMemo(() => hideInactive(view, repoId), [view, repoId])
   const slice = useMemo(() => townSlice(extras.inactive ? view : quiet.snap, repoId, provider), [view, quiet, extras.inactive, repoId, provider])
   const model = useMemo(() => buildTown(slice, replay && replaySnap ? replaySnap.now : clientNow), [slice, clientNow, replay, replaySnap])
@@ -319,7 +321,7 @@ export function TownView({ snap, conn, repoId, provider, sel, onSelectItem, onSe
         <span className="town-meta" title="小镇只画当前的会话、工作项和运行；完整记录在列表与项目简报里">
           快照 #{shown.cursor} · {hm(shown.now)}
         </span>
-        <details className="town-extras">
+        <details ref={extrasMenu} className="town-extras">
           <summary title="首屏默认收起不常用的东西，要用时在这里打开">显示</summary>
           <div className="town-extras-menu">
             {EXTRA_LABELS.filter((x) => x.key !== 'replay' || !noReplay).map((x) => (

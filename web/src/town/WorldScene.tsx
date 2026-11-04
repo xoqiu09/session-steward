@@ -36,6 +36,10 @@ import { isRemote as remoteAccess } from '../access'
 import { dispatchHref } from '../dispatch/dispatchModel'
 import { api } from '../api'
 
+// 小镇里的浮动面板，面板本身和它的开关按钮都标上同一个名字，点在这些元素以外就收起。
+type Popover = 'guide' | 'projects' | 'desk' | 'moments'
+const POPOVER_ATTR = 'data-town-popover'
+
 /** 每个街区的退件筐最多摆几个箱子，其余只计数。 */
 const BIN_MAX = 2
 /** 记住这个浏览器已经看过使用说明。 */
@@ -603,17 +607,25 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
   // 收菜：开始时记下这一批熟了的菜，一棵一棵飞过去打开验收卡片；收下或退回后自动去下一棵。
   const [harvest, setHarvest] = useState<{ ids: string[]; index: number } | null>(null)
   // 使用说明：第一次来时按钮旁冒一个小提示，打开过一次就不再提示（只记在这个浏览器里）。
-  const [guide, setGuide] = useState(false)
+  // 浮动面板（怎么看、项目列表、验收台列表、新动态）同一时间只开一个；点面板和它的按钮以外的地方、按 Esc 都会收起。
+  const [popover, setPopover] = useState<Popover | null>(null)
+  const toggle = (name: Popover) => (on: boolean) => setPopover((p) => (on ? name : p === name ? null : p))
+  const guide = popover === 'guide', setGuide = toggle('guide')
+  const projectsOpen = popover === 'projects', setProjectsOpen = toggle('projects')
+  const deskOpen = popover === 'desk', setDeskOpen = toggle('desk')
+  const showMoments = popover === 'moments', setShowMoments = toggle('moments')
+  useEffect(() => {
+    if (!popover) return
+    const away = (e: PointerEvent) => { if (!(e.target as Element | null)?.closest?.(`[${POPOVER_ATTR}="${popover}"]`)) setPopover(null) }
+    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.stopImmediatePropagation(); setPopover(null) } }
+    window.addEventListener('pointerdown', away, true)
+    window.addEventListener('keydown', esc, true)
+    return () => { window.removeEventListener('pointerdown', away, true); window.removeEventListener('keydown', esc, true) }
+  }, [popover])
   const [structure, setStructure] = useState(false)
   const structureTrigger = useRef<HTMLButtonElement | null>(null)
   const [guideSeen, setGuideSeen] = useState(() => { try { return localStorage.getItem(GUIDE_SEEN) === '1' } catch { return true } })
   const openGuide = () => { setGuide(true); setGuideSeen(true); try { localStorage.setItem(GUIDE_SEEN, '1') } catch { /* 隐私模式：下次再提示 */ } }
-  useEffect(() => {
-    if (!guide) return
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.stopImmediatePropagation(); setGuide(false) } }
-    window.addEventListener('keydown', onKey, true)
-    return () => window.removeEventListener('keydown', onKey, true)
-  }, [guide])
   const insideB = inside ? model.buildings.find((b) => b.key === inside) ?? null : null
   useEffect(() => {
     if (!inside) return
@@ -664,7 +676,6 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
   const swallowClick = useRef(false)
   const [reducedMotion, setReducedMotion] = useState(() => !!globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches)
   const [moment, setMoment] = useState<TownMoment | null>(null)
-  const [showMoments, setShowMoments] = useState(false)
   const [back, setBack] = useState<NavBack | null>(null)
   // 片区取景后让它的成员名牌显示；到达后的提示和“进入工作室”入口；导航说明（找不到目标、返回点作废等）。
   const [focusArea, setFocusArea] = useState<string | null>(null)
@@ -679,8 +690,6 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
     const t = window.setTimeout(() => setDoneNote(''), doneMs)
     return () => window.clearTimeout(t)
   }, [doneNote, doneMs])
-  const [projectsOpen, setProjectsOpen] = useState(false)
-  const [deskOpen, setDeskOpen] = useState(false)
   const [sparks, setSparks] = useState<ReadonlySet<string>>(new Set())
   const lastFlight = useRef(-Infinity)
   const followUntil = useRef(0)
@@ -715,7 +724,7 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
   const openStructure = (trigger: HTMLButtonElement) => {
     structureTrigger.current = trigger
     stop(); drag.current = null; setCam(camera); lastTouch.current = Date.now()
-    setGuide(false); setStructure(true)
+    setPopover(null); setStructure(true)
   }
   const closeStructure = () => { lastTouch.current = Date.now(); setStructure(false) }
   useEffect(() => {
@@ -817,12 +826,6 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
     const t = window.setTimeout(() => setNavNote(''), 6000)
     return () => window.clearTimeout(t)
   }, [navNote])
-  useEffect(() => {
-    if (!projectsOpen && !deskOpen) return
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { setProjectsOpen(false); setDeskOpen(false) } }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [projectsOpen, deskOpen])
   const visitMoment = (m: TownMoment) => {
     const d = world.districts.find((d) => d.key === m.buildingKey)
     if (!d) return
@@ -977,7 +980,7 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
             <button type="button" aria-haspopup="dialog" aria-expanded={structure} onClick={e => openStructure(e.currentTarget)} title={insideB ? "查看这个项目的目标、功能关系与验证依据" : "查看 SS 自身的结构说明首版样本"}>结构说明</button>
           </div>
           <p className="town-world-hint is-inside">{insideB.name} · 室内：工作台是工作项，点任何东西看详情</p>
-          {guide && <TownGuide onClose={() => setGuide(false)} follow={feed.preferences} onFollowChange={feed.savePreferences} />}
+          {guide && <div {...{ [POPOVER_ATTR]: 'guide' }} style={{ display: 'contents' }}><TownGuide onClose={() => setGuide(false)} follow={feed.preferences} onFollowChange={feed.savePreferences} /></div>}
         </>
       ) : (
         <>
@@ -994,18 +997,18 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
         {!props.replaying && oldestWait != null && <span className={`town-basket-wait${oldestWait >= OVERDUE_MS ? ' is-overdue' : ''}`} role="status"
           title="最早熟的那棵从交付到现在的时间；超过 30 分钟变红">最久等了 {waitedText(oldestWait)}</span>}
         <span className="town-guide-anchor">
-          <button type="button" aria-pressed={guide} className={guide ? 'is-on' : undefined} onClick={() => (guide ? setGuide(false) : openGuide())} title="小镇怎么看：地图上的东西、怎么操作、每天怎么用">怎么看</button>
+          <button type="button" {...{ [POPOVER_ATTR]: 'guide' }} aria-pressed={guide} className={guide ? 'is-on' : undefined} onClick={() => (guide ? setGuide(false) : openGuide())} title="小镇怎么看：地图上的东西、怎么操作、每天怎么用">怎么看</button>
           {!guideSeen && !guide && <span className="town-guide-bubble" role="note">第一次来？点这里看怎么用</span>}
         </span>
         <button type="button" aria-haspopup="dialog" aria-expanded={structure} onClick={e => openStructure(e.currentTarget)} title={insideB ? "查看这个项目的目标、功能关系与验证依据" : "查看 SS 自身的结构说明首版样本"}>结构说明</button>
         <button type="button" aria-pressed={byAgent} className={byAgent ? 'is-on' : undefined} onClick={() => { setByAgent(!byAgent); setAgentFocus(null) }} title="按会话来自哪个 Agent 着色">按 Agent 看</button>
-        <button type="button" aria-expanded={projectsOpen} className={projectsOpen ? 'is-on' : undefined} onClick={() => { setDeskOpen(false); setProjectsOpen(!projectsOpen) }}
+        <button type="button" {...{ [POPOVER_ATTR]: 'projects' }} aria-expanded={projectsOpen} className={projectsOpen ? 'is-on' : undefined} onClick={() => setProjectsOpen(!projectsOpen)}
           title="按片区列出全部项目：点项目名去它的房子和门前花园">项目 {world.districts.length}</button>
       </div>
-      {projectsOpen && <ProjectList world={world} isRemote={isRemote} onNavigate={navigate} onEnter={enter} />}
-      {deskOpen && <DeskList groups={deskProjects(world, isRemote)} onNavigate={(t) => { setDeskOpen(false); navigate(t) }}
-        onQueue={() => { setDeskOpen(false); props.onSelect({ kind: 'review-desk', key: 'review-desk' }) }} onClose={() => setDeskOpen(false)} />}
-      <div className="town-moments town-world-ui" onPointerDown={(e) => e.stopPropagation()}>
+      {projectsOpen && <div {...{ [POPOVER_ATTR]: 'projects' }} style={{ display: 'contents' }}><ProjectList world={world} isRemote={isRemote} onNavigate={navigate} onEnter={enter} /></div>}
+      {deskOpen && <div {...{ [POPOVER_ATTR]: 'desk' }} style={{ display: 'contents' }}><DeskList groups={deskProjects(world, isRemote)} onNavigate={(t) => { setDeskOpen(false); navigate(t) }}
+        onQueue={() => { setDeskOpen(false); props.onSelect({ kind: 'review-desk', key: 'review-desk' }) }} onClose={() => setDeskOpen(false)} /></div>}
+      <div className="town-moments town-world-ui" {...{ [POPOVER_ATTR]: 'moments' }} onPointerDown={(e) => e.stopPropagation()}>
         {queued.length > 0 && <button type="button" aria-expanded={showMoments} onClick={() => setShowMoments(!showMoments)}>{queued.length} 处有新动态</button>}
         {showMoments && queued.length > 0 && <ol className="town-moment-list" aria-label="新动态，按优先级排列">
           {queued.map((m) => <li key={m.key}><button type="button" disabled={paused || !!harvest || !!props.replaying || guide} onClick={() => visitMoment(m)}>{m.message}{!m.local && <small>另一台电脑 · 仅查看</small>}</button></li>)}
@@ -1055,7 +1058,7 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
       )}
       <MiniMap world={world} view={view} needsYou={needsYou} pending={model.pendingApprovals} onJump={(p) => { lastTouch.current = Date.now(); leaveNav(); flyTo(clampCamera({ cx: p[0], cy: p[1], w: Math.min(camera.w, 1500) }, world.bounds), 600) }} />
       <p className="town-world-hint">拖动地图移动 · 滚轮缩放 · 拉远看全部项目</p>
-      {guide && <TownGuide onClose={() => setGuide(false)} follow={feed.preferences} onFollowChange={feed.savePreferences} />}
+      {guide && <div {...{ [POPOVER_ATTR]: 'guide' }} style={{ display: 'contents' }}><TownGuide onClose={() => setGuide(false)} follow={feed.preferences} onFollowChange={feed.savePreferences} /></div>}
       {harvest && !props.replaying && <HarvestBar ids={harvest.ids} index={harvest.index} results={results} model={model}
         onPrev={() => { const n = nextPending(harvest.index, -1); if (n >= 0) goHarvest(harvest.ids, n) }}
         onNext={() => { const n = nextPending(harvest.index, 1); if (n >= 0) goHarvest(harvest.ids, n) }}
