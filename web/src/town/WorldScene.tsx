@@ -1,5 +1,5 @@
 // 小镇世界：每个项目一个街区，中间是广场。远景只画街区名牌和计数，近景画小人、包裹和任务。只读。
-import { useEffect, useMemo, useRef, useState, type PointerEvent as RPointerEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type PointerEvent as RPointerEvent, type RefObject } from 'react'
 import { STALE_REVIEW_MS } from '../workManagement'
 import { onRoomRequest, takeRoomRequest, type RoomFocus, type RoomRequest } from './roomRequest'
 import { IsoBox, IsoTile, iso, type Pt } from './iso'
@@ -39,6 +39,10 @@ import { api } from '../api'
 import { ResidentsPanel, ResidentsVillage } from './ResidentVillage'
 import { createResidentStore, type ResidentStore } from './residentLife'
 import type { ResidentId } from './residents'
+import { DISTRICT_FOOTPRINT } from './world'
+import { ResidentClock } from './residentPresence'
+import { ResidentRoomVisitors, ResidentWorldVisitors } from './ResidentVisits'
+import { residentWorld } from './residentTrips'
 
 // 小镇里的浮动面板，面板本身和它的开关按钮都标上同一个名字，点在这些元素以外就收起。
 type Popover = 'guide' | 'projects' | 'desk' | 'moments' | 'residents'
@@ -88,7 +92,8 @@ interface SceneProps {
   onNavigate?: (t: NavTarget) => void
   /** 刚按片区取景的片区：地图远景下也显示它每个成员的名牌，村名牌让位。 */
   focusArea?: string | null
-  residents?: { store: ResidentStore; active: boolean; selected: ResidentId | null; onSelect: (id: ResidentId) => void }
+  residents?: { store: ResidentStore; active: boolean; selected: ResidentId | null; onSelect: (id: ResidentId) => void; onEnter?: (projectId: string) => void }
+  sceneRef?: RefObject<SVGSVGElement | null>
 }
 
 /** 手动导航的目标：项目按稳定项目键（来源设备 + 原始项目编号），片区按片区键。 */
@@ -101,10 +106,10 @@ const DISPATCH = { gx: 0.8, gy: 4.2 }
 
 /** 四档建筑：占地、墙色、高度、窗户层数。占满院子后排，远看也认得出大小差别。 */
 const TIERS: Record<Tier, { shape: BuildingShape; w: number; d: number }> = {
-  0: { w: 3.8, d: 3.0, shape: { kind: 'cabin', name: '小木屋', h: 48, rise: 38, floors: 1, walls: { top: '#b48a5c', front: '#c99c6a', side: '#ad8152', edge: '#7a5636' } } },
-  1: { w: 5.0, d: 3.6, shape: { ...HOUSE_SHAPE, h: 72, rise: 44, floors: 2 } },
-  2: { w: 5.6, d: 3.9, shape: { kind: 'workshop', name: '工坊', h: 86, rise: 34, floors: 2, walls: { top: '#e9dcc4', front: '#efe1c8', side: '#dccaa8', edge: '#8f7350' } } },
-  3: { w: 5.0, d: 4.0, shape: { kind: 'tower', name: '大楼', h: 196, rise: 30, floors: 5, walls: { top: '#e7e2d6', front: '#f1ece0', side: '#dcd4c3', edge: '#8d8270' } } },
+  0: { ...DISTRICT_FOOTPRINT[0], shape: { kind: 'cabin', name: '小木屋', h: 48, rise: 38, floors: 1, walls: { top: '#b48a5c', front: '#c99c6a', side: '#ad8152', edge: '#7a5636' } } },
+  1: { ...DISTRICT_FOOTPRINT[1], shape: { ...HOUSE_SHAPE, h: 72, rise: 44, floors: 2 } },
+  2: { ...DISTRICT_FOOTPRINT[2], shape: { kind: 'workshop', name: '工坊', h: 86, rise: 34, floors: 2, walls: { top: '#e9dcc4', front: '#efe1c8', side: '#dccaa8', edge: '#8f7350' } } },
+  3: { ...DISTRICT_FOOTPRINT[3], shape: { kind: 'tower', name: '大楼', h: 196, rise: 30, floors: 5, walls: { top: '#e7e2d6', front: '#f1ece0', side: '#dcd4c3', edge: '#8d8270' } } },
 }
 
 function districtPlot(d: District): Plot {
@@ -112,7 +117,7 @@ function districtPlot(d: District): Plot {
   return { gx: d.ox + 0.8, gy: d.oy + 0.5, w: t.w, d: t.d, facing: 'x', ...buildingColors(d.b.repo?.id) }
 }
 
-export function WorldScene({ model, world, view, far, selected, highlight, onSelect, changed = new Set(), offline = false, needsYou, stalled, onHoverHouse, agents = null, momentGlow, progressSparks, onNavigate, focusArea = null, dispatch = [], onDispatch, residents }: SceneProps) {
+export function WorldScene({ model, world, view, far, selected, highlight, onSelect, changed = new Set(), offline = false, needsYou, stalled, onHoverHouse, agents = null, momentGlow, progressSparks, onNavigate, focusArea = null, dispatch = [], onDispatch, residents, sceneRef }: SceneProps) {
   const isSel = (kind: Selection['kind'], key: string) => selected?.kind === kind && selected.key === key
   const dim = (match: boolean) => (highlight && !match ? ' is-dim' : '')
   const flash = (key: string) => (changed.has(key) ? ' is-changed' : '')
@@ -206,7 +211,7 @@ export function WorldScene({ model, world, view, far, selected, highlight, onSel
   const mapMode = view.w > MAP_W
 
   return (
-    <svg className={`town-svg is-world${far ? ' is-far' : ''}${far && mapMode ? ' is-map' : ''}${offline ? ' is-offline' : ''}`} viewBox={`${view.x} ${view.y} ${view.w} ${view.h}`}
+    <svg ref={sceneRef} className={`town-svg is-world${far ? ' is-far' : ''}${far && mapMode ? ' is-map' : ''}${offline ? ' is-offline' : ''}`} viewBox={`${view.x} ${view.y} ${view.w} ${view.h}`}
       role="group" aria-label="工作小镇世界">
       <defs>
         <pattern id="world-grass" width="60" height="30" patternUnits="userSpaceOnUse">
@@ -238,7 +243,7 @@ export function WorldScene({ model, world, view, far, selected, highlight, onSel
 
       {depthOrder.map(({ key }) => {
         const e = emptyAt.get(key)
-        if (e) return <EmptyLand key={key} s={e.s} />
+        if (e) return <g key={key}><EmptyLand s={e.s} /><g data-resident-ground={`${e.c.cx},${e.c.cy}`} /></g>
         if (key === '__residents' && residents && world.residential) return <ResidentsVillage key={key} cell={world.residential} {...residents} far={far} />
         if (key === '__plaza') return (
           <g key="__plaza">
@@ -253,6 +258,7 @@ export function WorldScene({ model, world, view, far, selected, highlight, onSel
             {onDispatch && <DispatchTable at={{ gx: P.ox + DISPATCH.gx, gy: P.oy + DISPATCH.gy }} count={dispatch.filter((m) => m.status !== 'desktop').length} onOpen={() => onDispatch()} />}
             <DecisionBoard place={{ x: boardAt[0], y: boardAt[1], anchor: 'bottom', scale: 1 }} model={boardModel} isSel={(k) => isSel('approval', k)} dimClass={dim(highlight === 'waiting')} onSelect={onSelect} />
             {model.pendingApprovals.length > BOARD_MAX && <Tag at={[boardAt[0], boardAt[1] + 16]} text={`另有 ${model.pendingApprovals.length - BOARD_MAX} 条在关注队列`} bg="#fffaf0" fg="#6b5a44" small />}
+            <g data-resident-ground="0,0" />
           </g>
         )
         const d = byKey.get(key)!
@@ -344,6 +350,7 @@ export function WorldScene({ model, world, view, far, selected, highlight, onSel
             })()}
             <Tree at={iso(d.ox + 0.15, d.oy + 8.1)} k={0.6 + ((h >> 3) % 3) * 0.1} />
             {agents && <AgentFlags gx={plot.gx - 0.3} gy={plot.gy + plot.d + 0.2} counts={agentAt.get(d.key)!} />}
+            <g data-resident-ground={`${d.cell.cx},${d.cell.cy}`} /><g data-resident-door={d.id} />
           </g>
         )
       })}
@@ -410,6 +417,8 @@ export function WorldScene({ model, world, view, far, selected, highlight, onSel
           chips={agents ? agentChips(sumAgents([...agentAt.values()])) : plateChips({ ...sumStatus([...statusAt.values()]), waiting: model.pendingApprovals.length }, failedTotal)}
           note={agents ? '没有会话' : '今天很安静'} />
       </g>
+      {residents && <ResidentWorldVisitors store={residents.store} world={world} svgRef={sceneRef} far={far} selected={residents.selected}
+        onSelect={residents.onSelect} onEnter={(id) => residents.onEnter?.(id)} />}
     </svg>
   )
 }
@@ -595,7 +604,7 @@ export interface ViewContext { scope: 'here' | 'all'; repoId: number | 'all'; pr
 /** 第一次手动导航或自动跟随之前的完整位置；连续导航沿用它，返回或手动拖动缩放后清空。 */
 interface NavBack { camera: Camera; context?: ViewContext; byAgent: boolean; agentFocus: Agent | null }
 
-export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'onNavigate' | 'focusArea' | 'residents'> & { kiosk?: boolean; rotateMs?: number; paused?: boolean; focusKey?: string; plan?: WorldPlan; replaying?: boolean; snapshot?: Snapshot; startWithResidents?: boolean
+export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'onNavigate' | 'focusArea' | 'residents' | 'sceneRef'> & { kiosk?: boolean; rotateMs?: number; paused?: boolean; focusKey?: string; plan?: WorldPlan; replaying?: boolean; snapshot?: Snapshot; startWithResidents?: boolean
   /** 画的是本机快照还是全部设备的合并视图；切换时保持镜头，新动态从这一张重新起算。 */
   source?: 'here' | 'all'
   /** 本机设备名：合并视图里认出哪些项目是本机的。 */
@@ -610,6 +619,7 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
   const [byAgent, setByAgent] = useState(false)
   const [agentFocus, setAgentFocus] = useState<Agent | null>(null)
   const [residentStore] = useState(() => createResidentStore())
+  const residentSceneRef = useRef<SVGSVGElement>(null)
   const [residentSelected, setResidentSelected] = useState<ResidentId>('deepseek')
   const legend = useMemo(() => agentLegend(model.buildings), [model])
   // 收菜：开始时记下这一批熟了的菜，一棵一棵飞过去打开验收卡片；收下或退回后自动去下一棵。
@@ -673,6 +683,8 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
     return stableLayout(model.buildings, needsYou, plan, memo.current!, (b) => ids.get(b.key)!, true)
   }, [model, needsYou, plan, selfName])
   useEffect(() => { if (memo.current) saveWorldMemo(memo.current) }, [world])
+  const residentContext = useMemo(() => residentWorld(world), [world])
+  useEffect(() => { residentStore.setWorld(residentContext) }, [residentStore, residentContext])
   const isRemote = (d: District) => !!d.b.repo && projectIdentity(d.b.repo, selfName).device !== 'self'
   const box = useRef<HTMLDivElement>(null)
   const [aspect, setAspect] = useState(1.6)
@@ -975,10 +987,19 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
   const zoomBy = (f: number) => { lastTouch.current = Date.now(); leaveNav(); flyTo(clampCamera(zoomAt(camera, f, 0.5, 0.5, aspect), world.bounds), 350) }
   const visitResidents = () => {
     if (!world.residential) return
-    lastTouch.current = Date.now(); leaveNav()
+    setInside(null); lastTouch.current = Date.now(); leaveNav()
     flyTo(fitResidents(), 650)
   }
   const selectResident = (id: ResidentId) => { setResidentSelected(id); setPopover('residents') }
+  const enterResidentProject = (id: string) => { const d = world.districts.find((d) => d.id === id); if (d) { setPopover(null); enter(d.key) } }
+  const locateResident = (id: ResidentId) => {
+    const trip = residentStore.getSnapshot().actors[id].trip
+    if (!trip) { visitResidents(); return }
+    if (trip.phase === 'inside') { enterResidentProject(trip.projectId); return }
+    setInside(null); lastTouch.current = Date.now(); leaveNav()
+    const p = iso(trip.x, trip.y), w = 900
+    flyTo(clampCamera({ cx: p[0] - (compact ? 0 : w * .1), cy: p[1] + (compact ? w / aspect * .12 : -20), w }, world.bounds), 650)
+  }
 
   const view = viewBoxOf(camera, aspect)
   const far = camera.w > FAR_W
@@ -990,6 +1011,7 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
       onPointerDownCapture={() => { lastTouch.current = Date.now(); stop() }} onKeyDownCapture={() => { lastTouch.current = Date.now(); stop() }}
       onClickCapture={(e) => { if (swallowClick.current) { swallowClick.current = false; e.stopPropagation(); e.preventDefault() } }}>
       <div className="town-world-surface" inert={structure}>
+      <ResidentClock store={residentStore} active={!props.replaying && !paused && !structure} />
       <div className="town-moment-status" role="status" aria-live="polite" aria-atomic="true">{visibleMoment?.message ?? ''}</div>
       {hoverB && hover && <HouseCard info={houseInfo(hoverB, props.snapshot?.features, props.snapshot?.structures?.find(s => s.repo_id === hoverB.repo?.id))} style={{ left: Math.max(8, hover.x), top: hover.y }} />}
       {insideB ? (
@@ -997,9 +1019,11 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
           <InteriorScene b={insideB} model={model} selected={props.selected} highlight={props.highlight} onSelect={props.onSelect} changed={props.changed} offline={props.offline}
             features={props.snapshot?.features ?? null} structure={props.snapshot?.structures?.find(s => s.repo_id === insideB.repo?.id)}
             writeable={!remoteAccess() && !props.replaying && !props.offline && !!insideB.repo && insideB.repo.id < 1_000_000_000}
-            focus={roomFocus?.key === insideB.key ? roomFocus : null} />
+            focus={roomFocus?.key === insideB.key ? roomFocus : null}
+            residentVisitors={props.replaying ? undefined : <ResidentRoomVisitors store={residentStore} projectId={world.districts.find((d) => d.key === insideB.key)?.id ?? ''} />} />
           <div className="town-world-tools is-inside" onPointerDown={(e) => e.stopPropagation()}>
             <button type="button" onClick={() => setInside(null)} title="回到世界（Esc）">← 回到世界</button>
+            {!props.replaying && <button type="button" data-town-popover="residents" aria-expanded={popover === 'residents'} onClick={() => setPopover(popover === 'residents' ? null : 'residents')}>居民 7</button>}
             <button type="button" aria-haspopup="dialog" aria-expanded={structure} onClick={e => openStructure(e.currentTarget)} title={insideB ? "查看这个项目的目标、功能关系与验证依据" : "查看 SS 自身的结构说明首版样本"}>结构说明</button>
           </div>
           <p className="town-world-hint is-inside">{insideB.name} · 室内：工作台是工作项，点任何东西看详情</p>
@@ -1008,7 +1032,7 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
       ) : (
         <>
       <WorldScene {...props} stalled={stalledByHouse} onHoverHouse={hoverHouse} onSelect={sceneSelect} onNavigate={navigate} focusArea={focusArea} world={world} view={view} far={far} agents={byAgent ? { focus: agentFocus } : null}
-        residents={props.replaying ? undefined : { store: residentStore, active: !paused && !structure, selected: popover === 'residents' ? residentSelected : null, onSelect: selectResident }}
+        sceneRef={residentSceneRef} residents={props.replaying ? undefined : { store: residentStore, active: !paused && !structure, selected: popover === 'residents' ? residentSelected : null, onSelect: selectResident, onEnter: enterResidentProject }}
         dispatch={source === 'here' ? props.snapshot?.dispatch ?? [] : []} onDispatch={remoteAccess() || props.snapshot?.dispatch_available === false ? undefined : (task) => window.location.assign(dispatchHref(task))}
         momentGlow={!reducedMotion && !props.replaying ? moment?.buildingKey : undefined} progressSparks={reducedMotion ? undefined : sparks} />
       <div className="town-world-tools" onPointerDown={(e) => e.stopPropagation()}>
@@ -1085,7 +1109,6 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
       )}
       <MiniMap world={world} view={view} needsYou={needsYou} pending={model.pendingApprovals} onJump={(p) => { lastTouch.current = Date.now(); leaveNav(); flyTo(clampCamera({ cx: p[0], cy: p[1], w: Math.min(camera.w, 1500) }, world.bounds), 600) }} />
       <p className="town-world-hint">拖动地图移动 · 滚轮缩放 · 拉远看全部项目</p>
-      {popover === 'residents' && !props.replaying && <ResidentsPanel store={residentStore} selected={residentSelected} onSelect={setResidentSelected} onClose={() => setPopover(null)} onVisit={visitResidents} />}
       {guide && <div {...{ [POPOVER_ATTR]: 'guide' }} style={{ display: 'contents' }}><TownGuide onClose={() => setGuide(false)} follow={feed.preferences} onFollowChange={feed.savePreferences} /></div>}
       {harvest && !props.replaying && <HarvestBar ids={harvest.ids} index={harvest.index} results={results} model={model}
         onPrev={() => { const n = nextPending(harvest.index, -1); if (n >= 0) goHarvest(harvest.ids, n) }}
@@ -1093,6 +1116,8 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
         onReopen={() => goHarvest(harvest.ids, harvest.index)} onEnd={() => setHarvest(null)} />}
         </>
       )}
+      {popover === 'residents' && !props.replaying && <ResidentsPanel store={residentStore} selected={residentSelected} onSelect={setResidentSelected} onClose={() => setPopover(null)} onVisit={visitResidents}
+        destinations={residentContext?.destinations} onLocate={locateResident} />}
       </div>
       {structure && <TownStructure onClose={closeStructure} project={insideB ? { b: insideB, features: props.snapshot?.features ?? null, structure: props.snapshot?.structures?.find(s => s.repo_id === insideB.repo?.id) } : undefined} />}
     </div>

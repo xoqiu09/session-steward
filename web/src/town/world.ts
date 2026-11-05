@@ -34,6 +34,9 @@ export interface District {
 }
 
 export type Tier = 0 | 1 | 2 | 3
+export const DISTRICT_FOOTPRINT: Record<Tier, { w: number; d: number }> = {
+  0: { w: 3.8, d: 3 }, 1: { w: 5, d: 3.6 }, 2: { w: 5.6, d: 3.9 }, 3: { w: 5, d: 4 },
+}
 
 /** 建筑档次看项目体量：未完成的工作项、近 7 天活动量、正在这里干活的会话。 */
 export function buildingTier(b: BuildingView, activity = 0): Tier {

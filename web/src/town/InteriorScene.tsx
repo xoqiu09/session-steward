@@ -13,6 +13,7 @@ import { Cart, type ShedSpot } from './workshop'
 import { TownFeaturePanel } from './TownFeaturePanel'
 import type { ProjectFeature, ProjectStructure, WorkItem } from '../types'
 import './houseCard.css'
+import type { ReactNode } from 'react'
 
 const ROOM_W = 16
 const ROOM_D = 12
@@ -93,7 +94,7 @@ export function interiorViewBox(): string {
   return `${x0} ${y0} ${x1 - x0} ${y1 - y0}`
 }
 
-export function InteriorScene({ b, model, selected, highlight, onSelect, changed = new Set(), offline = false, features, structure, writeable = false, focus }: {
+export function InteriorScene({ b, model, selected, highlight, onSelect, changed = new Set(), offline = false, features, structure, writeable = false, focus, residentVisitors }: {
   b: BuildingView
   model: TownModel
   selected: Selection | null
@@ -107,6 +108,7 @@ export function InteriorScene({ b, model, selected, highlight, onSelect, changed
   writeable?: boolean
   /** 从右键菜单进来时要直接展开的房间区块；nonce 变化时重新展开。 */
   focus?: { focus?: RoomFocus; nonce: number } | null
+  residentVisitors?: ReactNode
 }) {
   const isSel = (kind: Selection['kind'], key: string) => selected?.kind === kind && selected.key === key
   const dim = (match: boolean) => (highlight && !match ? ' is-dim' : '')
@@ -267,6 +269,7 @@ export function InteriorScene({ b, model, selected, highlight, onSelect, changed
           </g>
         )
       })}
+      {residentVisitors}
       {zones && relay && <Cart relay={relay} from={aisle(relay.from)} to={aisle(relay.to)} count={model.relays.filter((r) => r.repoId === b.repo?.id && r.from === relay.from && r.to === relay.to).length} onSelect={onSelect} />}
       {b.characters.length === 0 && <Tag at={[iso(ROOM_W - 2.5, ROOM_D - 1.5)[0], iso(ROOM_W - 2.5, ROOM_D - 1.5)[1] - 10] as Pt} text="现在没有会话在这里" bg="#fffaf0" fg="#6b5a44" small />}
     </svg>

@@ -1,4 +1,5 @@
 import { GARDEN_SPOTS, RESIDENT_IDS, gardenDrop, gardenRoute, homePoint, pointDistance, residentConversation, residentSpec, visitingPoint, type GardenPoint, type GardenSpot, type ResidentId } from './residents'
+import { cellOrigin, readResidentTrip, returnResidentTrip, startResidentTrip, tickResidentTrip, type ResidentTrip, type ResidentWorld } from './residentTrips'
 
 export const RESIDENT_STORAGE_KEY = 'ss.town.residents.v1'
 type Pose = 'idle' | 'pat' | 'sleep' | 'activity' | 'greet'
@@ -6,12 +7,14 @@ export interface ResidentActor extends GardenPoint {
   id: ResidentId; target: GardenSpot; route: GardenPoint[]; mode: 'roam' | 'home'
   pose: Pose; facing: 1 | -1; nextAt: number; holdUntil: number; visits: number; pats: number
   bubble?: { text: string; from: number; until: number }
+  trip?: ResidentTrip
 }
 export interface Friendship { points: number; lastAt: number }
 export interface ResidentLife {
   version: 1; enabled: boolean; quiet: boolean; paused: boolean; now: number; nextChat: number
   actors: Record<ResidentId, ResidentActor>; friendship: Record<string, Friendship>
   journal: { at: number; text: string }[]
+  autoVisit: boolean; nextVisitAt: number; visitCursor: number
 }
 type ResidentStorage = Pick<Storage, 'getItem' | 'setItem'>
 const isId = (id: string): id is ResidentId => (RESIDENT_IDS as readonly string[]).includes(id)
@@ -30,7 +33,7 @@ export function newResidentLife(now: number): ResidentLife {
     actors[id] = { id, x: at.x, y: at.y, target: favorite, route: [], mode: 'roam', pose: 'activity', facing: 1,
       nextAt: now + 9000 + i * 2100, holdUntil: 0, visits: 0, pats: 0 }
   })
-  return { version: 1, enabled: true, quiet: false, paused: false, now, nextChat: now + 6500, actors, friendship: {}, journal: [{ at: now, text: '七只搬进了小屋。今天也一起慢慢过。' }] }
+  return { version: 1, enabled: true, quiet: false, paused: false, now, nextChat: now + 6500, actors, friendship: {}, journal: [{ at: now, text: '七只搬进了小屋。今天也一起慢慢过。' }], autoVisit: true, nextVisitAt: now + 90_000, visitCursor: 0 }
 }
 
 export function loadResidentLife(raw: string | null, now: number): ResidentLife {
@@ -38,14 +41,15 @@ export function loadResidentLife(raw: string | null, now: number): ResidentLife 
   try {
     const saved = JSON.parse(raw || 'null')
     if (saved?.version !== 1) return life
-    for (const key of ['enabled', 'quiet', 'paused'] as const) if (typeof saved[key] === 'boolean') life[key] = saved[key]
+    for (const key of ['enabled', 'quiet', 'paused', 'autoVisit'] as const) if (typeof saved[key] === 'boolean') life[key] = saved[key]
+    life.visitCursor = count(saved.visitCursor)
     for (const id of RESIDENT_IDS) {
       const a = saved.actors?.[id]
       if (!a || !finite(a.x) || !finite(a.y) || a.x < 0 || a.x > 10 || a.y < 0 || a.y > 10) continue
       const home = a.mode === 'home', target = home ? 'home' : isSpot(a.target) ? a.target : residentSpec(id).favorite
       const route = home && pointDistance(a, homePoint(id)) > 0.05 ? gardenRoute(a, 'home', homePoint(id)) : []
       life.actors[id] = { ...life.actors[id], x: a.x, y: a.y, target, mode: home ? 'home' : 'roam', pats: count(a.pats), visits: count(a.visits),
-        pose: route.length ? 'idle' : home ? 'sleep' : 'activity', route, nextAt: now + 9000 }
+        pose: route.length ? 'idle' : home ? 'sleep' : 'activity', route, trip: readResidentTrip(a.trip), nextAt: now + 9000 }
     }
     for (const [key, value] of Object.entries(saved.friendship ?? {})) {
       const ids = key.split('+'), v = value as Friendship
@@ -59,8 +63,8 @@ export function loadResidentLife(raw: string | null, now: number): ResidentLife 
 }
 
 export function serializeResidentLife(life: ResidentLife): string {
-  return JSON.stringify({ version: 1, enabled: life.enabled, quiet: life.quiet, paused: life.paused,
-    actors: Object.fromEntries(RESIDENT_IDS.map((id) => { const a = life.actors[id]; return [id, { x: a.x, y: a.y, target: a.target, mode: a.mode, visits: a.visits, pats: a.pats }] })),
+  return JSON.stringify({ version: 1, enabled: life.enabled, quiet: life.quiet, paused: life.paused, autoVisit: life.autoVisit, visitCursor: life.visitCursor,
+    actors: Object.fromEntries(RESIDENT_IDS.map((id) => { const a = life.actors[id]; return [id, { x: a.x, y: a.y, target: a.target, mode: a.mode, visits: a.visits, pats: a.pats, trip: a.trip }] })),
     friendship: life.friendship, journal: life.journal })
 }
 
@@ -69,7 +73,7 @@ function travel(actor: ResidentActor, target: GardenSpot, now: number, mode: 'ho
 }
 
 /** 只走本轮经过的短时间；后台停留和电脑睡眠不会补演一夜、刷友谊。 */
-export function tickResidentLife(before: ResidentLife, now: number): ResidentLife {
+export function tickResidentLife(before: ResidentLife, now: number, world?: ResidentWorld): ResidentLife {
   const dt = Math.min(1, Math.max(0, (now - before.now) / 1000))
   const life: ResidentLife = { ...before, now, actors: { ...before.actors }, friendship: { ...before.friendship } }
   if (!life.enabled) return life
@@ -78,6 +82,26 @@ export function tickResidentLife(before: ResidentLife, now: number): ResidentLif
     if (a.bubble && a.bubble.until <= now) { a.bubble = undefined; a.pose = a.route.length ? 'idle' : a.mode === 'home' ? 'sleep' : 'activity' }
     if (life.paused) { life.actors[id] = a; continue }
     if (a.holdUntil > now) { life.actors[id] = a; continue }
+    if (a.trip) {
+      if (!world) { life.actors[id] = a; continue }
+      const destination = world.destinations.find((d) => d.id === a.trip!.projectId)
+      if (pointDistance(a.trip.origin, cellOrigin(world.home)) > 0.1) {
+        a = { ...a, ...homePoint(id), trip: undefined, route: [], pose: 'idle', nextAt: now + 15_000 }
+      } else {
+        let trip = { ...a.trip, projectName: destination?.name ?? a.trip.projectName }
+        if (!destination && trip.phase !== 'returning') trip = returnResidentTrip(trip, id, false)
+        const next = tickResidentTrip(trip, id, dt)
+        if (next.trip) {
+          a.trip = next.trip; a.pose = next.trip.phase === 'inside' ? 'activity' : 'idle'
+          if (next.entered) addJournal(life, `${residentSpec(id).name} 到「${trip.projectName}」屋里串门了。`)
+        } else {
+          a = { ...a, ...homePoint(id), trip: undefined, route: [], mode: trip.restOnReturn ? 'home' : 'roam', pose: trip.restOnReturn ? 'sleep' : 'activity', nextAt: now + 12_000 }
+          if (!trip.restOnReturn) a = travel(a, trip.returnTarget ?? residentSpec(id).favorite, now)
+          addJournal(life, `${residentSpec(id).name} 从「${trip.projectName}」回家了。`)
+        }
+      }
+      life.actors[id] = a; continue
+    }
     if (a.route.length) {
       let left = dt * 0.68
       a.route = [...a.route]
@@ -101,11 +125,23 @@ export function tickResidentLife(before: ResidentLife, now: number): ResidentLif
     }
     life.actors[id] = a
   }
+  // 自动串门一次只派一位，其他居民仍在家附近生活；手动可以给不同居民指定不同项目。
+  if (world && life.autoVisit && !life.paused && now >= life.nextVisitAt && !RESIDENT_IDS.some((id) => life.actors[id].trip)) {
+    const eligible = RESIDENT_IDS.map((_, i) => RESIDENT_IDS[(i + life.visitCursor) % RESIDENT_IDS.length]).find((id) => life.actors[id].mode === 'roam' && life.actors[id].holdUntil <= now)
+    const destinations = world.destinations.slice().sort((a, b) =>
+      (Math.abs(a.cell.cx - world.home.cx) + Math.abs(a.cell.cy - world.home.cy)) - (Math.abs(b.cell.cx - world.home.cx) + Math.abs(b.cell.cy - world.home.cy)) || a.id.localeCompare(b.id)).slice(0, 12)
+    if (eligible && destinations.length) {
+      const destination = destinations[life.visitCursor % destinations.length], a = life.actors[eligible]
+      life.actors[eligible] = { ...a, route: [], pose: 'idle', bubble: undefined, trip: startResidentTrip(eligible, a, world, destination) }
+      life.visitCursor++; addJournal(life, `${residentSpec(eligible).name} 出门去「${destination.name}」串门。`)
+    }
+    life.nextVisitAt = now + 120_000
+  }
   // 一次只发生一场两人对话；每对三分钟记一次碰面，后台不累计。
   if (!life.paused && !life.quiet && now >= life.nextChat) {
     outer: for (let i = 0; i < RESIDENT_IDS.length; i++) for (let j = i + 1; j < RESIDENT_IDS.length; j++) {
       const a = life.actors[RESIDENT_IDS[i]], b = life.actors[RESIDENT_IDS[j]], key = pairKey(a.id, b.id)
-      if (a.mode === 'home' || b.mode === 'home' || a.holdUntil > now || b.holdUntil > now || pointDistance(a, b) > 1.55 || now - (life.friendship[key]?.lastAt ?? -Infinity) < 180_000) continue
+      if (a.trip || b.trip || a.mode === 'home' || b.mode === 'home' || a.holdUntil > now || b.holdUntil > now || pointDistance(a, b) > 1.55 || now - (life.friendship[key]?.lastAt ?? -Infinity) < 180_000) continue
       const lines = residentConversation(a.id, b.id)
       life.actors[a.id] = { ...a, pose: 'greet', holdUntil: now + 8500, bubble: { text: lines[0], from: now, until: now + 5200 } }
       life.actors[b.id] = { ...b, pose: 'greet', holdUntil: now + 8500, bubble: { text: lines[1], from: now + 2800, until: now + 8500 } }
@@ -123,6 +159,7 @@ export function createResidentStore(storage = browserStorage(), now = Date.now()
   let life: ResidentLife
   try { life = loadResidentLife(storage?.getItem(RESIDENT_STORAGE_KEY) ?? null, now) } catch { life = newResidentLife(now) }
   const listeners = new Set<() => void>()
+  let world: ResidentWorld | undefined
   let lastSave = now
   const save = () => { try { storage?.setItem(RESIDENT_STORAGE_KEY, serializeResidentLife(life)); lastSave = life.now } catch { /* 存储禁用时仍可在本次打开的小镇里生活。 */ } }
   const publish = (next: ResidentLife, persist = false) => { life = next; if (persist || life.now - lastSave > 10_000) save(); for (const fn of listeners) fn() }
@@ -130,24 +167,40 @@ export function createResidentStore(storage = browserStorage(), now = Date.now()
     getSnapshot: () => life,
     subscribe: (fn: () => void) => { listeners.add(fn); return () => { listeners.delete(fn) } },
     save,
-    tick: (at: number) => publish(tickResidentLife(life, at)),
+    tick: (at: number) => publish(tickResidentLife(life, at, world)),
+    setWorld: (value: ResidentWorld | undefined) => { world = value },
     resetClock: (at: number) => { life = { ...life, now: at } },
-    configure: (key: 'enabled' | 'quiet' | 'paused', value: boolean) => publish({ ...life, [key]: value, now: Date.now() }, true),
+    configure: (key: 'enabled' | 'quiet' | 'paused' | 'autoVisit', value: boolean) => publish({ ...life, [key]: value, now: Date.now() }, true),
+    visit: (id: ResidentId, projectId: string, at = Date.now()) => {
+      const destination = world?.destinations.find((d) => d.id === projectId), a = life.actors[id]
+      if (!life.enabled || !world || !destination || a.trip) return false
+      const next = { ...life, now: at, nextVisitAt: at + 120_000, actors: { ...life.actors, [id]: { ...a, mode: 'roam', route: [], pose: 'idle', bubble: undefined, holdUntil: 0, trip: startResidentTrip(id, a, world, destination) } } } as ResidentLife
+      addJournal(next, `${residentSpec(id).name} 出门去「${destination.name}」串门。`); publish(next, true); return true
+    },
     pat: (id: ResidentId, at = Date.now()) => {
       const actor = life.actors[id], next = { ...life, now: at, actors: { ...life.actors, [id]: { ...actor, pose: 'pat', pats: actor.pats + 1, holdUntil: at + 4500, bubble: { text: residentSpec(id).pat, from: at, until: at + 4500 } } } } as ResidentLife
       addJournal(next, `你摸了摸 ${residentSpec(id).name} 的头。`); publish(next, true)
     },
     go: (id: ResidentId, home: boolean, at = Date.now()) => {
+      if (life.actors[id].trip) {
+        const a = life.actors[id]
+        publish({ ...life, now: at, actors: { ...life.actors, [id]: { ...a, pose: 'idle', bubble: undefined, holdUntil: 0, trip: returnResidentTrip(a.trip!, id, home) } } }, true)
+        return
+      }
       const a = travel(life.actors[id], home ? 'home' : residentSpec(id).favorite, at, home ? 'home' : 'roam')
       if (!a.route.length) { a.pose = home ? 'sleep' : 'activity'; a.nextAt = at + 20_000 }
       publish({ ...life, now: at, actors: { ...life.actors, [id]: a } }, true)
     },
     gather: (at = Date.now()) => {
       const actors = { ...life.actors }
-      RESIDENT_IDS.forEach((id, i) => { const angle = i / 7 * Math.PI * 2; actors[id] = travel(actors[id], 'tea', at, 'roam', { x: 2.4 + Math.cos(angle) * 1.9, y: 6.4 + Math.sin(angle) * 1.65 }) })
+      RESIDENT_IDS.forEach((id, i) => {
+        if (actors[id].trip) { actors[id] = { ...actors[id], trip: { ...returnResidentTrip(actors[id].trip!, id, false), returnTarget: 'tea' } }; return }
+        const angle = i / 7 * Math.PI * 2; actors[id] = travel(actors[id], 'tea', at, 'roam', { x: 2.4 + Math.cos(angle) * 1.9, y: 6.4 + Math.sin(angle) * 1.65 })
+      })
       const next = { ...life, now: at, actors, nextChat: at + 3000 }; addJournal(next, '你叫大家来树下喝下午茶。'); publish(next, true)
     },
     drop: (id: ResidentId, point: GardenPoint, at = Date.now()) => {
+      if (life.actors[id].trip) return
       const p = gardenDrop(point), a = { ...life.actors[id], ...p, route: [], mode: 'roam' as const, pose: 'idle' as const, bubble: undefined, holdUntil: 0, nextAt: at + 20_000 }
       publish({ ...life, now: at, actors: { ...life.actors, [id]: a } }, true)
     },
@@ -156,6 +209,7 @@ export function createResidentStore(storage = browserStorage(), now = Date.now()
 export type ResidentStore = ReturnType<typeof createResidentStore>
 export function residentStatus(actor: ResidentActor): string {
   if (actor.pose === 'pat') return '被摸头，心情很好'
+  if (actor.trip) return actor.trip.phase === 'inside' ? `在「${actor.trip.projectName}」屋里串门` : actor.trip.phase === 'returning' ? `从「${actor.trip.projectName}」回家` : `去「${actor.trip.projectName}」串门`
   if (actor.route.length) return actor.mode === 'home' ? '正在回家' : `走去${GARDEN_SPOTS[actor.target].name}`
   if (actor.mode === 'home') return '在小屋休息'
   return actor.target === residentSpec(actor.id).favorite ? residentSpec(actor.id).activity : `在${GARDEN_SPOTS[actor.target].name}坐坐`

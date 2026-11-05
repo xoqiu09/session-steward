@@ -1,6 +1,13 @@
 /* 沿用小镇的暖纸、木色和等距景物；居民的强调色来自各自立绘。 */
 .town-view .town-resident-figure { cursor: grab; touch-action: none; transition: transform .5s linear; }
 .town-view .town-resident-figure:active { cursor: grabbing; transition: none; }
+.town-view .town-resident-figure.is-travelling, .town-view .town-resident-guest { cursor: pointer; }
+.town-view .town-resident-trip-controls { display: grid; gap: 7px; padding-top: 12px; margin-top: 12px; border-top: 1px solid var(--town-line); }
+.town-view .town-resident-trip-controls > label { font-size: 11px; color: #715b44; }
+.town-view .town-resident-trip-controls > div { display: flex; align-items: stretch; gap: 6px; }
+.town-view .town-resident-trip-controls select { flex: 1; min-width: 0; width: 0; padding: 6px; border: 1px solid #cdbb9f; border-radius: 7px; background: #fffdf7; color: var(--town-ink); font: inherit; }
+.town-view .town-resident-trip-controls p { margin: 0; font-size: 11px; line-height: 1.6; overflow-wrap: anywhere; }
+.town-view .town-resident-trip-controls p button { margin-left: 5px; }
 .town-view .town-resident-figure:focus-visible { outline: none; filter: drop-shadow(0 0 3px var(--town-blue)); }
 .town-view .town-resident-body { transform-box: fill-box; transform-origin: 50% 100%; }
 .town-view .town-resident-figure.is-walking .town-resident-body { animation: resident-walk .6s ease-in-out infinite; }
@@ -50,7 +57,7 @@
 @media (prefers-reduced-motion: reduce) { .town-view .town-resident-figure { transition: none; } .town-view .town-resident-body { animation: none !important; } }
 @media (max-width: 760px) {
   .town-view.is-resident-view .town-diorama { min-height: 660px; max-height: none; height: calc(100dvh - 160px); aspect-ratio: auto; }
-  .town-view .town-residents-panel { top: auto; bottom: 48px; left: 8px; width: calc(100% - 16px); max-height: 264px; padding: 11px; }
+  .town-view .town-residents-panel { top: auto; bottom: 48px; left: 8px; width: calc(100% - 16px); max-height: 340px; padding: 11px; }
   .town-view .town-residents-panel button { min-height: 40px; }
   .town-view .town-residents-heading { align-items: center; }
   .town-view .town-residents-heading h2 { margin: 0; font-size: 16px; }

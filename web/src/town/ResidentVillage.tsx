@@ -1,33 +1,19 @@
-import { useEffect, useRef, useState, useSyncExternalStore, type PointerEvent as RPointerEvent } from 'react'
+import { useRef, useState, type PointerEvent as RPointerEvent } from 'react'
 import { HipRoof, IsoBox, IsoTile, iso } from './iso'
 import { Flowers, Pond } from './scenery'
 import { Path, Tag, Tree, activate } from './TownScene'
 import { CELL_D, CELL_W, type Cell } from './world'
 import { GARDEN_PATHS, GARDEN_SPOTS, RESIDENTS, RESIDENT_IDS, residentImage, residentSpec, type GardenPoint, type ResidentId } from './residents'
 import { residentStatus, type ResidentActor, type ResidentLife, type ResidentStore } from './residentLife'
+import { useResidentLife as useLife } from './residentPresence'
+import { cellKey, localTripPoint, pointCell, type ResidentDestination } from './residentTrips'
 import './residents.css'
 
-function useLife(store: ResidentStore) { return useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot) }
-
-function useLifeClock(store: ResidentStore, active: boolean) {
-  useEffect(() => {
-    if (!active) return
-    const visible = () => { store.resetClock(Date.now()); if (document.hidden) store.save() }
-    const save = () => store.save()
-    visible()
-    const clock = window.setInterval(() => { if (!document.hidden) store.tick(Date.now()) }, 500)
-    document.addEventListener('visibilitychange', visible)
-    window.addEventListener('pagehide', save)
-    return () => { clearInterval(clock); document.removeEventListener('visibilitychange', visible); window.removeEventListener('pagehide', save); store.save() }
-  }, [store, active])
-}
-
 /** 岛内的物件按脚下深度排序；立绘能被小屋、树和桌子自然遮挡。 */
-export function ResidentsVillage({ cell, store, far, active, selected, onSelect }: {
+export function ResidentsVillage({ cell, store, far, selected, onSelect }: {
   cell: Cell; store: ResidentStore; far: boolean; active: boolean; selected: ResidentId | null; onSelect: (id: ResidentId) => void
 }) {
   const life = useLife(store)
-  useLifeClock(store, active && life.enabled)
   const root = useRef<SVGGElement>(null)
   const [dragged, setDragged] = useState<{ id: ResidentId; at: GardenPoint } | null>(null)
   const origin = iso(cell.cx * CELL_W, cell.cy * CELL_D)
@@ -62,10 +48,10 @@ export function ResidentsVillage({ cell, store, far, active, selected, onSelect 
     </g> },
     { key: 'tree-back', depth: 1.1, content: <Tree at={iso(0.15, 1)} k={0.7} /> },
     { key: 'tree-front', depth: 17, content: <Tree at={iso(8.6, 8.4)} k={0.85} /> },
-    ...(life.enabled ? RESIDENT_IDS.map((id) => {
-      const actor = life.actors[id], at = dragged?.id === id ? dragged.at : actor
+    ...(life.enabled ? RESIDENT_IDS.filter((id) => { const trip = life.actors[id].trip; return !trip || trip.phase !== 'inside' && cellKey(pointCell(trip)) === cellKey(cell) }).map((id) => {
+      const actor = life.actors[id], at = dragged?.id === id ? dragged.at : actor.trip ? localTripPoint(actor.trip) : actor
       return { key: id, depth: at.x + at.y, content: <ResidentFigure actor={actor} at={at} now={life.now} quiet={life.quiet} far={far}
-        selected={selected === id} moving={!life.paused && actor.route.length > 0 && actor.holdUntil <= life.now && dragged?.id !== id}
+        selected={selected === id} draggable={!actor.trip} moving={!life.paused && (actor.trip ? actor.trip.path.length > 0 : actor.route.length > 0) && actor.holdUntil <= life.now && dragged?.id !== id}
         onSelect={() => onSelect(id)} onDrag={(e) => { const p = localPoint(e); if (p) setDragged({ id, at: p }) }}
         onDrop={(e) => { const p = localPoint(e); if (p) store.drop(id, p); setDragged(null) }} onCancel={() => setDragged(null)} /> }
     }) : []),
@@ -87,20 +73,20 @@ export function ResidentsVillage({ cell, store, far, active, selected, onSelect 
   )
 }
 
-function ResidentFigure({ actor, at, now, quiet, far, selected, moving, onSelect, onDrag, onDrop, onCancel }: {
+export function ResidentFigure({ actor, at, now, quiet, far, selected, moving, onSelect, onDrag, onDrop, onCancel, draggable = true }: {
   actor: ResidentActor; at: GardenPoint; now: number; quiet: boolean; far: boolean; selected: boolean; moving: boolean
-  onSelect: () => void; onDrag: (e: RPointerEvent<SVGGElement>) => void; onDrop: (e: RPointerEvent<SVGGElement>) => void; onCancel: () => void
+  onSelect: () => void; onDrag?: (e: RPointerEvent<SVGGElement>) => void; onDrop?: (e: RPointerEvent<SVGGElement>) => void; onCancel?: () => void; draggable?: boolean
 }) {
   const pointer = useRef<{ x: number; y: number; moved: boolean } | null>(null)
   const spec = residentSpec(actor.id), p = iso(at.x, at.y)
   const bubble = !quiet && !far && actor.bubble && actor.bubble.from <= now && actor.bubble.until > now ? actor.bubble.text : null
-  return <g transform={`translate(${p[0]},${p[1]})`} className={`town-resident-figure${moving ? ' is-walking' : ''}${selected ? ' is-selected' : ''}`}
+  return <g transform={`translate(${p[0]},${p[1]})`} className={`town-resident-figure${moving ? ' is-walking' : ''}${selected ? ' is-selected' : ''}${draggable ? '' : ' is-travelling'}`}
     data-resident-id={actor.id} data-resident-status={residentStatus(actor)} role="button" tabIndex={0} aria-label={`${spec.name}，${residentStatus(actor)}，查看居民`}
     onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); onSelect() } }}
     onPointerDown={(e) => { if (e.button !== 0) return; e.stopPropagation(); pointer.current = { x: e.clientX, y: e.clientY, moved: false }; e.currentTarget.setPointerCapture(e.pointerId) }}
-    onPointerMove={(e) => { const d = pointer.current; if (!d) return; e.stopPropagation(); if (Math.hypot(e.clientX - d.x, e.clientY - d.y) > 5) d.moved = true; if (d.moved) onDrag(e) }}
-    onPointerUp={(e) => { const d = pointer.current; if (!d) return; e.stopPropagation(); pointer.current = null; if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId); if (d.moved) onDrop(e); else onSelect() }}
-    onPointerCancel={(e) => { e.stopPropagation(); pointer.current = null; onCancel() }}>
+    onPointerMove={(e) => { const d = pointer.current; if (!d) return; e.stopPropagation(); if (Math.hypot(e.clientX - d.x, e.clientY - d.y) > 5) d.moved = true; if (d.moved && draggable) onDrag?.(e) }}
+    onPointerUp={(e) => { const d = pointer.current; if (!d) return; e.stopPropagation(); pointer.current = null; if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId); if (d.moved && draggable) onDrop?.(e); else if (!d.moved) onSelect() }}
+    onPointerCancel={(e) => { e.stopPropagation(); pointer.current = null; onCancel?.() }}>
     <ellipse rx={far ? 9 : 18} ry={far ? 3.5 : 5.5} fill="rgba(70,55,35,.18)" />
     {selected && <ellipse rx={far ? 12 : 23} ry={far ? 5 : 8} fill="none" stroke={spec.color} strokeWidth="2" />}
     <g className="town-resident-body">
@@ -109,16 +95,19 @@ function ResidentFigure({ actor, at, now, quiet, far, selected, moving, onSelect
     {!far && <text className="town-resident-name" y="17" textAnchor="middle">{spec.name}</text>}
     <rect x={far ? -18 : -33} y={far ? -34 : -83} width={far ? 36 : 66} height={far ? 40 : 107} fill="transparent" />
     {bubble && <foreignObject x="-100" y="-150" width="200" height="68" pointerEvents="none"><div className="town-resident-bubble">{bubble}</div></foreignObject>}
-    <title>{spec.name} · {residentStatus(actor)}。可以拖到花园小路上。</title>
+    <title>{spec.name} · {residentStatus(actor)}。{draggable ? '可以拖到花园小路上。' : '点开查看串门情况。'}</title>
   </g>
 }
 
 const journalTime = (at: number) => new Date(at).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false })
 
-export function ResidentsPanel({ store, selected, onSelect, onClose, onVisit }: {
+export function ResidentsPanel({ store, selected, onSelect, onClose, onVisit, destinations = [], onLocate }: {
   store: ResidentStore; selected: ResidentId; onSelect: (id: ResidentId) => void; onClose: () => void; onVisit: () => void
+  destinations?: ResidentDestination[]; onLocate?: (id: ResidentId) => void
 }) {
   const life = useLife(store), actor = life.actors[selected], spec = residentSpec(selected)
+  const [chosenProject, setChosenProject] = useState('')
+  const visitId = destinations.some((d) => d.id === chosenProject) ? chosenProject : destinations[0]?.id ?? ''
   const friendship = Object.entries(life.friendship).filter(([key]) => key.split('+').includes(selected))
     .map(([key, f]) => ({ id: key.split('+').find((id) => id !== selected) as ResidentId, points: f.points }))
     .sort((a, b) => b.points - a.points).slice(0, 2)
@@ -141,12 +130,21 @@ export function ResidentsPanel({ store, selected, onSelect, onClose, onVisit }: 
       <button type="button" disabled={!life.enabled} onClick={() => store.go(selected, false)}>去散步</button>
       <button type="button" disabled={!life.enabled} onClick={() => store.go(selected, true)}>回家休息</button>
     </div>
+    <div className="town-resident-trip-controls">
+      <label htmlFor="resident-visit-project">去其他项目串门</label>
+      <div><select id="resident-visit-project" value={visitId} disabled={!destinations.length || !!actor.trip} onChange={(e) => setChosenProject(e.target.value)}>
+        {!destinations.length && <option value="">当前地图还没有项目</option>}
+        {destinations.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+      </select><button type="button" disabled={!life.enabled || !visitId || !!actor.trip} onClick={() => store.visit(selected, visitId)}>去串门</button></div>
+      {actor.trip && <p>{residentStatus(actor)} {onLocate && <button type="button" onClick={() => onLocate(selected)}>{actor.trip.phase === 'inside' ? '进屋看看' : '看看她在哪'}</button>}</p>}
+    </div>
     {friendship.length > 0 && <p className="town-resident-friends">熟悉的邻居：{friendship.map((f) => `${residentSpec(f.id).name} · 碰面 ${f.points} 次`).join('，')}</p>}
     <ResidentJournal life={life} />
     <div className="town-residents-settings">
       <label><input type="checkbox" checked={life.enabled} onChange={(e) => store.configure('enabled', e.target.checked)} />显示居民</label>
       <label><input type="checkbox" checked={life.quiet} onChange={(e) => store.configure('quiet', e.target.checked)} />安静一点</label>
       <label><input type="checkbox" checked={life.paused} onChange={(e) => store.configure('paused', e.target.checked)} />暂停散步</label>
+      <label><input type="checkbox" checked={life.autoVisit} onChange={(e) => store.configure('autoVisit', e.target.checked)} />自己去串门</label>
     </div>
     <a className="town-residents-credits" href="/residents/ATTRIBUTION.md" target="_blank" rel="noreferrer">角色立绘致谢</a>
   </section>
