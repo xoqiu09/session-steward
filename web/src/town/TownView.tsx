@@ -25,6 +25,8 @@ import { hideInactive } from './activity'
 import { useDismissibleDetails } from '../ui/useDismiss'
 import './town.css'
 import './townView.css'
+import { STORYBOOK } from './storybook'
+import './storybook.css'
 
 type Sel = { kind: 'item'; id: string } | { kind: 'session'; id: number } | null
 
@@ -296,7 +298,7 @@ export function TownView({ snap, conn, repoId, provider, sel, onSelectItem, onSe
   const scopedRepo = repoId === 'all' ? null : (shown.repos ?? []).find((r) => r.id === repoId)?.name ?? `项目 #${repoId}`
   const structureBuilding = repoId === 'all' ? undefined : model.buildings.find(b => b.repo?.id === repoId)
   return (
-    <div className={`town-view${offline ? ' is-offline' : ''}${kiosk ? ' is-kiosk' : ''}${residentView ? ' is-resident-view' : ''}${extras.parcels ? '' : ' hide-parcels'}`}>
+    <div className={`town-view${STORYBOOK ? ' is-storybook' : ''}${offline ? ' is-offline' : ''}${kiosk ? ' is-kiosk' : ''}${residentView ? ' is-resident-view' : ''}${extras.parcels ? '' : ' hide-parcels'}`}>
       <div className="town-bar">
         {extras.chips && <nav className="town-chips" aria-label="按状态高亮">
           {CHIPS.map(c => (

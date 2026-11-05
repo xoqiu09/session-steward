@@ -7,6 +7,7 @@ import { useResidentLife } from './residentPresence'
 import { cellKey, interiorVisitorPoint, pointCell, residentWorld } from './residentTrips'
 import { RESIDENT_IDS, residentImage, residentSpec, type ResidentId } from './residents'
 import type { WorldLayout } from './world'
+import { ResidentSprite } from './ResidentSprite'
 
 interface Anchors { ground: Map<string, SVGGElement>; doors: Map<string, SVGGElement> }
 const equalMap = (a: Map<string, SVGGElement>, b: Map<string, SVGGElement>) => a.size === b.size && [...a].every(([k, v]) => b.get(k) === v)
@@ -57,7 +58,7 @@ export function ResidentRoomVisitors({ store, projectId }: { store: ResidentStor
     const actor = life.actors[id], p = interiorVisitorPoint(actor.trip!, id), at = iso(p.x, p.y)
     return <g key={id} data-resident-id={id} transform={`translate(${at[0]},${at[1]}) scale(.8)`} className={`town-resident-figure${life.paused ? '' : ' is-walking'}`} role="img" aria-label={`来访居民 ${residentSpec(id).name} 在屋内参观`}>
       <ellipse rx="17" ry="5" fill="rgba(70,55,35,.16)" />
-      <image href={residentImage(id, actor.pose)} x="-38" y="-84" width="76" height="86" preserveAspectRatio="xMidYMax meet" />
+      <ResidentSprite id={id} pose={actor.pose} />
       <text className="town-resident-name" y="17" textAnchor="middle">来访 · {residentSpec(id).name}</text>
     </g>
   })}</g>
