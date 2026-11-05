@@ -14,7 +14,8 @@ import { TownFeaturePanel } from './TownFeaturePanel'
 import type { ProjectFeature, ProjectStructure, WorkItem } from '../types'
 import './houseCard.css'
 import type { ReactNode } from 'react'
-import { STORYBOOK, StoryDeskDetail, StoryRoomDecor, StoryTree } from './storybook'
+import { StoryDeskDetail, StoryRoomDecor, StoryTree } from './storybook'
+import { useTownArt } from './appearance'
 
 const ROOM_W = 16
 const ROOM_D = 12
@@ -111,6 +112,7 @@ export function InteriorScene({ b, model, selected, highlight, onSelect, changed
   focus?: { focus?: RoomFocus; nonce: number } | null
   residentVisitors?: ReactNode
 }) {
+  const { illustrated, miniature } = useTownArt()
   const isSel = (kind: Selection['kind'], key: string) => selected?.kind === kind && selected.key === key
   const dim = (match: boolean) => (highlight && !match ? ' is-dim' : '')
   const flash = (key: string) => (changed.has(key) ? ' is-changed' : '')
@@ -155,25 +157,25 @@ export function InteriorScene({ b, model, selected, highlight, onSelect, changed
     <svg className={`town-svg is-interior${offline ? ' is-offline' : ''}`} viewBox={interiorViewBox()} role="group" aria-label={`${b.name} 室内`}>
       <defs>
         <pattern id="interior-planks" width="60" height="30" patternUnits="userSpaceOnUse">
-          <path d="M0 15 L30 0 M30 30 L60 15" stroke={STORYBOOK ? '#b69166' : '#c8a77a'} strokeWidth={STORYBOOK ? '.75' : '1'} opacity={STORYBOOK ? '.65' : '1'} />
-          {STORYBOOK && <><path d="M4 17 l14-7 M35 24 l17-9 M14 26 l5-2 M27 6 l8-4" stroke="#f9dfb5" strokeWidth="1.2" opacity=".65" /><path d="M6 22 q6-6 13-6 m20-8 q5-5 12-5" fill="none" stroke="#ab8359" strokeWidth=".45" opacity=".45" /></>}
+          <path d="M0 15 L30 0 M30 30 L60 15" stroke={illustrated ? '#b69166' : '#c8a77a'} strokeWidth={illustrated ? '.75' : '1'} opacity={illustrated ? '.65' : '1'} />
+          {illustrated && <><path d="M4 17 l14-7 M35 24 l17-9 M14 26 l5-2 M27 6 l8-4" stroke="#f9dfb5" strokeWidth="1.2" opacity=".65" /><path d="M6 22 q6-6 13-6 m20-8 q5-5 12-5" fill="none" stroke="#ab8359" strokeWidth=".45" opacity=".45" /></>}
         </pattern>
       </defs>
       {/* 地板与墙 */}
-      <IsoBox gx={0} gy={0} w={ROOM_W} d={ROOM_D} h={14} z={-14} top={STORYBOOK ? '#dfbc87' : '#e3c79b'} left="#b98a52" right="#9c7140" />
+      <IsoBox gx={0} gy={0} w={ROOM_W} d={ROOM_D} h={14} z={-14} top={miniature ? '#e4d9b9' : illustrated ? '#dfbc87' : '#e3c79b'} left="#b98a52" right="#9c7140" />
       <IsoTile gx={0} gy={0} w={ROOM_W} d={ROOM_D} fill="url(#interior-planks)" />
-      <polygon points={wallLeft(0, ROOM_W, 0, WALL_H)} fill="#f4ead8" stroke="#c9b48e" />
-      <polygon points={wallRight(0, ROOM_D, 0, WALL_H)} fill="#e9dcc2" stroke="#c9b48e" />
+      <polygon points={wallLeft(0, ROOM_W, 0, WALL_H)} fill={miniature ? "#f3f4e8" : "#f4ead8"} stroke={miniature ? "#bacab3" : "#c9b48e"} />
+      <polygon points={wallRight(0, ROOM_D, 0, WALL_H)} fill={miniature ? "#dce6d7" : "#e9dcc2"} stroke={miniature ? "#bacab3" : "#c9b48e"} />
       <polygon points={wallLeft(0, ROOM_W, 0, 16)} fill={colors.accent} opacity="0.35" />
       <polygon points={wallRight(0, ROOM_D, 0, 16)} fill={colors.accent} opacity="0.3" />
       {/* 窗户：右墙两扇，能看到外面的树 */}
       {[2.2, 6.4].map((gy) => (
         <g key={gy} aria-hidden>
           <polygon points={wallRight(gy, gy + 2.4, 50, 96)} fill="#cfe6f2" stroke="#8a6a3a" strokeWidth="3" />
-          {STORYBOOK ? <StoryTree at={iso(0,gy+1.2,52)} width={36} /> : <Pine at={iso(0, gy + 1.2, 52)} k={0.55} />}
+          {illustrated ? <StoryTree at={iso(0,gy+1.2,52)} width={36} /> : <Pine at={iso(0, gy + 1.2, 52)} k={0.55} />}
         </g>
       ))}
-      {STORYBOOK && <>
+      {illustrated && <>
         <polygon points={pts([iso(.5,2.2),iso(5,3),iso(5,6),iso(.5,4.6)])} fill="#fff0b8" opacity=".2" pointerEvents="none" />
         <StoryRoomDecor occupied={placed.map(({s}) => ({ ...s, w: BENCH_W, d: BENCH_D + 1.3 }))} />
       </>}
@@ -195,9 +197,9 @@ export function InteriorScene({ b, model, selected, highlight, onSelect, changed
         ))}
       </g>
       {/* 角落：盆栽、地毯、退件筐 */}
-      {!STORYBOOK && <IsoTile gx={ROOM_W - 4.6} gy={ROOM_D - 3.4} w={4} d={2.8} fill={colors.accent} opacity={0.18} />}
+      {!illustrated && <IsoTile gx={ROOM_W - 4.6} gy={ROOM_D - 3.4} w={4} d={2.8} fill={colors.accent} opacity={0.18} />}
       <Flowers gx={0.8} gy={ROOM_D - 0.8} seed={b.key.length * 13} />
-      {!STORYBOOK && <><IsoBox gx={0.4} gy={0.4} w={1} d={1} h={14} top="#a07a52" left="#b98a52" right="#9c7140" />
+      {!illustrated && <><IsoBox gx={0.4} gy={0.4} w={1} d={1} h={14} top="#a07a52" left="#b98a52" right="#9c7140" />
         <Pine at={iso(0.9, 0.9, 14)} k={0.6} /></>}
       {failed.length > 0 && (
         <g className={`town-failbox${dim(highlight === 'failed')}`}>
@@ -232,7 +234,7 @@ export function InteriorScene({ b, model, selected, highlight, onSelect, changed
           <g key={w.id} className={`town-obj town-bench${isSel('item', w.id) ? ' is-selected' : ''}${dim(highlight === 'review' ? w.status === 'review' : highlight === 'failed' ? false : !highlight)}`}
             {...activate(() => onSelect({ kind: 'item', key: w.id }))} aria-label={`工作项 ${w.id} ${w.title}：${itemStatusLabel[w.status]}`}>
             <IsoBox gx={s.gx} gy={s.gy} w={BENCH_W} d={BENCH_D} h={18} top={BENCH_TOP[w.status]} left="#b98a52" right="#9c7140" stroke={isSel('item', w.id) ? '#2d6cdf' : undefined} />
-            {STORYBOOK && <StoryDeskDetail gx={s.gx} gy={s.gy} />}
+            {illustrated && <StoryDeskDetail gx={s.gx} gy={s.gy} />}
             {review.slice(0, 2).map((p, k) => <g key={p.key} className="town-crate"><Crate at={iso(s.gx + 2.1 + k * 0.5, s.gy + 0.5, 18)} fill="#d6b27a" tape="#5b6cd8" /></g>)}
           </g>
         )
@@ -272,7 +274,7 @@ export function InteriorScene({ b, model, selected, highlight, onSelect, changed
         const label = characterStatusLabel[c.status]
         return (
           <g key={`${c.key}-pill`} transform={`translate(${at[0]},${at[1]}) scale(1.22)`} aria-hidden className={dim(highlight ? charMatches(c, highlight) : true)}>
-            <StatusPill at={[0, 17]} name={characterPillName(c)} status={offline && c.status === 'working' ? `断线前·${label}` : label} bg={st.bg} fg={st.fg} edge={style.body} />
+            <StatusPill at={[0, 17]} name={characterPillName(c, illustrated)} status={offline && c.status === 'working' ? `断线前·${label}` : label} bg={st.bg} fg={st.fg} edge={style.body} />
           </g>
         )
       })}

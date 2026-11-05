@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { STORYBOOK, StoryProp, storyLounge, storybookRequested } from './storybook'
+import { StoryProp, storyLounge, storybookRequested } from './storybook'
 import { residentDisplayPositions, residentSpriteBox } from './ResidentSprite'
 import { RESIDENT_IDS } from './residents'
 import { iso } from './iso'
@@ -8,7 +8,6 @@ import { benchSpot } from './InteriorScene'
 
 describe('手绘样板的隔离和空间', () => {
   it('只在明确选用样板时启用，普通小镇不自动更换画风', () => {
-    expect(STORYBOOK).toBe(false)
     for (const search of ['', '?world=1', '?town-art=original', '?town-art=true']) expect(storybookRequested(search)).toBe(false)
     expect(storybookRequested('?world=1&town-art=storybook')).toBe(true)
   })

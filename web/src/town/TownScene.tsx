@@ -6,7 +6,8 @@ import { MAX_SEATS, characterStatusLabel, clip, itemStatusLabel, parcelPhaseLabe
 import type { WorkItem } from '../types'
 import { attentionManaged } from '../workManagement'
 import { shownNo } from '../hub/ids'
-import { STORYBOOK, StoryProp, StoryTrail, StoryTree } from './storybook'
+import { StoryProp, StoryTrail, StoryTree } from './storybook'
+import { useTownArt } from './appearance'
 import { ResidentSprite, workCompanion } from './ResidentSprite'
 
 export type Selection =
@@ -162,6 +163,7 @@ export function parcelMatches(p: ParcelView, h: Highlight, staleSession: boolean
 }
 
 export default function TownScene({ model, selected, highlight, onSelect, changed = new Set(), offline = false, buildings, layout = 'wide' }: SceneProps) {
+  const { illustrated } = useTownArt()
   const L = LAYOUTS[layout]
   const isSel = (kind: Selection['kind'], key: string) => selected?.kind === kind && selected.key === key
   const dim = (match: boolean) => (highlight && !match ? ' is-dim' : '')
@@ -284,7 +286,7 @@ export default function TownScene({ model, selected, highlight, onSelect, change
         return (
           <g key={`${c.key}-pill`} style={{ transform: `translate(${at[0]}px,${at[1]}px) scale(${L.pillScale})` }}
             className={`town-obj town-move${dim(highlight ? charMatches(c, highlight) : true)}`} aria-hidden onClick={() => onSelect({ kind: 'character', key: c.key })}>
-            <StatusPill at={[0, 17]} name={characterPillName(c)} status={offline && c.status === 'working' ? `断线前·${label}` : label} bg={st.bg} fg={st.fg} edge={style.body} />
+            <StatusPill at={[0, 17]} name={characterPillName(c, illustrated)} status={offline && c.status === 'working' ? `断线前·${label}` : label} bg={st.bg} fg={st.fg} edge={style.body} />
           </g>
         )
       })}
@@ -298,8 +300,9 @@ export function xy([x, y]: Pt) {
 }
 
 export function Path({ from, to }: { from: [number, number]; to: [number, number] }) {
+  const { illustrated } = useTownArt()
   const a = iso(...from), b = iso(...to)
-  if (STORYBOOK) return <StoryTrail from={from} to={to} />
+  if (illustrated) return <StoryTrail from={from} to={to} />
   return <line x1={a[0]} y1={a[1]} x2={b[0]} y2={b[1]} stroke="#e4d6b8" strokeWidth="16" strokeLinecap="round" opacity="0.9" />
 }
 
@@ -355,6 +358,10 @@ export const HOUSE_SHAPE: BuildingShape = {
 }
 
 export function Building({ plot: p, b, selected, dimClass, onSelect, signScale = 1, shape = HOUSE_SHAPE, storybookHouse = false }: { plot: Plot; b: BuildingView; selected: boolean; dimClass: string; onSelect: () => void; signScale?: number; shape?: BuildingShape; storybookHouse?: boolean }) {
+  const { miniature } = useTownArt()
+  storybookHouse = storybookHouse || miniature && (shape.kind === 'cabin' || shape.kind === 'house')
+  if (miniature) shape = { ...shape, walls: { top: '#f6f3df', front: '#f2ebd2', side: '#d9e2ce', edge: '#a9b9a1' } }
+
   const H = shape.h
   const active = b.items.filter((w) => w.status !== 'done' && w.status !== 'abandoned').length
   const done = b.items.filter((w) => w.status === 'done').length
@@ -364,7 +371,7 @@ export function Building({ plot: p, b, selected, dimClass, onSelect, signScale =
   const signW = measure(sign, 14) + 26
   const storyWidth = (p.w + p.d) * 30 + 10
   const houseFoot = iso(p.gx + p.w / 2, p.gy + p.d - .3)
-  const label = storybookHouse ? [houseFoot[0], houseFoot[1] - storyWidth * .88 - 18] as Pt : iso(p.gx + p.w / 2, p.gy + p.d / 2, H + 66)
+  const label = storybookHouse ? [houseFoot[0], houseFoot[1] - storyWidth * (miniature ? 1.1 : .88) - 18] as Pt : iso(p.gx + p.w / 2, p.gy + p.d / 2, H + 66)
   const corner = iso(p.gx + p.w, p.gy + p.d)
   // 窗户与门画在朝向镜头的长面上。
   const win = (u: number, v: number, ww: number, wh: number, color: string) => {
@@ -376,7 +383,7 @@ export function Building({ plot: p, b, selected, dimClass, onSelect, signScale =
     <g className={`town-obj town-building${selected ? ' is-selected' : ''}${dimClass}`} data-repo-id={b.repo?.id}
       aria-label={`项目建筑 ${b.name}：${b.characters.length} 个会话，${active} 个未完成任务${hidden ? `，另有 ${hidden} 个会话不在画面中` : ''}`} {...activate(onSelect)}>
       {storybookHouse ? <>
-        <rect className="town-story-house-hit" x={houseFoot[0] - storyWidth / 2} y={houseFoot[1] - storyWidth * .85} width={storyWidth} height={storyWidth * .9} />
+        <rect className="town-story-house-hit" x={houseFoot[0] - storyWidth / 2} y={houseFoot[1] - storyWidth * (miniature ? 1.08 : .85)} width={storyWidth} height={storyWidth * (miniature ? 1.13 : .9)} />
         <StoryProp kind="cottage" at={houseFoot} width={storyWidth} />
       </> : <>
       <IsoTile gx={p.gx - 0.4} gy={p.gy - 0.4} w={p.w + 0.8} d={p.d + 0.8} fill="#c9b48e" opacity={0.5} />
@@ -394,7 +401,7 @@ export function Building({ plot: p, b, selected, dimClass, onSelect, signScale =
           {shape.kind !== 'cabin' && long > 4.6 && win(long / 2 + 0.7, 22 + f * 30, 0.8, 18, '#ffe2a0')}
         </g>
       ))}
-      <HipRoof gx={p.gx} gy={p.gy} w={p.w} d={p.d} z={H} rise={shape.rise} front={p.roof} side={p.roofSide} stroke="#5a3a2a" />
+      <HipRoof gx={p.gx} gy={p.gy} w={p.w} d={p.d} z={H} rise={shape.rise} front={miniature ? '#d99577' : p.roof} side={miniature ? '#bd806c' : p.roofSide} stroke={miniature ? '#bf8c75' : '#5a3a2a'} />
       {/* 烟囱 */}
       <IsoBox gx={p.gx + (p.facing === 'x' ? p.w * 0.72 : 0.6)} gy={p.gy + (p.facing === 'x' ? 0.5 : p.d * 0.72)} w={0.45} d={0.45} h={28} z={H + 14} top="#8d5b45" left="#b07258" right="#94604a" />
       {shape.kind === 'tower' && (
@@ -439,8 +446,9 @@ export function Building({ plot: p, b, selected, dimClass, onSelect, signScale =
 }
 
 export function Tree({ at, k }: { at: Pt; k: number }) {
+  const { illustrated } = useTownArt()
   const [x, y] = at
-  if (STORYBOOK) return <StoryTree at={at} width={126*k} />
+  if (illustrated) return <StoryTree at={at} width={126*k} />
   return (
     <g aria-hidden transform={`translate(${x},${y}) scale(${k})`}>
       <ellipse rx="16" ry="6" fill="rgba(40,25,10,.18)" />
@@ -482,28 +490,29 @@ export function charLook(c: CharacterView) {
   return { isCat, style, st: STATUS_COLOR[c.status] }
 }
 
-export function characterDisplayName(c: CharacterView) {
-  const girl = STORYBOOK ? workCompanion(c.session.provider) : null
+export function characterDisplayName(c: CharacterView, companions = false) {
+  const girl = companions ? workCompanion(c.session.provider) : null
   return girl ? `${girl.name} · ${c.name}` : c.name
 }
 
-export function characterPillName(c: CharacterView) {
-  const girl = STORYBOOK ? workCompanion(c.session.provider) : null
+export function characterPillName(c: CharacterView, companions = false) {
+  const girl = companions ? workCompanion(c.session.provider) : null
   return girl ? `${girl.name} #${shownNo(c.session.id)}` : c.name
 }
 
 export function Character({ at, c, selected, dimClass, onSelect, now }: { at: Pt; c: CharacterView; selected: boolean; dimClass: string; onSelect: () => void; now?: string }) {
+  const { illustrated } = useTownArt()
   const s = c.session
   const { isCat, style } = charLook(c)
   const skin = isCat ? '#f2b36b' : '#f6d7b8'
   const stale = c.status === 'stale'
-  const girl = STORYBOOK ? workCompanion(s.provider) : null
+  const girl = illustrated ? workCompanion(s.provider) : null
   const pose = c.status === 'working' ? 'activity' : c.status === 'waiting' ? 'greet' : c.status === 'ended' ? 'sleep' : 'idle'
   return (
     <g style={{ transform: `translate(${at[0]}px,${at[1]}px) scale(1.22)` }}
       className={`town-obj town-move town-char is-${c.status}${selected ? ' is-selected' : ''}${dimClass}`}
-      aria-label={`${characterDisplayName(c)}，${characterStatusLabel[c.status]}${c.item ? `，任务 ${c.item.title}` : ''}`} {...activate(onSelect)}>
-      <title>{`${characterDisplayName(c)} · ${recentSignal(s.signal, now ?? new Date().toISOString())}`}</title>
+      aria-label={`${characterDisplayName(c, illustrated)}，${characterStatusLabel[c.status]}${c.item ? `，任务 ${c.item.title}` : ''}`} {...activate(onSelect)}>
+      <title>{`${characterDisplayName(c, illustrated)} · ${recentSignal(s.signal, now ?? new Date().toISOString())}`}</title>
       {/* 闲着的会话在院子里来回溜达；干活的手边冒火花 */}
       <g className={c.status === 'idle' ? 'town-stroll' : undefined} style={c.status === 'idle' ? { animationDelay: `${-(s.id % 7) * 1.3}s` } : undefined}>
       <rect x={girl ? -29 : -17} y={girl ? -66 : -58} width={girl ? 58 : 34} height={girl ? 72 : 64} fill="transparent" />

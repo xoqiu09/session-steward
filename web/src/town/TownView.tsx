@@ -25,8 +25,10 @@ import { hideInactive } from './activity'
 import { useDismissibleDetails } from '../ui/useDismiss'
 import './town.css'
 import './townView.css'
-import { STORYBOOK } from './storybook'
+import { TownArtProvider, useTownAppearance } from './appearance'
+import { TownSceneMenu } from './TownSceneMenu'
 import './storybook.css'
+import './appearance.css'
 
 type Sel = { kind: 'item'; id: string } | { kind: 'session'; id: number } | null
 
@@ -174,6 +176,8 @@ export function TownView({ snap, conn, repoId, provider, sel, onSelectItem, onSe
   // 旧快照（慢请求迟到）不覆盖新画面；同一版重复到达不重画。
   // cursor 只在数据库被替换时才会变小，那时服务端时间是新的，按重置接受。
   // 本机快照和全部设备的合并视图共用本机 cursor：换了来源就直接接受，不当成重复。
+  const appearance = useTownAppearance()
+  const [sceneMenuOpen, setSceneMenuOpen] = useState(false)
   const [shown, setShown] = useState<Snapshot>(snap)
   useEffect(() => {
     setShown(prev => acceptSnapshot(prev, snap, sourceOf(prev) !== sourceOf(snap) || (snap.cursor < prev.cursor && Date.parse(snap.now) > Date.parse(prev.now))).snap)
@@ -233,7 +237,7 @@ export function TownView({ snap, conn, repoId, provider, sel, onSelectItem, onSe
   const [pageRaw, setPage] = useState(0)
   const page = clampPage(pageRaw, pages.length)
   const turn = (step: number) => setPage(((page + step) % pages.length + pages.length) % pages.length)
-  const rotating = kiosk && !paused && !structure && pages.length > 1 && !asWorld
+  const rotating = kiosk && !paused && !structure && !sceneMenuOpen && pages.length > 1 && !asWorld
   useEffect(() => {
     if (!rotating) return
     const t = window.setTimeout(() => setPage((p) => (clampPage(p, pages.length) + 1) % pages.length), rotateMs)
@@ -298,7 +302,7 @@ export function TownView({ snap, conn, repoId, provider, sel, onSelectItem, onSe
   const scopedRepo = repoId === 'all' ? null : (shown.repos ?? []).find((r) => r.id === repoId)?.name ?? `项目 #${repoId}`
   const structureBuilding = repoId === 'all' ? undefined : model.buildings.find(b => b.repo?.id === repoId)
   return (
-    <div className={`town-view${STORYBOOK ? ' is-storybook' : ''}${offline ? ' is-offline' : ''}${kiosk ? ' is-kiosk' : ''}${residentView ? ' is-resident-view' : ''}${extras.parcels ? '' : ' hide-parcels'}`}>
+    <TownArtProvider theme={appearance.theme}><div data-town-theme={appearance.theme} className={`town-view${appearance.theme === 'storybook' ? ' is-storybook' : appearance.theme === 'miniature' ? ' is-miniature' : ''}${offline ? ' is-offline' : ''}${kiosk ? ' is-kiosk' : ''}${residentView ? ' is-resident-view' : ''}${extras.parcels ? '' : ' hide-parcels'}`}>
       <div className="town-bar">
         {extras.chips && <nav className="town-chips" aria-label="按状态高亮">
           {CHIPS.map(c => (
@@ -325,6 +329,7 @@ export function TownView({ snap, conn, repoId, provider, sel, onSelectItem, onSe
             {rotating && <i key={page} className="town-page-timer" style={{ animationDuration: `${rotateMs}ms` }} aria-hidden />}
           </div>
         )}
+        <TownSceneMenu appearance={appearance} open={sceneMenuOpen} onOpenChange={setSceneMenuOpen} />
         <span className="town-meta" title="小镇只画当前的会话、工作项和运行；完整记录在列表与项目简报里">
           快照 #{shown.cursor} · {hm(shown.now)}
         </span>
@@ -351,7 +356,7 @@ export function TownView({ snap, conn, repoId, provider, sel, onSelectItem, onSe
         </div>}
         {asWorld
           ? <WorldStage model={model} needsYou={urgent} selected={selected} highlight={highlight} onSelect={onSelect} changed={changed} offline={offline}
-              kiosk={kiosk} rotateMs={rotateMs} paused={paused || structure || sel != null} focusKey={selKey} plan={plan} replaying={!!replay} snapshot={shown}
+              kiosk={kiosk} rotateMs={rotateMs} paused={paused || structure || sel != null || sceneMenuOpen} focusKey={selKey} plan={plan} replaying={!!replay} snapshot={shown}
               source={source} selfDevice={selfDevice} context={context} onRestoreContext={restoreContext} startWithResidents={residentView} />
           : <TownScene model={model} buildings={pages[page]} layout={shape} selected={selected} highlight={highlight} onSelect={onSelect} changed={changed} offline={offline} />}
         <ul className="town-legend" aria-label="图例">
@@ -363,6 +368,6 @@ export function TownView({ snap, conn, repoId, provider, sel, onSelectItem, onSe
         </ul>
       </div>
       {structure && <TownStructure onClose={closeStructure} project={structureBuilding ? { b: structureBuilding, features: shown.features ?? null, structure: shown.structures?.find(s => s.repo_id === structureBuilding.repo?.id) } : undefined} />}
-    </div>
+    </div></TownArtProvider>
   )
 }

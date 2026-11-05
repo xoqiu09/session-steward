@@ -42,7 +42,8 @@ import type { ResidentId } from './residents'
 import { DISTRICT_FOOTPRINT } from './world'
 import { ResidentClock } from './residentPresence'
 import { ResidentRoomVisitors, ResidentWorldVisitors } from './ResidentVisits'
-import { STORYBOOK, StoryClearing, StoryGrass, StoryTrail, storyBlob } from './storybook'
+import { StoryClearing, StoryGrass, StoryTrail, storyBlob } from './storybook'
+import { useTownArt } from './appearance'
 import { addPoint, cellOrigin, residentWorld } from './residentTrips'
 import { ResidentFollow } from './ResidentFollow'
 
@@ -120,6 +121,7 @@ function districtPlot(d: District): Plot {
 }
 
 export function WorldScene({ model, world, view, far, selected, highlight, onSelect, changed = new Set(), offline = false, needsYou, stalled, onHoverHouse, agents = null, momentGlow, progressSparks, onNavigate, focusArea = null, dispatch = [], onDispatch, residents, sceneRef }: SceneProps) {
+  const { illustrated, miniature } = useTownArt()
   const isSel = (kind: Selection['kind'], key: string) => selected?.kind === kind && selected.key === key
   const dim = (match: boolean) => (highlight && !match ? ' is-dim' : '')
   const flash = (key: string) => (changed.has(key) ? ' is-changed' : '')
@@ -211,7 +213,7 @@ export function WorldScene({ model, world, view, far, selected, highlight, onSel
   const nowMs = Date.parse(model.now) || Date.now()
   const plateK = Math.min(2.4, Math.max(0.8, view.w / 2900))
   const mapMode = view.w > MAP_W
-  const storyHouse = STORYBOOK ? [...world.districts].sort((a,b) => {
+  const storyHouse = illustrated ? [...world.districts].sort((a,b) => {
     const home = world.residential ?? { cx: 0, cy: 0 }
     const distance = (c: Cell) => Math.abs(c.cx-home.cx) + Math.abs(c.cy-home.cy)
     return distance(a.cell)-distance(b.cell) || a.id.localeCompare(b.id)
@@ -221,24 +223,24 @@ export function WorldScene({ model, world, view, far, selected, highlight, onSel
     <svg ref={sceneRef} className={`town-svg is-world${far ? ' is-far' : ''}${far && mapMode ? ' is-map' : ''}${offline ? ' is-offline' : ''}`} viewBox={`${view.x} ${view.y} ${view.w} ${view.h}`}
       role="group" aria-label="工作小镇世界">
       <defs>
-        <pattern id="world-grass" width={STORYBOOK ? 240 : 60} height={STORYBOOK ? 120 : 30} patternUnits="userSpaceOnUse">
-          {STORYBOOK ? <StoryGrass /> : <path d="M0 15 L30 0 L60 15 L30 30 Z" fill="none" stroke="#b9cba0" strokeWidth="0.8" />}
+        <pattern id="world-grass" width={illustrated ? 240 : 60} height={illustrated ? 120 : 30} patternUnits="userSpaceOnUse">
+          {illustrated ? <StoryGrass /> : <path d="M0 15 L30 0 L60 15 L30 30 Z" fill="none" stroke="#b9cba0" strokeWidth="0.8" />}
         </pattern>
       </defs>
 
       {/* 大地铺满视野（再加世界范围），没有桌子边；上面是成片的地形色 */}
-      <IsoTile gx={Math.min(ground.gx0, gx0)} gy={Math.min(ground.gy0, gy0)} w={Math.max(ground.gx1, gx1) - Math.min(ground.gy0, gy0)} d={Math.max(ground.gy1, gy1) - Math.min(ground.gy0, gy0)} fill={STORYBOOK ? '#bfcca4' : '#d7e2bf'} />
+      <IsoTile gx={Math.min(ground.gx0, gx0)} gy={Math.min(ground.gy0, gy0)} w={Math.max(ground.gx1, gx1) - Math.min(ground.gx0, gx0)} d={Math.max(ground.gy1, gy1) - Math.min(ground.gy0, gy0)} fill={miniature ? '#cbdcba' : illustrated ? '#bfcca4' : '#d7e2bf'} />
       {visible.length <= TINT_MAX && visible.map((c) => {
         const tint = LAND_TINT[terrainAtCell(c.cx, c.cy)]
         const ring = tintBlob(c).map(([gx,gy]) => iso(gx,gy))
-        return tint ? STORYBOOK ? <path key={`tn${c.cx},${c.cy}`} d={storyBlob(ring)} fill={tint} opacity=".4" aria-hidden="true" /> : <polygon key={`tn${c.cx},${c.cy}`} points={ring.map(p=>p.join(',')).join(' ')} fill={tint} opacity="0.75" aria-hidden /> : null
+        return tint ? illustrated ? <path key={`tn${c.cx},${c.cy}`} d={storyBlob(ring)} fill={tint} opacity=".4" aria-hidden="true" /> : <polygon key={`tn${c.cx},${c.cy}`} points={ring.map(p=>p.join(',')).join(' ')} fill={tint} opacity="0.75" aria-hidden /> : null
       })}
       <IsoTile gx={Math.min(ground.gx0, gx0)} gy={Math.min(ground.gy0, gy0)} w={Math.max(ground.gx1, gx1) - Math.min(ground.gx0, gx0)} d={Math.max(ground.gy1, gy1) - Math.min(ground.gy0, gy0)} fill="url(#world-grass)" />
       <Lakes shapes={empty.flatMap((e) => (e.s.pond ? [e.s.pond] : []))} />
       {/* 街道：只铺在中央和各村庄的格子上；野外是草地和树林 */}
-      {!STORYBOOK && streetCells.map((c) => <IsoTile key={`st${c.cx},${c.cy}`} gx={c.cx * CELL_W - 1} gy={c.cy * CELL_D - 1} w={CELL_W + 0.1} d={CELL_D + 0.1} fill="#e6d9bd" />)}
-      {streetCells.map((c) => STORYBOOK ? <StoryClearing key={`yd${c.cx},${c.cy}`} gx={c.cx*CELL_W} gy={c.cy*CELL_D} w={INNER_W} d={INNER_D} fill={tintOf(c)} opacity={.32} /> : <IsoTile key={`yd${c.cx},${c.cy}`} gx={c.cx * CELL_W} gy={c.cy * CELL_D} w={INNER_W} d={INNER_D} fill={tintOf(c)} />)}
-      {STORYBOOK && streetCells.map(c => <g key={`road${c.cx},${c.cy}`}>
+      {!illustrated && streetCells.map((c) => <IsoTile key={`st${c.cx},${c.cy}`} gx={c.cx * CELL_W - 1} gy={c.cy * CELL_D - 1} w={CELL_W + 0.1} d={CELL_D + 0.1} fill="#e6d9bd" />)}
+      {streetCells.map((c) => illustrated ? <StoryClearing key={`yd${c.cx},${c.cy}`} gx={c.cx*CELL_W} gy={c.cy*CELL_D} w={INNER_W} d={INNER_D} fill={tintOf(c)} opacity={.32} /> : <IsoTile key={`yd${c.cx},${c.cy}`} gx={c.cx * CELL_W} gy={c.cy * CELL_D} w={INNER_W} d={INNER_D} fill={tintOf(c)} />)}
+      {illustrated && streetCells.map(c => <g key={`road${c.cx},${c.cy}`}>
         <StoryTrail from={[c.cx*CELL_W-1.3,c.cy*CELL_D+8.9]} to={[c.cx*CELL_W+9.7,c.cy*CELL_D+8.9]} width={27} />
         <StoryTrail from={[c.cx*CELL_W+9.7,c.cy*CELL_D-1.1]} to={[c.cx*CELL_W+9.7,c.cy*CELL_D+8.9]} width={27} />
       </g>)}
@@ -249,7 +251,7 @@ export function WorldScene({ model, world, view, far, selected, highlight, onSel
         return <Path key={`road-${v.key}`} from={a} to={b} />
       })}
       {/* 野外小屋脚下的空地 */}
-      {world.districts.filter((d) => d.kind === 'wild').map((d) => STORYBOOK ? <StoryClearing key={`cl${d.key}`} gx={d.ox+.2} gy={d.oy+.1} w={INNER_W-.4} d={INNER_D-.6} fill={tintOf(d.cell)} /> : <IsoTile key={`cl${d.key}`} gx={d.ox + 0.2} gy={d.oy + 0.1} w={INNER_W - 0.4} d={INNER_D - 0.6} fill={tintOf(d.cell)} />)}
+      {world.districts.filter((d) => d.kind === 'wild').map((d) => illustrated ? <StoryClearing key={`cl${d.key}`} gx={d.ox+.2} gy={d.oy+.1} w={INNER_W-.4} d={INNER_D-.6} fill={tintOf(d.cell)} /> : <IsoTile key={`cl${d.key}`} gx={d.ox + 0.2} gy={d.oy + 0.1} w={INNER_W - 0.4} d={INNER_D - 0.6} fill={tintOf(d.cell)} />)}
       {/* 村口小广场：井和村名牌 */}
       {world.villages.map((v) => <VillageSquare key={v.key} cell={v.square} name={v.name} terrain={terrainOf(v.key)} />)}
 
@@ -259,7 +261,7 @@ export function WorldScene({ model, world, view, far, selected, highlight, onSel
         if (key === '__residents' && residents && world.residential) return <ResidentsVillage key={key} cell={world.residential} {...residents} far={far} />
         if (key === '__plaza') return (
           <g key="__plaza">
-            {STORYBOOK ? <StoryClearing gx={P.ox+.4} gy={P.oy+.4} w={INNER_W-.4} d={INNER_D-.4} fill="#e9dcc2" opacity={.7} /> : <IsoTile gx={P.ox + 0.4} gy={P.oy + 0.4} w={INNER_W - 0.4} d={INNER_D - 0.4} fill="#e9dcc2" stroke="#cdbb98" />}
+            {illustrated ? <StoryClearing gx={P.ox+.4} gy={P.oy+.4} w={INNER_W-.4} d={INNER_D-.4} fill="#e9dcc2" opacity={.7} /> : <IsoTile gx={P.ox + 0.4} gy={P.oy + 0.4} w={INNER_W - 0.4} d={INNER_D - 0.4} fill="#e9dcc2" stroke="#cdbb98" />}
             {/* 告示栏立在广场左前方、卡片多了会长高，验收台和退件架放到右边，不被它挡住 */}
             <ReviewDesk at={{ gx: P.ox + DESK.gx, gy: P.oy + DESK.gy }} count={reviewTotal} selected={isSel('review-desk', 'review-desk')} dimDesk={dim(highlight === 'review')} onSelect={onSelect} />
             {/* 验收台上的箱子只是示意，数量看招牌 */}
@@ -388,7 +390,7 @@ export function WorldScene({ model, world, view, far, selected, highlight, onSel
           return (
             <g key={`${c.key}-pill`} style={{ transform: `translate(${at[0]}px,${at[1]}px) scale(1.22)` }}
               className={`town-obj town-move${fadeChar(c) || dim(highlight ? charMatches(c, highlight) : true)}`} aria-hidden onClick={() => onSelect({ kind: 'character', key: c.key })}>
-              <StatusPill at={[0, 17]} name={characterPillName(c)} status={offline && c.status === 'working' ? `断线前·${label}` : label} bg={st.bg} fg={st.fg} edge={style.body} />
+              <StatusPill at={[0, 17]} name={characterPillName(c, illustrated)} status={offline && c.status === 'working' ? `断线前·${label}` : label} bg={st.bg} fg={st.fg} edge={style.body} />
             </g>
           )
         })}

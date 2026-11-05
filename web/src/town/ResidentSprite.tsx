@@ -1,6 +1,6 @@
 import { residentImage, type GardenPoint, type ResidentId } from './residents'
 import { iso } from './iso'
-import { STORYBOOK } from './storybook'
+import { useTownArt } from './appearance'
 
 // Source sizes measured read-only from the 42 unchanged CrossPet WebPs.
 const WIDTHS: Record<ResidentId, readonly number[]> = {
@@ -41,6 +41,7 @@ export function residentSpriteBox(id: ResidentId, pose: string, far = false) {
 }
 
 export function ResidentSprite({ id, pose, far = false }: { id: ResidentId; pose: string; far?: boolean }) {
-  const box = STORYBOOK ? residentSpriteBox(id,pose,far) : { x: far ? -15 : -38, y: far ? -30 : -84, width: far ? 30 : 76, height: far ? 30 : 86 }
+  const { illustrated } = useTownArt()
+  const box = illustrated ? residentSpriteBox(id,pose,far) : { x: far ? -15 : -38, y: far ? -30 : -84, width: far ? 30 : 76, height: far ? 30 : 86 }
   return <image href={residentImage(id,far ? 'avatar' : pose)} {...box} preserveAspectRatio="xMidYMax meet" pointerEvents="none" />
 }

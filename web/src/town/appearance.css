@@ -1,0 +1,63 @@
+.town-scene-menu { position: relative; z-index: 80; font: inherit; color: var(--town-ink, #4a4033); }
+.town-scene-trigger { display: inline-flex; align-items: center; gap: 6px; min-height: 34px; padding: 6px 10px; border: 1px solid var(--town-line, #d9cdb6); border-radius: 10px; color: inherit; background: var(--town-card, #fffaf0); font: inherit; font-size: 12px; cursor: pointer; white-space: nowrap; }
+.town-scene-trigger:hover, .town-scene-trigger.is-open { border-color: #668d7c; box-shadow: 0 2px 8px #33574a12; }
+.town-scene-current { color: var(--town-muted, #89765e); font-size: 10px; }
+.town-scene-chevron { margin-left: 2px; color: #819285; }
+.town-scenes-panel { position: absolute; top: calc(100% + 10px); left: 0; width: 550px; max-width: calc(100vw - 32px); padding: 22px; box-sizing: border-box; background: #fcfcf6; border: 1px solid #d4ded2; border-radius: 20px; box-shadow: 0 18px 60px #1e44312b, 0 2px 8px #1e44310d; color: #304e43; text-align: left; cursor: default; }
+.town-scenes-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.town-scenes-eyebrow { display: block; font-size: 10px; font-weight: 550; letter-spacing: .06em; color: #718878; margin-bottom: 6px; }
+.town-scenes-heading h2 { font-size: 20px; letter-spacing: -.04em; font-weight: 650; margin: 0; line-height: 1.4; }
+.town-scenes-close { flex-shrink: 0; border: 1px solid #e0e6db; border-radius: 50%; width: 30px; height: 30px; font-size: 22px; line-height: 1; color: #698273; background: #f6f8ef; cursor: pointer; }
+.town-scenes-intro { font-size: 12px; color: #77877b; margin: 7px 0 20px; }
+.town-scenes-options { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 10px; }
+.town-scene-card { position: relative; min-width: 0; padding: 6px 6px 12px; border: 1.5px solid #e0e6d9; border-radius: 14px; background: #fffef9; text-align: left; font: inherit; cursor: pointer; color: #405347; transition: border-color .15s, background .15s, box-shadow .15s; }
+.town-scene-card:hover { border-color: #92b39c; background: #f5f8ee; }
+.town-scene-card.is-selected { border-color: #568c75; background: #edf5e9; box-shadow: 0 0 0 2px #568c7512; }
+.town-scene-thumbnail { width: 100%; display: block; aspect-ratio: 180/105; border-radius: 9px; }
+.town-scene-card-copy { display: block; padding: 10px 4px 0; }
+.town-scene-card-copy strong { display: flex; gap: 5px; align-items: center; padding-right: 18px; font-size: 13px; font-weight: 650; }
+.town-scene-card-copy small { font-size: 9px; font-weight: 500; padding: 1px 4px; border-radius: 4px; color: #617d53; background: #e0ebc9; }
+.town-scene-card-copy > span { display: block; margin-top: 5px; font-size: 10px; line-height: 1.5; color: #7a897b; white-space: nowrap; }
+.town-scene-check { position: absolute; right: 9px; bottom: 34px; display: grid; place-items: center; height: 16px; width: 16px; border-radius: 50%; font-size: 10px; color: white; }
+.is-selected .town-scene-check, .is-loading .town-scene-check { background: #568c75; }
+.town-scenes-feedback { min-height: 18px; margin-top: 12px; font-size: 11px; color: #6a8270; }
+.town-scenes-feedback[role=alert] { color: #9e4d3c; }
+.town-scenes-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 14px; padding-top: 16px; border-top: 1px solid #e1e7da; }
+.town-scenes-footer p { margin: 0; font-size: 10px; line-height: 1.7; color: #7d8c7d; }
+.town-scenes-footer > div { display: flex; gap: 7px; }
+.town-scenes-footer button { min-height: 36px; padding: 7px 12px; border-radius: 9px; font: inherit; font-size: 11px; cursor: pointer; }
+.town-scene-cancel { color: #6a7d6b; border: 1px solid #dce4d6; background: #f7f9f1; }
+.town-scene-apply { color: #fffef6; border: 1px solid #497661; background: #56816b; }
+.town-scene-apply:hover { background: #456e59; }
+.town-scene-apply:disabled { opacity: .5; cursor: wait; }
+.town-scene-menu button:focus-visible { outline: 2px solid #438574; outline-offset: 3px; }
+.town-scene-notice { position: absolute; left: 0; top: calc(100% + 9px); width: max-content; max-width: min(320px,calc(100vw - 32px)); padding: 10px 13px; box-sizing: border-box; font-size: 11px; line-height: 1.5; color: #365e49; background: #f9fcf2; border: 1px solid #ccddc2; border-radius: 10px; box-shadow: 0 4px 18px #35513b15; }
+.town-view.is-miniature { --town-ink: #35564a; --town-muted: #7d9283; --town-card: #fbfdf6; --town-line: #cddbc8; --town-blue: #386e66; --story-shadow: 0 5px 18px #3a634b14; }
+.town-view.is-miniature .town-diorama { background: #edf2e9; border-color: #cddbc8; }
+.town-view.is-miniature .town-world-tools button { background: #fbfdf5f2; color: #486651; border-color: #d1ddc9; }
+.town-view.is-miniature .town-world-tools button.is-on { background: #56816b; border-color: #56816b; color: #fffdf3; }
+.town-view.is-miniature .town-world-hint { color: #6a846d; background: #f9fceddd; }
+.town-view.is-miniature .town-minimap { border-color: #cbdac1; background: #f4f8eadb; }
+.town-view.is-miniature .town-residents-panel, .town-view.is-miniature .town-resident-follow, .town-view.is-miniature .town-feature-panel { border-color: #cddbc8; background: #fbfdf4f5; }
+.town-view.is-miniature .town-story-nature { filter: none; }
+.town-view.is-miniature .town-legend { background: #f7faeef0; border-color: #d3dfc9; }
+.town-view.is-miniature .town-resident-figure > ellipse:first-child { fill: #486e4e32; }
+.town-view.is-miniature .town-miniature-prop { filter: drop-shadow(0 2px 1px #50734616); }
+@media (max-width: 760px) {
+  .town-scene-trigger { min-height: 36px; }
+  .town-scene-current { display: none; }
+  .town-scenes-panel { position: fixed; top: 72px; left: 12px; right: 12px; width: auto; max-width: none; max-height: calc(100dvh - 88px); overflow-y: auto; padding: 18px; border-radius: 18px; }
+  .town-scenes-heading h2 { font-size: 19px; }
+  .town-scenes-options { grid-template-columns: 1fr; gap: 8px; }
+  .town-scene-card { display: flex; align-items: center; gap: 13px; min-height: 84px; padding: 6px; }
+  .town-scene-thumbnail { width: 108px; flex-shrink: 0; }
+  .town-scene-card-copy { padding: 0 20px 0 0; }
+  .town-scene-card-copy strong { padding-right: 0; }
+  .town-scene-check { right: 13px; bottom: calc(50% - 8px); }
+  .town-scenes-close { width: 36px; height: 36px; }
+  .town-scenes-footer { align-items: flex-start; flex-direction: column; }
+  .town-scenes-footer > div { width: 100%; }
+  .town-scenes-footer button { min-height: 42px; }
+  .town-scene-apply { flex: 1; }
+}
+@media (prefers-reduced-motion: reduce) { .town-scene-card { transition: none; } }

@@ -1,8 +1,9 @@
+import { useId } from 'react'
 import { iso, pts, type Pt } from './iso'
+import { useTownArt } from './appearance'
 
 /** Explicit preview opt-in; the installed town and its saved settings keep their current appearance. */
 export const storybookRequested = (search: string) => new URLSearchParams(search).get('town-art') === 'storybook'
-export const STORYBOOK = typeof window !== 'undefined' && storybookRequested(window.location.search)
 
 export const STORY = {
   cream: '#f7efdf', grass: '#bccb9f', moss: '#78916b', wood: '#a77b51',
@@ -26,18 +27,42 @@ const PROPS = {
 } as const
 export type StoryPropKind = keyof typeof PROPS
 
+// Original miniature cutouts. Coordinates are measured from alpha silhouettes;
+// image data and the CrossPet characters are never rescaled on disk.
+const MINI_PROPS = {
+  cottage: { crop: [70, 40, 410, 447], foot: [274, 481] },
+  oak: { crop: [544, 16, 452, 472], foot: [768, 481] },
+  birch: { crop: [1099, 16, 335, 470], foot: [1259, 480] },
+  tea: { crop: [39, 663, 455, 317], foot: [266, 973] },
+  bookcase: { crop: [589, 551, 337, 434], foot: [757, 979] },
+  flowers: { crop: [1042, 710, 460, 270], foot: [1272, 973] },
+} as const
+const MINI_KIND: Record<StoryPropKind, keyof typeof MINI_PROPS> = {
+  cottage: 'cottage', oak: 'oak', hydrangea: 'flowers', flowers: 'flowers', tea: 'tea', bookcase: 'bookcase',
+  birch: 'birch', maple: 'oak', willow: 'birch', stones: 'flowers', wildflowers: 'flowers', ferns: 'flowers',
+}
+
 export function StoryProp({ kind, at, width }: { kind: StoryPropKind; at: Pt; width: number }) {
-  const prop = PROPS[kind], { crop: [x, y, w, h], foot: [fx, fy] } = prop
+  const { miniature } = useTownArt()
+  const clip = useId()
+  const prop = miniature ? MINI_PROPS[MINI_KIND[kind]] : PROPS[kind], { crop: [x, y, w, h], foot: [fx, fy] } = prop
   const scale = width / w
-  return <svg className={`town-story-prop${'src' in prop ? ' town-story-nature' : ''}`} data-storybook-prop={kind} aria-hidden="true" pointerEvents="none"
+  return <svg className={`town-story-prop${miniature ? ' town-miniature-prop' : 'src' in prop ? ' town-story-nature' : ''}`} data-town-prop={kind} data-storybook-prop={miniature ? undefined : kind} aria-hidden="true" pointerEvents="none"
     x={at[0] - (fx - x) * scale} y={at[1] - (fy - y) * scale} width={width} height={h * scale}
     viewBox={`${x} ${y} ${w} ${h}`} overflow="hidden">
-    <image href={'src' in prop ? prop.src : '/town/storybook/props.png'} width="1536" height="1024" />
+    <defs><clipPath id={clip} clipPathUnits="userSpaceOnUse"><rect x={x} y={y} width={w} height={h} /></clipPath></defs>
+    <image clipPath={`url(#${clip})`} href={miniature ? '/town/miniature/props.png' : 'src' in prop ? prop.src : '/town/storybook/props.png'} width="1536" height="1024" />
   </svg>
 }
 
 /** Small, static details replace the construction grid without adding animation work. */
 export function StoryGrass() {
+  const { miniature } = useTownArt()
+  if (miniature) return <g aria-hidden="true" opacity=".23">
+    <ellipse cx="55" cy="45" rx="45" ry="18" fill="#e7eed3" />
+    <ellipse cx="185" cy="97" rx="45" ry="16" fill="#adcb96" />
+    {[[22,26],[102,89],[170,33]].map(([x,y],i)=><g key={i}><ellipse cx={x} cy={y} rx="2.3" ry="1.1" fill="#f7f9e6" /><ellipse cx={x+5} cy={y+2} rx="1.8" ry="1" fill="#91ad7f" /></g>)}
+  </g>
   return <>
     <path d="M12 30 Q46 4 81 24 Q109 44 80 61 Q39 76 12 52Z M126 74 Q155 38 198 62 Q235 84 206 111 Q165 129 126 98Z" fill="#90a777" opacity=".13" />
     {Array.from({length:23},(_,i) => {
@@ -63,6 +88,7 @@ export function StoryClearing({ gx,gy,w,d,fill,opacity=.45 }: { gx:number;gy:num
 
 /** Keep the existing walk centreline, vary only the painted edges and little pebbles. */
 export function StoryTrail({ from,to,width=16 }: { from:Pt;to:Pt;width?:number }) {
+  const { miniature } = useTownArt()
   const a=iso(...from),b=iso(...to),dx=b[0]-a[0],dy=b[1]-a[1],len=Math.hypot(dx,dy)
   if (len<.01) return null
   const n=Math.min(80,Math.max(3,Math.ceil(len/16))),normal:Pt=[-dy/len,dx/len]
@@ -71,8 +97,8 @@ export function StoryTrail({ from,to,width=16 }: { from:Pt;to:Pt;width?:number }
     return [a[0]+dx*t+normal[0]*edge*sign,a[1]+dy*t+normal[1]*edge*sign]
   })
   return <g aria-hidden="true" pointerEvents="none" className="town-story-trail">
-    <path d={storyBlob([...side(1),...side(-1).reverse()])} fill="#e5d4b1" stroke="#b4a580" strokeWidth="1.4" strokeOpacity=".28" />
-    {Array.from({length:Math.min(16,n)},(_,i)=>{
+    <path d={storyBlob([...side(1),...side(-1).reverse()])} fill={miniature ? '#edddbd' : '#e5d4b1'} stroke={miniature ? '#b4bc96' : '#b4a580'} strokeWidth={miniature ? '2.5' : '1.4'} strokeOpacity=".28" />
+    {!miniature && Array.from({length:Math.min(16,n)},(_,i)=>{
       const t=(i+.5)/Math.min(16,n),offset=Math.sin(i*3.7+a[0])*(width*.23)
       return <ellipse key={i} cx={a[0]+dx*t+normal[0]*offset} cy={a[1]+dy*t+normal[1]*offset} rx={i%3===0 ? 1.6 : .8} ry=".6" fill={i%2 ? '#f8ebce' : '#c4b390'} opacity=".6" />
     })}
@@ -80,11 +106,13 @@ export function StoryTrail({ from,to,width=16 }: { from:Pt;to:Pt;width?:number }
 }
 
 export function StoryTree({ at,width }: { at:Pt;width:number }) {
-  const seed=Math.abs(Math.round(at[0]*.17+at[1]*.23)),kinds=['oak','birch','maple','willow'] as const
+  const { miniature } = useTownArt()
+  const seed=Math.abs(Math.round(at[0]*.17+at[1]*.23)),kinds = miniature ? ['oak','birch'] as const : ['oak','birch','maple','willow'] as const
   const k=.92+(seed%9)*.02
+  const kind = kinds[seed%kinds.length]
   return <g transform={`translate(${at.join(',')}) scale(${seed%2 ? -1 : 1},1)`} aria-hidden="true" pointerEvents="none">
     <ellipse rx={width*.16} ry={width*.045} fill="#65744d" opacity=".13" />
-    <StoryProp kind={kinds[seed%4]} at={[0,0]} width={width*k} />
+    <StoryProp kind={kind} at={[0,0]} width={width*k*(miniature && kind === 'birch' ? .74 : 1)} />
   </g>
 }
 

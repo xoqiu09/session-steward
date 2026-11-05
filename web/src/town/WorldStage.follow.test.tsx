@@ -27,7 +27,8 @@ const host = vi.hoisted(() => {
   }
 })
 vi.mock('react', async (original) => ({ ...await original<typeof import('react')>(), useState: host.state, useRef: host.ref, useMemo: host.memo, useEffect: host.effect,
-  useCallback: (fn: (...args: any[]) => any, deps: any[]) => host.memo(() => fn, deps) }))
+  useCallback: (fn: (...args: any[]) => any, deps: any[]) => host.memo(() => fn, deps), useSyncExternalStore: (_subscribe: any, getSnapshot: () => any) => getSnapshot() }))
+vi.mock('./appearance', async original => ({ ...await original<typeof import('./appearance')>(), useTownArt: () => ({ theme: 'original', illustrated: false, miniature: false }) }))
 import { WorldScene, WorldStage } from './WorldScene'
 import { ResidentClock } from './residentPresence'
 import { MomentCard } from './MomentCard'
