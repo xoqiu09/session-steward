@@ -44,14 +44,18 @@ const MINI_KIND: Record<StoryPropKind, keyof typeof MINI_PROPS> = {
 
 export function StoryProp({ kind, at, width }: { kind: StoryPropKind; at: Pt; width: number }) {
   const { miniature } = useTownArt()
-  const clip = useId()
+  const paint = useId()
   const prop = miniature ? MINI_PROPS[MINI_KIND[kind]] : PROPS[kind], { crop: [x, y, w, h], foot: [fx, fy] } = prop
   const scale = width / w
   return <svg className={`town-story-prop${miniature ? ' town-miniature-prop' : 'src' in prop ? ' town-story-nature' : ''}`} data-town-prop={kind} data-storybook-prop={miniature ? undefined : kind} aria-hidden="true" pointerEvents="none"
     x={at[0] - (fx - x) * scale} y={at[1] - (fy - y) * scale} width={width} height={h * scale}
-    viewBox={`${x} ${y} ${w} ${h}`} overflow="hidden">
-    <defs><clipPath id={clip} clipPathUnits="userSpaceOnUse"><rect x={x} y={y} width={w} height={h} /></clipPath></defs>
-    <image clipPath={`url(#${clip})`} href={miniature ? '/town/miniature/props.png' : 'src' in prop ? prop.src : '/town/storybook/props.png'} width="1536" height="1024" />
+    viewBox={`0 0 ${w} ${h}`} overflow="hidden">
+    {/* A paint definition keeps the source atlas outside visible object bounds,
+        so accessible clicks target the prop rectangle rather than the atlas. */}
+    <defs><pattern id={paint} patternUnits="userSpaceOnUse" width={w} height={h}>
+      <image x={-x} y={-y} href={miniature ? '/town/miniature/props.png' : 'src' in prop ? prop.src : '/town/storybook/props.png'} width="1536" height="1024" />
+    </pattern></defs>
+    <rect width={w} height={h} fill={`url(#${paint})`} />
   </svg>
 }
 
