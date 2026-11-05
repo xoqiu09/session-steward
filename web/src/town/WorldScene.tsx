@@ -1011,7 +1011,8 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
       onPointerDownCapture={() => { lastTouch.current = Date.now(); stop() }} onKeyDownCapture={() => { lastTouch.current = Date.now(); stop() }}
       onClickCapture={(e) => { if (swallowClick.current) { swallowClick.current = false; e.stopPropagation(); e.preventDefault() } }}>
       <div className="town-world-surface" inert={structure}>
-      <ResidentClock store={residentStore} active={!props.replaying && !paused && !structure} />
+      {/* 工作详情与抽屉暂停的是镜头；居民只由自己的“暂停散步”控制。 */}
+      <ResidentClock store={residentStore} active={!props.replaying && !structure} />
       <div className="town-moment-status" role="status" aria-live="polite" aria-atomic="true">{visibleMoment?.message ?? ''}</div>
       {hoverB && hover && <HouseCard info={houseInfo(hoverB, props.snapshot?.features, props.snapshot?.structures?.find(s => s.repo_id === hoverB.repo?.id))} style={{ left: Math.max(8, hover.x), top: hover.y }} />}
       {insideB ? (
