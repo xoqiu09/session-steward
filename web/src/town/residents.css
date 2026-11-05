@@ -71,3 +71,13 @@
   .town-view .town-residents-settings { margin-top: 8px; padding-top: 8px; }
   .town-view .town-residents-credits { margin-top: 7px; }
 }
+
+.town-view .town-resident-follow { position: absolute; z-index: 7; left: 16px; bottom: 48px; display: flex; align-items: center; gap: 9px; max-width: min(390px,calc(100% - 32px)); padding: 9px 11px; border: 1px solid #bca684; border-radius: 12px; background: #fffaf0; color: var(--town-ink); box-shadow: 0 5px 16px rgba(64,43,22,.14); font-size: 11px; }
+.town-view .town-resident-follow img { flex: 0 0 34px; object-fit: contain; }
+.town-view .town-resident-follow [role="status"] { display: grid; gap: 4px; min-width: 0; }
+.town-view .town-resident-follow strong { font-weight: 650; }
+.town-view .town-resident-follow small { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: #78634d; font-size: 10px; }
+.town-view .town-resident-follow button { flex: 0 0 auto; min-height: 34px; padding: 6px 9px; border: 1px solid #cdbb9f; border-radius: 8px; background: #fffdf7; color: #3e5e47; font: inherit; cursor: pointer; }
+.town-view .town-resident-follow button:hover { background: #f3ead8; }
+.town-view .town-resident-follow button:focus-visible { outline: 2px solid var(--town-blue); outline-offset: 2px; }
+@media (max-width: 760px) { .town-view .town-resident-follow { left: 8px; max-width: calc(100% - 16px); gap: 6px; } .town-view .town-resident-follow button { min-height: 40px; } }

@@ -101,9 +101,9 @@ export function ResidentFigure({ actor, at, now, quiet, far, selected, moving, o
 
 const journalTime = (at: number) => new Date(at).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false })
 
-export function ResidentsPanel({ store, selected, onSelect, onClose, onVisit, destinations = [], onLocate }: {
+export function ResidentsPanel({ store, selected, onSelect, onClose, onVisit, destinations = [], onLocate, following, onStopFollow }: {
   store: ResidentStore; selected: ResidentId; onSelect: (id: ResidentId) => void; onClose: () => void; onVisit: () => void
-  destinations?: ResidentDestination[]; onLocate?: (id: ResidentId) => void
+  destinations?: ResidentDestination[]; onLocate?: (id: ResidentId) => void; following?: ResidentId | null; onStopFollow?: () => void
 }) {
   const life = useLife(store), actor = life.actors[selected], spec = residentSpec(selected)
   const [chosenProject, setChosenProject] = useState('')
@@ -113,7 +113,7 @@ export function ResidentsPanel({ store, selected, onSelect, onClose, onVisit, de
     .sort((a, b) => b.points - a.points).slice(0, 2)
   return <section className="town-residents-panel town-world-ui" aria-label="小镇居民" data-town-popover="residents" onPointerDown={(e) => e.stopPropagation()}>
     <div className="town-residents-heading"><div><span>小镇日常</span><h2>七只的小屋</h2></div><button type="button" className="town-residents-close" onClick={onClose} aria-label="关闭居民面板">×</button></div>
-    <p className="town-residents-intro">各自散步，也会偶尔聊上几句。</p>
+    <p className="town-residents-intro">各自散步，也会偶尔聊上几句。去串门时镜头会跟上。</p>
     <div className="town-residents-visit"><button type="button" onClick={onVisit}>去她们家</button><button type="button" disabled={!life.enabled} onClick={() => { store.gather(); onVisit() }}>叫大家来喝茶</button></div>
     <div className="town-residents-roster" role="group" aria-label="七位常住居民">
       {RESIDENTS.map((r) => <button key={r.id} type="button" aria-pressed={selected === r.id} onClick={() => onSelect(r.id)}>
@@ -135,8 +135,8 @@ export function ResidentsPanel({ store, selected, onSelect, onClose, onVisit, de
       <div><select id="resident-visit-project" value={visitId} disabled={!destinations.length || !!actor.trip} onChange={(e) => setChosenProject(e.target.value)}>
         {!destinations.length && <option value="">当前地图还没有项目</option>}
         {destinations.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
-      </select><button type="button" disabled={!life.enabled || !visitId || !!actor.trip} onClick={() => store.visit(selected, visitId)}>去串门</button></div>
-      {actor.trip && <p>{residentStatus(actor)} {onLocate && <button type="button" onClick={() => onLocate(selected)}>{actor.trip.phase === 'inside' ? '进屋看看' : '看看她在哪'}</button>}</p>}
+      </select><button type="button" disabled={!life.enabled || !visitId || !!actor.trip} onClick={() => { if (store.visit(selected, visitId)) onLocate?.(selected) }}>去串门</button></div>
+      {actor.trip && <p>{residentStatus(actor)} {onLocate && <button type="button" onClick={() => following === selected ? onStopFollow?.() : onLocate(selected)}>{following === selected ? '停止跟随' : actor.trip.phase === 'inside' ? '进屋看看并跟随' : '跟着她走'}</button>}</p>}
     </div>
     {friendship.length > 0 && <p className="town-resident-friends">熟悉的邻居：{friendship.map((f) => `${residentSpec(f.id).name} · 碰面 ${f.points} 次`).join('，')}</p>}
     <ResidentJournal life={life} />

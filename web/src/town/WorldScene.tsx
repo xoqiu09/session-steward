@@ -37,12 +37,13 @@ import { isRemote as remoteAccess } from '../access'
 import { dispatchHref } from '../dispatch/dispatchModel'
 import { api } from '../api'
 import { ResidentsPanel, ResidentsVillage } from './ResidentVillage'
-import { createResidentStore, type ResidentStore } from './residentLife'
+import { createResidentStore, type ResidentActor, type ResidentStore } from './residentLife'
 import type { ResidentId } from './residents'
 import { DISTRICT_FOOTPRINT } from './world'
 import { ResidentClock } from './residentPresence'
 import { ResidentRoomVisitors, ResidentWorldVisitors } from './ResidentVisits'
-import { residentWorld } from './residentTrips'
+import { addPoint, cellOrigin, residentWorld } from './residentTrips'
+import { ResidentFollow } from './ResidentFollow'
 
 // 小镇里的浮动面板，面板本身和它的开关按钮都标上同一个名字，点在这些元素以外就收起。
 type Popover = 'guide' | 'projects' | 'desk' | 'moments' | 'residents'
@@ -621,6 +622,9 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
   const [residentStore] = useState(() => createResidentStore())
   const residentSceneRef = useRef<SVGSVGElement>(null)
   const [residentSelected, setResidentSelected] = useState<ResidentId>('deepseek')
+  const [residentFollow, setResidentFollow] = useState<ResidentId | null>(null)
+  const [residentWatch, setResidentWatch] = useState<ResidentId | null>(null)
+  const residentFrame = useRef<(actor: ResidentActor | null) => void>(() => {})
   const legend = useMemo(() => agentLegend(model.buildings), [model])
   // 收菜：开始时记下这一批熟了的菜，一棵一棵飞过去打开验收卡片；收下或退回后自动去下一棵。
   const [harvest, setHarvest] = useState<{ ids: string[]; index: number } | null>(null)
@@ -643,15 +647,15 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
   const [structure, setStructure] = useState(false)
   const structureTrigger = useRef<HTMLButtonElement | null>(null)
   const [guideSeen, setGuideSeen] = useState(() => { try { return localStorage.getItem(GUIDE_SEEN) === '1' } catch { return true } })
-  const openGuide = () => { setGuide(true); setGuideSeen(true); try { localStorage.setItem(GUIDE_SEEN, '1') } catch { /* 隐私模式：下次再提示 */ } }
+  const openGuide = () => { releaseResident(); setGuide(true); setGuideSeen(true); try { localStorage.setItem(GUIDE_SEEN, '1') } catch { /* 隐私模式：下次再提示 */ } }
   const insideB = inside ? model.buildings.find((b) => b.key === inside) ?? null : null
   useEffect(() => {
     if (!inside) return
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setInside(null) }
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { releaseResident(); setInside(null) } }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [inside])
-  const enter = (key: string) => { stop(); lastTouch.current = Date.now(); setArrived(null); setProjectsOpen(false); setInside(key) }
+  const enter = (key: string) => { releaseResident(); stop(); lastTouch.current = Date.now(); setArrived(null); setProjectsOpen(false); setInside(key) }
   // 右键菜单等从小镇外请求进入房间：等房子出现在地图上再进去，并展开指定区块。
   const [roomReq, setRoomReq] = useState<RoomRequest | null>(() => takeRoomRequest())
   const [roomFocus, setRoomFocus] = useState<{ key: string; focus?: RoomFocus; nonce: number } | null>(null)
@@ -741,14 +745,16 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
   const camera = cam ?? (seenSource.current !== source && shownCam.current ? shownCam.current : props.startWithResidents ? fitResidents() : fitAll())
   useEffect(() => {
     if (seenSource.current === source) return
+    setResidentFollow(null); setResidentWatch(null)
     seenSource.current = source
     if (!cam && shownCam.current) setCam(shownCam.current)
   }, [source])
   useEffect(() => { shownCam.current = camera })
   const stop = () => { if (anim.current != null) cancelAnimationFrame(anim.current); anim.current = null }
+  const releaseResident = () => { setResidentFollow(null); stop() }
   const openStructure = (trigger: HTMLButtonElement) => {
     structureTrigger.current = trigger
-    stop(); drag.current = null; setCam(camera); lastTouch.current = Date.now()
+    releaseResident(); stop(); drag.current = null; setCam(camera); lastTouch.current = Date.now()
     setPopover(null); setStructure(true)
   }
   const closeStructure = () => { lastTouch.current = Date.now(); setStructure(false) }
@@ -775,7 +781,7 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
 
   // 选中某个会话时飞到它的街区。
   useEffect(() => {
-    if (!focusKey || structure) return
+    if (!focusKey || structure || residentFollow) return
     const d = world.districts.find((x) => x.b.characters.some((c) => c.key === focusKey))
     if (d) flyTo(fitCamera(cellBox(d.ox, d.oy), aspect, 1.15))
   }, [focusKey])
@@ -803,6 +809,7 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
   const oldestWait = freshWaits.length ? Math.max(0, ...freshWaits) : null
   const results = harvest ? harvest.ids.map((id) => harvestResult(id, model.buildings)) : []
   const goHarvest = (ids: string[], index: number) => {
+    releaseResident()
     setHarvest({ ids, index })
     const id = ids[index]
     const d = world.districts.find((x) => x.b.items.some((w) => w.id === id))
@@ -817,6 +824,7 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
   const remember = () => setBack((saved) => saved ?? { camera, context: props.context, byAgent, agentFocus })
   // 手动导航：立即飞（不进新动态的 3 秒归并），记下返回点，并按用户操作算 30 秒保护。只改镜头，不写任何东西。
   const navigate = (t: NavTarget) => {
+    releaseResident()
     if (t.kind === 'project') {
       const d = world.districts.find((x) => x.id === t.id)
       if (!d) { setNavNote('这个项目不在当前显示范围：可能已归档、被筛选，或来源设备暂时不在。没有换去别的项目。'); return }
@@ -840,6 +848,7 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
   }
   const goBack = () => {
     if (!back) return
+    releaseResident()
     stop(); lastTouch.current = Date.now()
     setBack(null); setMoment(null); setArrived(null); setFocusArea(null)
     setByAgent(back.byAgent); setAgentFocus(back.agentFocus)
@@ -849,7 +858,7 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
   }
   // 手动拖动、缩放后返回点作废，并说一声。
   const dropBack = () => { if (back) setNavNote('你手动移动了地图，“回到刚才的位置”已作废。'); setBack(null) }
-  const leaveNav = () => { dropBack(); setArrived(null); setFocusArea(null) }
+  const leaveNav = () => { releaseResident(); dropBack(); setArrived(null); setFocusArea(null) }
   useEffect(() => {
     if (!navNote) return
     const t = window.setTimeout(() => setNavNote(''), 6000)
@@ -858,6 +867,7 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
   const visitMoment = (m: TownMoment) => {
     const d = world.districts.find((d) => d.key === m.buildingKey)
     if (!d) return
+    releaseResident()
     remember()
     lastFlight.current = Date.now()
     followUntil.current = Date.now() + 20_000
@@ -868,7 +878,7 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
   }
   const feed = useMoments(props.snapshot, (batch) => {
     if (!canAutoFollow({ now: Date.now(), lastTouch: lastTouch.current, lastFlight: lastFlight.current,
-      paused: paused || popover === 'residents', inside: !!inside, harvesting: !!harvest, replaying: !!props.replaying, guide: guide || structure, hidden: document.hidden, offline: !!props.offline, presenting: !!moment || showMoments })) return
+      paused: paused || popover === 'residents' || !!residentFollow, inside: !!inside, harvesting: !!harvest, replaying: !!props.replaying, guide: guide || structure, hidden: document.hidden, offline: !!props.offline, presenting: !!moment || showMoments })) return
     const first = batch.find((m) => autoMoment(m, feed.preferences) && world.districts.some((d) => d.key === m.buildingKey))
     if (first) visitMoment(first)
   }, (progress) => {
@@ -926,7 +936,7 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
   const [stopIndex, setStopIndex] = useState(0)
   const [tick, setTick] = useState(0)
   useEffect(() => {
-    if (!kiosk || paused || inside || harvest || guide || structure || showMoments || popover === 'residents' || props.replaying || props.offline || document.hidden || stops.length < 2) return
+    if (!kiosk || paused || residentFollow || inside || harvest || guide || structure || showMoments || popover === 'residents' || props.replaying || props.offline || document.hidden || stops.length < 2) return
     const resumeDelay = Math.max(0, followUntil.current - Date.now(), 30_000 - (Date.now() - lastTouch.current))
     const t = window.setTimeout(() => {
       // 刚拖过或缩放过：这一轮先不动，过一会儿再试。
@@ -938,7 +948,7 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
       flyTo(stops[next], 1400)
     }, moment ? resumeDelay : rotateMs)
     return () => window.clearTimeout(t)
-  }, [kiosk, paused, inside, harvest, guide, structure, showMoments, popover, props.replaying, props.offline, moment, stops, stopIndex, rotateMs, tick])
+  }, [kiosk, paused, residentFollow, inside, harvest, guide, structure, showMoments, popover, props.replaying, props.offline, moment, stops, stopIndex, rotateMs, tick])
 
   // 滚轮缩放：以光标为中心。
   useEffect(() => {
@@ -973,7 +983,7 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
     if (!d || d.id !== e.pointerId) return
     const dx = e.clientX - d.x, dy = e.clientY - d.y
     if (!d.moved && Math.hypot(dx, dy) < 5) return
-    if (!d.moved) { d.moved = true; stop(); dropBack(); setHover(null); box.current?.setPointerCapture(e.pointerId) }
+    if (!d.moved) { d.moved = true; releaseResident(); stop(); dropBack(); setHover(null); box.current?.setPointerCapture(e.pointerId) }
     lastTouch.current = Date.now()
     const r = box.current!.getBoundingClientRect()
     const k = d.cam.w / r.width
@@ -995,11 +1005,35 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
   const locateResident = (id: ResidentId) => {
     const trip = residentStore.getSnapshot().actors[id].trip
     if (!trip) { visitResidents(); return }
-    if (trip.phase === 'inside') { enterResidentProject(trip.projectId); return }
-    setInside(null); lastTouch.current = Date.now(); leaveNav()
-    const p = iso(trip.x, trip.y), w = 900
-    flyTo(clampCamera({ cx: p[0] - (compact ? 0 : w * .1), cy: p[1] + (compact ? w / aspect * .12 : -20), w }, world.bounds), 650)
+    lastTouch.current = Date.now(); leaveNav(); setHarvest(null); setMoment(null); setShowMoments(false)
+    setResidentSelected(id); setPopover(null); setResidentWatch(id); setResidentFollow(id)
   }
+  // 订阅只发生在 ResidentFollow；每次生活推进用最新相机、房间与布局，避免动画自身触发跟随循环。
+  residentFrame.current = (actor) => {
+    if (!actor || !world.residential) { releaseResident(); setResidentWatch(null); return }
+    if (!actor.trip && !residentFollow) { setResidentWatch(null); return }
+    if (!residentFollow || document.hidden || props.replaying || structure) return
+    if (actor.trip?.phase === 'inside') {
+      const destination = world.districts.find((d) => d.id === actor.trip!.projectId)
+      if (destination) { stop(); setInside(destination.key) }
+      return
+    }
+    if (inside) setInside(null)
+    const point = actor.trip ?? addPoint(cellOrigin(world.residential), actor)
+    const p = iso(point.x, point.y), w = 900, h = w / aspect
+    let fx = .5, fy = .56
+    if (popover === 'residents') {
+      const rect = box.current?.getBoundingClientRect(), panel = box.current?.querySelector('.town-residents-panel')?.getBoundingClientRect()
+      if (rect && panel) {
+        if (panel.width > rect.width * .75) fy = .25
+        else fx = Math.min(.85, .5 + (panel.right - rect.left) / rect.width / 2)
+      } else { fx = compact ? .5 : .72; fy = compact ? .25 : .56 }
+    }
+    const target = clampCamera({ cx: p[0] - (fx - .5) * w, cy: p[1] - (fy - .5) * h, w }, world.bounds)
+    if (Math.abs(camera.cx - target.cx) > 2 || Math.abs(camera.cy - target.cy) > 2 || Math.abs(camera.w - target.w) > 2) flyTo(target, 420)
+    if (!actor.trip) { setResidentFollow(null); setResidentWatch(null) }
+  }
+  useEffect(() => { if (props.replaying) { releaseResident(); setResidentWatch(null) } }, [props.replaying])
 
   const view = viewBoxOf(camera, aspect)
   const far = camera.w > FAR_W
@@ -1023,7 +1057,7 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
             focus={roomFocus?.key === insideB.key ? roomFocus : null}
             residentVisitors={props.replaying ? undefined : <ResidentRoomVisitors store={residentStore} projectId={world.districts.find((d) => d.key === insideB.key)?.id ?? ''} />} />
           <div className="town-world-tools is-inside" onPointerDown={(e) => e.stopPropagation()}>
-            <button type="button" onClick={() => setInside(null)} title="回到世界（Esc）">← 回到世界</button>
+            <button type="button" onClick={() => { releaseResident(); setInside(null) }} title="回到世界（Esc）">← 回到世界</button>
             {!props.replaying && <button type="button" data-town-popover="residents" aria-expanded={popover === 'residents'} onClick={() => setPopover(popover === 'residents' ? null : 'residents')}>居民 7</button>}
             <button type="button" aria-haspopup="dialog" aria-expanded={structure} onClick={e => openStructure(e.currentTarget)} title={insideB ? "查看这个项目的目标、功能关系与验证依据" : "查看 SS 自身的结构说明首版样本"}>结构说明</button>
           </div>
@@ -1042,7 +1076,7 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
         <button type="button" onClick={() => { lastTouch.current = Date.now(); leaveNav(); flyTo(fitAll()) }} title="看全部街区">全景</button>
         <button type="button" onClick={() => { lastTouch.current = Date.now(); leaveNav(); flyTo(fitCamera(cellBox(world.plaza.ox, world.plaza.oy), aspect, 1.1)) }} title="回到中央广场">广场</button>
         {!props.replaying && <button type="button" data-town-popover="residents" aria-expanded={popover === 'residents'} className={popover === 'residents' ? 'is-on' : undefined}
-          onClick={() => { const open = popover !== 'residents'; setPopover(open ? 'residents' : null); if (open) visitResidents() }} title="七位常住居民：去她们家，摸摸头，看看今天的小事">居民 7</button>}
+          onClick={() => { const open = popover !== 'residents'; setPopover(open ? 'residents' : null); if (open && !residentFollow) visitResidents() }} title="七位常住居民：去她们家，摸摸头，看看今天的小事">居民 7</button>}
         {!props.replaying && <button type="button" className={`town-basket${ripe.length ? ' has-ripe' : ''}`} onClick={startHarvest} disabled={!ripe.length && !harvest}
           title={`${ripe.length ? `熟了 ${ripe.length} 棵：一棵一棵打开验收卡片，收下或退回` : '现在没有熟了的菜（没有待验收的工作项）'}。菜地只放待验收交付；Agent 交给你的事在右侧“待审阅／验收”，卡住的工作在“每日十分钟”。`}>收菜 {ripe.length}</button>}
         {!props.replaying && oldestWait != null && <span className={`town-basket-wait${oldestWait >= OVERDUE_MS ? ' is-overdue' : ''}`} role="status"
@@ -1118,7 +1152,9 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
         </>
       )}
       {popover === 'residents' && !props.replaying && <ResidentsPanel store={residentStore} selected={residentSelected} onSelect={setResidentSelected} onClose={() => setPopover(null)} onVisit={visitResidents}
-        destinations={residentContext?.destinations} onLocate={locateResident} />}
+        destinations={residentContext?.destinations} onLocate={locateResident} following={residentFollow} onStopFollow={releaseResident} />}
+      <ResidentFollow store={residentStore} id={residentWatch} following={residentFollow === residentWatch && !!residentFollow} active={!props.replaying && !structure}
+        controls={popover !== 'residents'} onFrame={residentFrame} onFollow={locateResident} onStop={releaseResident} />
       </div>
       {structure && <TownStructure onClose={closeStructure} project={insideB ? { b: insideB, features: props.snapshot?.features ?? null, structure: props.snapshot?.structures?.find(s => s.repo_id === insideB.repo?.id) } : undefined} />}
     </div>
