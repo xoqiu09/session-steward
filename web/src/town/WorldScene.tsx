@@ -856,7 +856,7 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
   }
   const feed = useMoments(props.snapshot, (batch) => {
     if (!canAutoFollow({ now: Date.now(), lastTouch: lastTouch.current, lastFlight: lastFlight.current,
-      paused, inside: !!inside, harvesting: !!harvest, replaying: !!props.replaying, guide: guide || structure, hidden: document.hidden, offline: !!props.offline, presenting: !!moment || showMoments })) return
+      paused: paused || popover === 'residents', inside: !!inside, harvesting: !!harvest, replaying: !!props.replaying, guide: guide || structure, hidden: document.hidden, offline: !!props.offline, presenting: !!moment || showMoments })) return
     const first = batch.find((m) => autoMoment(m, feed.preferences) && world.districts.some((d) => d.key === m.buildingKey))
     if (first) visitMoment(first)
   }, (progress) => {
@@ -914,7 +914,7 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
   const [stopIndex, setStopIndex] = useState(0)
   const [tick, setTick] = useState(0)
   useEffect(() => {
-    if (!kiosk || paused || inside || harvest || guide || structure || showMoments || props.replaying || props.offline || document.hidden || stops.length < 2) return
+    if (!kiosk || paused || inside || harvest || guide || structure || showMoments || popover === 'residents' || props.replaying || props.offline || document.hidden || stops.length < 2) return
     const resumeDelay = Math.max(0, followUntil.current - Date.now(), 30_000 - (Date.now() - lastTouch.current))
     const t = window.setTimeout(() => {
       // 刚拖过或缩放过：这一轮先不动，过一会儿再试。
@@ -926,7 +926,7 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
       flyTo(stops[next], 1400)
     }, moment ? resumeDelay : rotateMs)
     return () => window.clearTimeout(t)
-  }, [kiosk, paused, inside, harvest, guide, structure, showMoments, props.replaying, props.offline, moment, stops, stopIndex, rotateMs, tick])
+  }, [kiosk, paused, inside, harvest, guide, structure, showMoments, popover, props.replaying, props.offline, moment, stops, stopIndex, rotateMs, tick])
 
   // 滚轮缩放：以光标为中心。
   useEffect(() => {

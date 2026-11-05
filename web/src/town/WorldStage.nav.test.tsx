@@ -280,6 +280,26 @@ describe('30 秒内不被自动巡游抢镜', () => {
   })
 })
 
+describe('看居民时留在花园', () => {
+  it('居民面板开着超过巡游周期也不飞走，关闭后恢复巡游', () => {
+    reduced = false; props = { plan, kiosk: true, rotateMs: 5000 }; render()
+    press('居民 7')
+    const flights = vi.mocked(requestAnimationFrame).mock.calls.length
+    walk(65_000)
+    expect(requestAnimationFrame).toHaveBeenCalledTimes(flights)
+    press('居民 7')
+    walk(40_000)
+    expect(vi.mocked(requestAnimationFrame).mock.calls.length).toBeGreaterThan(flights)
+  })
+  it('看居民超过手动操作保护期后，新交付仍只入队，不抢走镜头', () => {
+    render(); press('居民 7'); const at = view(); walk(35_000)
+    snap = { ...snap, cursor: 2, work_items: snap.work_items!.map((w) => w.id === 'SYN-1' ? { ...w, status: 'review', updated_at: new Date().toISOString() } : w) }
+    render(); advance(3000)
+    expect(view()).toEqual(at)
+    expect(words(tree)).toContain('1 处有新动态')
+  })
+})
+
 describe('两台设备同名项目不串位', () => {
   it('同名项目按来源设备各自定位；设备顺序变了也去同一块地', () => {
     const devices = [{ id: 'self', name: '本机演示', self: true, online: true, received_at: snap.now }, { id: 'r1', name: '远方演示机', self: false, online: true, received_at: snap.now }]
