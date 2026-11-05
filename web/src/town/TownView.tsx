@@ -217,7 +217,8 @@ export function TownView({ snap, conn, repoId, provider, sel, onSelectItem, onSe
 
   const narrow = useMedia(PORTRAIT_QUERY)
   const shape: LayoutName = layout ?? (narrow ? 'portrait' : 'wide')
-  const asWorld = world && shape === 'wide'
+  const [residentView, setResidentView] = useState(() => typeof window !== 'undefined' && new URLSearchParams(window.location?.search ?? '').get('residents') === '1')
+  const asWorld = world && (shape === 'wide' || residentView)
   // 窄屏沿用原有分页场景，提供同一份说明，不为阅读说明改变地图布局。
   const [structure, setStructure] = useState(false)
   const structureTrigger = useRef<HTMLButtonElement | null>(null)
@@ -295,7 +296,7 @@ export function TownView({ snap, conn, repoId, provider, sel, onSelectItem, onSe
   const scopedRepo = repoId === 'all' ? null : (shown.repos ?? []).find((r) => r.id === repoId)?.name ?? `项目 #${repoId}`
   const structureBuilding = repoId === 'all' ? undefined : model.buildings.find(b => b.repo?.id === repoId)
   return (
-    <div className={`town-view${offline ? ' is-offline' : ''}${kiosk ? ' is-kiosk' : ''}${extras.parcels ? '' : ' hide-parcels'}`}>
+    <div className={`town-view${offline ? ' is-offline' : ''}${kiosk ? ' is-kiosk' : ''}${residentView ? ' is-resident-view' : ''}${extras.parcels ? '' : ' hide-parcels'}`}>
       <div className="town-bar">
         {extras.chips && <nav className="town-chips" aria-label="按状态高亮">
           {CHIPS.map(c => (
@@ -336,6 +337,7 @@ export function TownView({ snap, conn, repoId, provider, sel, onSelectItem, onSe
         {extras.replay && !replay && !noReplay && <button type="button" className="town-replay-open" onClick={() => { setReplay(startPos()); setPlaying(false) }} title="拖到过去某个时刻，看当时小镇的样子">回放</button>}
         {!asWorld && <button type="button" className="town-structure-entry" aria-haspopup="dialog" aria-expanded={structure} onClick={e => { structureTrigger.current = e.currentTarget; swipe.current = null; setStructure(true) }} title={structureBuilding ? "查看这个项目的目标、功能关系与验证依据" : "查看 SS 自身的结构说明首版样本"}>结构说明</button>}
         {bar}
+        {world && shape === 'portrait' && <button type="button" className="town-residents-entry" aria-pressed={residentView} onClick={() => setResidentView(!residentView)}>{residentView ? '回到项目' : '居民 7'}</button>}
       </div>
       <div className="town-diorama" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
         {replay && <ReplayBar pos={replay} playing={playing} loading={replayLoading} onChange={setReplay} onPlay={setPlaying} onExit={() => { setReplay(null); setPlaying(false) }} />}
@@ -348,11 +350,12 @@ export function TownView({ snap, conn, repoId, provider, sel, onSelectItem, onSe
         {asWorld
           ? <WorldStage model={model} needsYou={urgent} selected={selected} highlight={highlight} onSelect={onSelect} changed={changed} offline={offline}
               kiosk={kiosk} rotateMs={rotateMs} paused={paused || structure || sel != null} focusKey={selKey} plan={plan} replaying={!!replay} snapshot={shown}
-              source={source} selfDevice={selfDevice} context={context} onRestoreContext={restoreContext} />
+              source={source} selfDevice={selfDevice} context={context} onRestoreContext={restoreContext} startWithResidents={residentView} />
           : <TownScene model={model} buildings={pages[page]} layout={shape} selected={selected} highlight={highlight} onSelect={onSelect} changed={changed} offline={offline} />}
         <ul className="town-legend" aria-label="图例">
           <li><i className="lg-building" />建筑 = 项目</li>
-          <li><i className="lg-char" />角色 = 一个会话</li>
+          <li><i className="lg-char" />工作小人 = 一个会话</li>
+          {asWorld && <li><i className="lg-resident" />居民 = 生活伙伴</li>}
           {extras.parcels && <li><i className="lg-parcel" />包裹 = 一次运行</li>}
           <li><i className="lg-board" />告示栏 = 等你决定</li>
         </ul>

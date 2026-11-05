@@ -36,9 +36,12 @@ import { identityKeys, projectIdentity } from './identity'
 import { isRemote as remoteAccess } from '../access'
 import { dispatchHref } from '../dispatch/dispatchModel'
 import { api } from '../api'
+import { ResidentsPanel, ResidentsVillage } from './ResidentVillage'
+import { createResidentStore, type ResidentStore } from './residentLife'
+import type { ResidentId } from './residents'
 
 // 小镇里的浮动面板，面板本身和它的开关按钮都标上同一个名字，点在这些元素以外就收起。
-type Popover = 'guide' | 'projects' | 'desk' | 'moments'
+type Popover = 'guide' | 'projects' | 'desk' | 'moments' | 'residents'
 const POPOVER_ATTR = 'data-town-popover'
 
 /** 每个街区的退件筐最多摆几个箱子，其余只计数。 */
@@ -85,6 +88,7 @@ interface SceneProps {
   onNavigate?: (t: NavTarget) => void
   /** 刚按片区取景的片区：地图远景下也显示它每个成员的名牌，村名牌让位。 */
   focusArea?: string | null
+  residents?: { store: ResidentStore; active: boolean; selected: ResidentId | null; onSelect: (id: ResidentId) => void }
 }
 
 /** 手动导航的目标：项目按稳定项目键（来源设备 + 原始项目编号），片区按片区键。 */
@@ -108,7 +112,7 @@ function districtPlot(d: District): Plot {
   return { gx: d.ox + 0.8, gy: d.oy + 0.5, w: t.w, d: t.d, facing: 'x', ...buildingColors(d.b.repo?.id) }
 }
 
-export function WorldScene({ model, world, view, far, selected, highlight, onSelect, changed = new Set(), offline = false, needsYou, stalled, onHoverHouse, agents = null, momentGlow, progressSparks, onNavigate, focusArea = null, dispatch = [], onDispatch }: SceneProps) {
+export function WorldScene({ model, world, view, far, selected, highlight, onSelect, changed = new Set(), offline = false, needsYou, stalled, onHoverHouse, agents = null, momentGlow, progressSparks, onNavigate, focusArea = null, dispatch = [], onDispatch, residents }: SceneProps) {
   const isSel = (kind: Selection['kind'], key: string) => selected?.kind === kind && selected.key === key
   const dim = (match: boolean) => (highlight && !match ? ' is-dim' : '')
   const flash = (key: string) => (changed.has(key) ? ' is-changed' : '')
@@ -118,8 +122,8 @@ export function WorldScene({ model, world, view, far, selected, highlight, onSel
   const cxs = new Set<number>(), cys = new Set<number>()
   for (let gx = gx0; gx < gx1; gx += CELL_W) cxs.add(Math.floor(gx / CELL_W))
   for (let gy = gy0; gy < gy1; gy += CELL_D) cys.add(Math.floor(gy / CELL_D))
-  const used = new Set(['0,0', ...world.districts.map((d) => `${d.cell.cx},${d.cell.cy}`), ...world.villages.map((v) => `${v.square.cx},${v.square.cy}`)])
-  const streetCells: Cell[] = [{ cx: 0, cy: 0 }, ...world.districts.filter((d) => d.kind !== 'wild').map((d) => d.cell), ...world.villages.map((v) => v.square)]
+  const used = new Set(['0,0', ...world.districts.map((d) => `${d.cell.cx},${d.cell.cy}`), ...world.villages.map((v) => `${v.square.cx},${v.square.cy}`), ...(world.residential ? [`${world.residential.cx},${world.residential.cy}`] : [])])
+  const streetCells: Cell[] = [{ cx: 0, cy: 0 }, ...world.districts.filter((d) => d.kind !== 'wild').map((d) => d.cell), ...world.villages.map((v) => v.square), ...(world.residential ? [world.residential] : [])]
   // 地形：中央是草地；村庄和野外小屋按名字固定一种。
   const terrainAt = new Map<string, Terrain>([['0,0', 'meadow']])
   for (const v of world.villages) for (const c of v.cells) terrainAt.set(`${c.cx},${c.cy}`, terrainOf(v.key))
@@ -179,7 +183,7 @@ export function WorldScene({ model, world, view, far, selected, highlight, onSel
   }
   // 空地和街区一起按前后顺序画：前面一格的树不会被后面的房子盖住。
   const emptyAt = new Map(empty.map((e) => [`__e${e.c.cx},${e.c.cy}`, e]))
-  const depthOrder = [{ key: '__plaza', depth: 0, cx: 0 }, ...world.districts.map((d) => ({ key: d.key, depth: d.cell.cx + d.cell.cy, cx: d.cell.cx })),
+  const depthOrder = [{ key: '__plaza', depth: 0, cx: 0 }, ...(world.residential && residents ? [{ key: '__residents', depth: world.residential.cx + world.residential.cy, cx: world.residential.cx }] : []), ...world.districts.map((d) => ({ key: d.key, depth: d.cell.cx + d.cell.cy, cx: d.cell.cx })),
     ...empty.map((e) => ({ key: `__e${e.c.cx},${e.c.cy}`, depth: e.c.cx + e.c.cy, cx: e.c.cx }))]
     .sort((a, b) => a.depth - b.depth || a.cx - b.cx)
   const byKey = new Map(world.districts.map((d) => [d.key, d]))
@@ -235,6 +239,7 @@ export function WorldScene({ model, world, view, far, selected, highlight, onSel
       {depthOrder.map(({ key }) => {
         const e = emptyAt.get(key)
         if (e) return <EmptyLand key={key} s={e.s} />
+        if (key === '__residents' && residents && world.residential) return <ResidentsVillage key={key} cell={world.residential} {...residents} far={far} />
         if (key === '__plaza') return (
           <g key="__plaza">
             <IsoTile gx={P.ox + 0.4} gy={P.oy + 0.4} w={INNER_W - 0.4} d={INNER_D - 0.4} fill="#e9dcc2" stroke="#cdbb98" />
@@ -590,7 +595,7 @@ export interface ViewContext { scope: 'here' | 'all'; repoId: number | 'all'; pr
 /** 第一次手动导航或自动跟随之前的完整位置；连续导航沿用它，返回或手动拖动缩放后清空。 */
 interface NavBack { camera: Camera; context?: ViewContext; byAgent: boolean; agentFocus: Agent | null }
 
-export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'onNavigate' | 'focusArea'> & { kiosk?: boolean; rotateMs?: number; paused?: boolean; focusKey?: string; plan?: WorldPlan; replaying?: boolean; snapshot?: Snapshot
+export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'onNavigate' | 'focusArea' | 'residents'> & { kiosk?: boolean; rotateMs?: number; paused?: boolean; focusKey?: string; plan?: WorldPlan; replaying?: boolean; snapshot?: Snapshot; startWithResidents?: boolean
   /** 画的是本机快照还是全部设备的合并视图；切换时保持镜头，新动态从这一张重新起算。 */
   source?: 'here' | 'all'
   /** 本机设备名：合并视图里认出哪些项目是本机的。 */
@@ -604,12 +609,14 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
   const [inside, setInside] = useState<string | null>(null)
   const [byAgent, setByAgent] = useState(false)
   const [agentFocus, setAgentFocus] = useState<Agent | null>(null)
+  const [residentStore] = useState(() => createResidentStore())
+  const [residentSelected, setResidentSelected] = useState<ResidentId>('deepseek')
   const legend = useMemo(() => agentLegend(model.buildings), [model])
   // 收菜：开始时记下这一批熟了的菜，一棵一棵飞过去打开验收卡片；收下或退回后自动去下一棵。
   const [harvest, setHarvest] = useState<{ ids: string[]; index: number } | null>(null)
   // 使用说明：第一次来时按钮旁冒一个小提示，打开过一次就不再提示（只记在这个浏览器里）。
   // 浮动面板（怎么看、项目列表、验收台列表、新动态）同一时间只开一个；点面板和它的按钮以外的地方、按 Esc 都会收起。
-  const [popover, setPopover] = useState<Popover | null>(null)
+  const [popover, setPopover] = useState<Popover | null>(() => props.startWithResidents && typeof window !== 'undefined' && window.innerWidth >= 760 ? 'residents' : null)
   const toggle = (name: Popover) => (on: boolean) => setPopover((p) => (on ? name : p === name ? null : p))
   const guide = popover === 'guide', setGuide = toggle('guide')
   const projectsOpen = popover === 'projects', setProjectsOpen = toggle('projects')
@@ -663,7 +670,7 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
   memo.current ??= loadWorldMemo()
   const world = useMemo(() => {
     const ids = identityKeys(model.buildings, selfName)
-    return stableLayout(model.buildings, needsYou, plan, memo.current!, (b) => ids.get(b.key)!)
+    return stableLayout(model.buildings, needsYou, plan, memo.current!, (b) => ids.get(b.key)!, true)
   }, [model, needsYou, plan, selfName])
   useEffect(() => { if (memo.current) saveWorldMemo(memo.current) }, [world])
   const isRemote = (d: District) => !!d.b.repo && projectIdentity(d.b.repo, selfName).device !== 'self'
@@ -711,10 +718,15 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
   }, [])
 
   const fitAll = () => fitCamera(world.bounds, aspect, 1.02)
+  const fitResidents = () => {
+    if (!world.residential) return fitAll()
+    const to = fitCamera(cellBox(world.residential.cx * CELL_W, world.residential.cy * CELL_D), aspect, 1.12)
+    return { ...to, cx: to.cx - (compact ? 0 : to.w * 0.1), cy: to.cy + (compact ? to.w / aspect * 0.1 : 0) }
+  }
   // 切换本机 / 全部设备时世界范围会变；还没手动移动过镜头也停在原处，不跟着新全景跳。
   const seenSource = useRef(source)
   const shownCam = useRef<Camera | null>(null)
-  const camera = cam ?? (seenSource.current !== source && shownCam.current ? shownCam.current : fitAll())
+  const camera = cam ?? (seenSource.current !== source && shownCam.current ? shownCam.current : props.startWithResidents ? fitResidents() : fitAll())
   useEffect(() => {
     if (seenSource.current === source) return
     seenSource.current = source
@@ -961,6 +973,12 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
     if (d?.moved) { swallowClick.current = true; box.current?.releasePointerCapture(e.pointerId) }
   }
   const zoomBy = (f: number) => { lastTouch.current = Date.now(); leaveNav(); flyTo(clampCamera(zoomAt(camera, f, 0.5, 0.5, aspect), world.bounds), 350) }
+  const visitResidents = () => {
+    if (!world.residential) return
+    lastTouch.current = Date.now(); leaveNav()
+    flyTo(fitResidents(), 650)
+  }
+  const selectResident = (id: ResidentId) => { setResidentSelected(id); setPopover('residents') }
 
   const view = viewBoxOf(camera, aspect)
   const far = camera.w > FAR_W
@@ -990,6 +1008,7 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
       ) : (
         <>
       <WorldScene {...props} stalled={stalledByHouse} onHoverHouse={hoverHouse} onSelect={sceneSelect} onNavigate={navigate} focusArea={focusArea} world={world} view={view} far={far} agents={byAgent ? { focus: agentFocus } : null}
+        residents={props.replaying ? undefined : { store: residentStore, active: !paused && !structure, selected: popover === 'residents' ? residentSelected : null, onSelect: selectResident }}
         dispatch={source === 'here' ? props.snapshot?.dispatch ?? [] : []} onDispatch={remoteAccess() || props.snapshot?.dispatch_available === false ? undefined : (task) => window.location.assign(dispatchHref(task))}
         momentGlow={!reducedMotion && !props.replaying ? moment?.buildingKey : undefined} progressSparks={reducedMotion ? undefined : sparks} />
       <div className="town-world-tools" onPointerDown={(e) => e.stopPropagation()}>
@@ -997,6 +1016,8 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
         <button type="button" onClick={() => zoomBy(1.4)} aria-label="缩小" title="缩小">－</button>
         <button type="button" onClick={() => { lastTouch.current = Date.now(); leaveNav(); flyTo(fitAll()) }} title="看全部街区">全景</button>
         <button type="button" onClick={() => { lastTouch.current = Date.now(); leaveNav(); flyTo(fitCamera(cellBox(world.plaza.ox, world.plaza.oy), aspect, 1.1)) }} title="回到中央广场">广场</button>
+        {!props.replaying && <button type="button" data-town-popover="residents" aria-expanded={popover === 'residents'} className={popover === 'residents' ? 'is-on' : undefined}
+          onClick={() => { const open = popover !== 'residents'; setPopover(open ? 'residents' : null); if (open) visitResidents() }} title="七位常住居民：去她们家，摸摸头，看看今天的小事">居民 7</button>}
         {!props.replaying && <button type="button" className={`town-basket${ripe.length ? ' has-ripe' : ''}`} onClick={startHarvest} disabled={!ripe.length && !harvest}
           title={`${ripe.length ? `熟了 ${ripe.length} 棵：一棵一棵打开验收卡片，收下或退回` : '现在没有熟了的菜（没有待验收的工作项）'}。菜地只放待验收交付；Agent 交给你的事在右侧“待审阅／验收”，卡住的工作在“每日十分钟”。`}>收菜 {ripe.length}</button>}
         {!props.replaying && oldestWait != null && <span className={`town-basket-wait${oldestWait >= OVERDUE_MS ? ' is-overdue' : ''}`} role="status"
@@ -1064,6 +1085,7 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
       )}
       <MiniMap world={world} view={view} needsYou={needsYou} pending={model.pendingApprovals} onJump={(p) => { lastTouch.current = Date.now(); leaveNav(); flyTo(clampCamera({ cx: p[0], cy: p[1], w: Math.min(camera.w, 1500) }, world.bounds), 600) }} />
       <p className="town-world-hint">拖动地图移动 · 滚轮缩放 · 拉远看全部项目</p>
+      {popover === 'residents' && !props.replaying && <ResidentsPanel store={residentStore} selected={residentSelected} onSelect={setResidentSelected} onClose={() => setPopover(null)} onVisit={visitResidents} />}
       {guide && <div {...{ [POPOVER_ATTR]: 'guide' }} style={{ display: 'contents' }}><TownGuide onClose={() => setGuide(false)} follow={feed.preferences} onFollowChange={feed.savePreferences} /></div>}
       {harvest && !props.replaying && <HarvestBar ids={harvest.ids} index={harvest.index} results={results} model={model}
         onPrev={() => { const n = nextPending(harvest.index, -1); if (n >= 0) goHarvest(harvest.ids, n) }}
