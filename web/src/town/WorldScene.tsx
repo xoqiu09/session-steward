@@ -6,7 +6,7 @@ import { IsoBox, IsoTile, iso, type Pt } from './iso'
 import { attentionManaged } from '../workManagement'
 import { characterStatusLabel, type BuildingView, type Highlight, type ParcelView, type TownModel } from './townModel'
 import {
-  Building, HOUSE_SHAPE, Character, DecisionBoard, DispatchTable, FailRack, Parcel, Path, ReviewDesk, StatusPill, Tag, Tree,
+  Building, HOUSE_SHAPE, Character, DecisionBoard, DispatchTable, FailRack, Parcel, ReviewDesk, StatusPill, Tag, Tree,
   activate, buildingColors, charLook, characterPillName, charMatches, onReviewDesk, parcelMatches, parcelTitle,
   type BuildingShape, type Plot, type Selection,
 } from './TownScene'
@@ -42,7 +42,8 @@ import type { ResidentId } from './residents'
 import { DISTRICT_FOOTPRINT } from './world'
 import { ResidentClock } from './residentPresence'
 import { ResidentRoomVisitors, ResidentWorldVisitors } from './ResidentVisits'
-import { StoryClearing, StoryGrass, StoryTrail, storyBlob } from './storybook'
+import { StoryClearing, StoryGrass, storyBlob } from './storybook'
+import { WorldRoads } from './roads'
 import { useTownArt } from './appearance'
 import { addPoint, cellOrigin, residentWorld } from './residentTrips'
 import { ResidentFollow } from './ResidentFollow'
@@ -232,21 +233,13 @@ export function WorldScene({ model, world, view, far, selected, highlight, onSel
       })}
       <IsoTile gx={Math.min(ground.gx0, gx0)} gy={Math.min(ground.gy0, gy0)} w={Math.max(ground.gx1, gx1) - Math.min(ground.gx0, gx0)} d={Math.max(ground.gy1, gy1) - Math.min(ground.gy0, gy0)} fill="url(#world-grass)" />
       <Lakes shapes={empty.flatMap((e) => (e.s.pond ? [e.s.pond] : []))} />
-      {/* 街道：只铺在中央和各村庄的格子上；野外是草地和树林 */}
+      {/* 中央与村庄的庭院底色；下方路网另接通空格和野外项目。 */}
       {!illustrated && streetCells.map((c) => <IsoTile key={`st${c.cx},${c.cy}`} gx={c.cx * CELL_W - 1} gy={c.cy * CELL_D - 1} w={CELL_W + 0.1} d={CELL_D + 0.1} fill="#e6d9bd" />)}
       {streetCells.map((c) => illustrated ? <StoryClearing key={`yd${c.cx},${c.cy}`} gx={c.cx*CELL_W} gy={c.cy*CELL_D} w={INNER_W} d={INNER_D} fill={tintOf(c)} opacity={.32} /> : <IsoTile key={`yd${c.cx},${c.cy}`} gx={c.cx * CELL_W} gy={c.cy * CELL_D} w={INNER_W} d={INNER_D} fill={tintOf(c)} />)}
-      {illustrated && streetCells.map(c => <g key={`road${c.cx},${c.cy}`}>
-        <StoryTrail from={[c.cx*CELL_W-1.3,c.cy*CELL_D+8.9]} to={[c.cx*CELL_W+9.7,c.cy*CELL_D+8.9]} width={27} />
-        <StoryTrail from={[c.cx*CELL_W+9.7,c.cy*CELL_D-1.1]} to={[c.cx*CELL_W+9.7,c.cy*CELL_D+8.9]} width={27} />
-      </g>)}
-      {/* 村庄之间的土路：从村口小广场通到中央广场 */}
-      {world.villages.map((v) => {
-        const a = [v.square.cx * CELL_W + INNER_W / 2, v.square.cy * CELL_D + INNER_D / 2] as [number, number]
-        const b = [INNER_W / 2, INNER_D / 2] as [number, number]
-        return <Path key={`road-${v.key}`} from={a} to={b} />
-      })}
       {/* 野外小屋脚下的空地 */}
       {world.districts.filter((d) => d.kind === 'wild').map((d) => illustrated ? <StoryClearing key={`cl${d.key}`} gx={d.ox+.2} gy={d.oy+.1} w={INNER_W-.4} d={INNER_D-.6} fill={tintOf(d.cell)} /> : <IsoTile key={`cl${d.key}`} gx={d.ox + 0.2} gy={d.oy + 0.1} w={INNER_W - 0.4} d={INNER_D - 0.6} fill={tintOf(d.cell)} />)}
+      {/* 与居民实际格边路线共用坐标，空格和野外也保持连通。 */}
+      <WorldRoads world={world} />
       {/* 村口小广场：井和村名牌 */}
       {world.villages.map((v) => <VillageSquare key={v.key} cell={v.square} name={v.name} terrain={terrainOf(v.key)} />)}
 
@@ -278,7 +271,6 @@ export function WorldScene({ model, world, view, far, selected, highlight, onSel
         return (
           <g key={d.key} className={fadeDistrict(d.key) || undefined}>
             {lead && <AgentYard d={d} color={AGENTS.find((a) => a.key === lead)!.color} />}
-            <Path from={[plot.gx + plot.w / 2, plot.gy + plot.d]} to={[plot.gx + plot.w / 2, d.oy + INNER_D + 0.6]} />
             {terrainAt.get(`${d.cell.cx},${d.cell.cy}`) === 'forest' || terrainAt.get(`${d.cell.cx},${d.cell.cy}`) === 'hill'
               ? <Pine at={iso(d.ox + 8.6, d.oy + 0.4)} k={0.9 + (h % 3) * 0.1} />
               : <Tree at={iso(d.ox + 8.6, d.oy + 0.4)} k={0.8 + (h % 3) * 0.1} />}

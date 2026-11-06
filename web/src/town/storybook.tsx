@@ -112,7 +112,7 @@ export function StoryTrail({ from,to,width=16 }: { from:Pt;to:Pt;width?:number }
     return [a[0]+dx*t+normal[0]*edge*sign,a[1]+dy*t+normal[1]*edge*sign]
   })
   return <g aria-hidden="true" pointerEvents="none" className="town-story-trail">
-    <path d={storyBlob([...side(1),...side(-1).reverse()])} fill={miniature ? '#edddbd' : '#e5d4b1'} stroke={miniature ? '#b4bc96' : '#b4a580'} strokeWidth={miniature ? '2.5' : '1.4'} strokeOpacity=".28" />
+    <path d={storyBlob([...side(1),...side(-1).reverse()])} fill={miniature ? '#efd7a4' : '#e9d2a5'} stroke={miniature ? '#95916b' : '#9c8b68'} strokeWidth="2.5" strokeOpacity=".85" />
     {!miniature && Array.from({length:Math.min(16,n)},(_,i)=>{
       const t=(i+.5)/Math.min(16,n),offset=Math.sin(i*3.7+a[0])*(width*.23)
       return <ellipse key={i} cx={a[0]+dx*t+normal[0]*offset} cy={a[1]+dy*t+normal[1]*offset} rx={i%3===0 ? 1.6 : .8} ry=".6" fill={i%2 ? '#f8ebce' : '#c4b390'} opacity=".6" />
