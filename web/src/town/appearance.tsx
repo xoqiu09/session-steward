@@ -3,8 +3,8 @@ import { createContext, useContext, useEffect, useState, useSyncExternalStore, t
 export type TownThemeId = 'original' | 'storybook' | 'miniature'
 export const APPEARANCE_KEY = 'ss.town.appearance.v1'
 export const TOWN_THEMES: readonly { id: TownThemeId; name: string; description: string; assets: readonly string[] }[] = [
-  { id: 'miniature', name: '微缩庭园', description: '圆润模型 · 清透绿意', assets: ['/town/miniature/props.png'] },
-  { id: 'storybook', name: '柔和手绘', description: '暖色纸感 · 自然花园', assets: ['/town/storybook/props.png', '/town/storybook/nature.png'] },
+  { id: 'miniature', name: '微缩庭园', description: '圆润模型 · 清透绿意', assets: ['/town/miniature/props.png', '/town/miniature/buildings.png'] },
+  { id: 'storybook', name: '柔和手绘', description: '暖色纸感 · 自然花园', assets: ['/town/storybook/props.png', '/town/storybook/nature.png', '/town/storybook/buildings.png'] },
   { id: 'original', name: '经典小镇', description: '简洁几何 · 熟悉的小镇', assets: [] },
 ]
 export const themeName = (id: TownThemeId) => TOWN_THEMES.find(t => t.id === id)!.name

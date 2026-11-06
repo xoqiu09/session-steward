@@ -213,11 +213,6 @@ export function WorldScene({ model, world, view, far, selected, highlight, onSel
   const nowMs = Date.parse(model.now) || Date.now()
   const plateK = Math.min(2.4, Math.max(0.8, view.w / 2900))
   const mapMode = view.w > MAP_W
-  const storyHouse = illustrated ? [...world.districts].sort((a,b) => {
-    const home = world.residential ?? { cx: 0, cy: 0 }
-    const distance = (c: Cell) => Math.abs(c.cx-home.cx) + Math.abs(c.cy-home.cy)
-    return distance(a.cell)-distance(b.cell) || a.id.localeCompare(b.id)
-  })[0]?.key : undefined
 
   return (
     <svg ref={sceneRef} className={`town-svg is-world${far ? ' is-far' : ''}${far && mapMode ? ' is-map' : ''}${offline ? ' is-offline' : ''}`} viewBox={`${view.x} ${view.y} ${view.w} ${view.h}`}
@@ -295,7 +290,7 @@ export function WorldScene({ model, world, view, far, selected, highlight, onSel
             {d.kind === 'wild' && <Fence gx={d.ox + 4.6} gy={d.oy + INNER_D - 0.5} len={4.0} />}
             <g onPointerEnter={(e) => onHoverHouse?.(d.b.key, { x: e.clientX, y: e.clientY })} onPointerLeave={() => onHoverHouse?.(null)}
               onFocus={(e) => { const r = (e.target as Element).getBoundingClientRect(); onHoverHouse?.(d.b.key, { x: r.right, y: r.top }) }} onBlur={() => onHoverHouse?.(null)}>
-              <Building plot={plot} shape={TIERS[d.tier].shape} b={d.b} storybookHouse={d.key === storyHouse} selected={isSel('building', d.b.key)} dimClass={dim(false)} onSelect={() => onSelect({ kind: 'building', key: d.b.key })} />
+              <Building plot={plot} shape={TIERS[d.tier].shape} b={d.b} selected={isSel('building', d.b.key)} dimClass={dim(false)} onSelect={() => onSelect({ kind: 'building', key: d.b.key })} />
             </g>
             {onDispatch && (() => {
               // 派活台发起的工作在门口挂个牌子，点了直接到那件任务（最近的一件）。

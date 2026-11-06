@@ -13,6 +13,8 @@ export const STORY = {
 // Viewports into the original transparent atlas. No bitmap is resampled or edited.
 const PROPS = {
   cottage: { crop: [24, 65, 526, 450], foot: [278, 488] },
+  workshop: { crop: [85, 298, 760, 670], foot: [424, 934], src: '/town/storybook/buildings.png' },
+  tower: { crop: [966, 10, 452, 962], foot: [1146, 948], src: '/town/storybook/buildings.png' },
   oak: { crop: [555, 28, 463, 482], foot: [772, 480] },
   hydrangea: { crop: [1080, 266, 395, 246], foot: [1280, 479] },
   flowers: { crop: [90, 712, 355, 275], foot: [270, 948] },
@@ -31,6 +33,8 @@ export type StoryPropKind = keyof typeof PROPS
 // image data and the CrossPet characters are never rescaled on disk.
 const MINI_PROPS = {
   cottage: { crop: [70, 40, 410, 447], foot: [274, 481] },
+  workshop: { crop: [87, 321, 726, 675], foot: [266, 970], src: '/town/miniature/buildings.png' },
+  tower: { crop: [989, 10, 436, 1003], foot: [1160, 994], src: '/town/miniature/buildings.png' },
   oak: { crop: [544, 16, 452, 472], foot: [768, 481] },
   birch: { crop: [1099, 16, 335, 470], foot: [1259, 480] },
   tea: { crop: [39, 663, 455, 317], foot: [266, 973] },
@@ -38,22 +42,29 @@ const MINI_PROPS = {
   flowers: { crop: [1042, 710, 460, 270], foot: [1272, 973] },
 } as const
 const MINI_KIND: Record<StoryPropKind, keyof typeof MINI_PROPS> = {
-  cottage: 'cottage', oak: 'oak', hydrangea: 'flowers', flowers: 'flowers', tea: 'tea', bookcase: 'bookcase',
+  cottage: 'cottage', workshop: 'workshop', tower: 'tower', oak: 'oak', hydrangea: 'flowers', flowers: 'flowers', tea: 'tea', bookcase: 'bookcase',
   birch: 'birch', maple: 'oak', willow: 'birch', stones: 'flowers', wildflowers: 'flowers', ferns: 'flowers',
+}
+
+/** The same sprite rectangle anchors painting, hit testing and the project label. */
+export function storyPropBox(kind: StoryPropKind, at: Pt, width: number, miniature: boolean) {
+  const { crop: [x, y, w, h], foot: [fx, fy] } = miniature ? MINI_PROPS[MINI_KIND[kind]] : PROPS[kind]
+  const scale = width / w
+  return { x: at[0] - (fx - x) * scale, y: at[1] - (fy - y) * scale, width, height: h * scale }
 }
 
 export function StoryProp({ kind, at, width }: { kind: StoryPropKind; at: Pt; width: number }) {
   const { miniature } = useTownArt()
   const paint = useId()
-  const prop = miniature ? MINI_PROPS[MINI_KIND[kind]] : PROPS[kind], { crop: [x, y, w, h], foot: [fx, fy] } = prop
-  const scale = width / w
-  return <svg className={`town-story-prop${miniature ? ' town-miniature-prop' : 'src' in prop ? ' town-story-nature' : ''}`} data-town-prop={kind} data-storybook-prop={miniature ? undefined : kind} aria-hidden="true" pointerEvents="none"
-    x={at[0] - (fx - x) * scale} y={at[1] - (fy - y) * scale} width={width} height={h * scale}
+  const prop = miniature ? MINI_PROPS[MINI_KIND[kind]] : PROPS[kind], { crop: [x, y, w, h] } = prop
+  const source = 'src' in prop ? prop.src : miniature ? '/town/miniature/props.png' : '/town/storybook/props.png'
+  return <svg className={`town-story-prop${miniature ? ' town-miniature-prop' : source.endsWith('/nature.png') ? ' town-story-nature' : ''}`} data-town-prop={kind} data-storybook-prop={miniature ? undefined : kind} aria-hidden="true" pointerEvents="none"
+    {...storyPropBox(kind, at, width, miniature)}
     viewBox={`0 0 ${w} ${h}`} overflow="hidden">
     {/* A paint definition keeps the source atlas outside visible object bounds,
         so accessible clicks target the prop rectangle rather than the atlas. */}
     <defs><pattern id={paint} patternUnits="userSpaceOnUse" width={w} height={h}>
-      <image x={-x} y={-y} href={miniature ? '/town/miniature/props.png' : 'src' in prop ? prop.src : '/town/storybook/props.png'} width="1536" height="1024" />
+      <image x={-x} y={-y} href={source} width="1536" height="1024" />
     </pattern></defs>
     <rect width={w} height={h} fill={`url(#${paint})`} />
   </svg>

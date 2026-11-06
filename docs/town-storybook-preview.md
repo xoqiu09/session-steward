@@ -4,7 +4,7 @@
 
 ## 当前范围
 
-- 七只的小屋、茶座、花箱、书柜以及一个邻近项目屋采用独立手绘素材；其余项目屋保留原来的外观。
+- 七只的小屋、茶座、花箱、书柜以及全部项目屋采用独立手绘素材；小木屋、住宅、工坊和高楼均随画风切换。
 - 环境提供白桦、枫树、垂柳、橡树、草花、蕨类及苔石。地形和院子的边缘使用平滑轮廓，土路中心线对应原有步行路线，边缘及碎石只影响绘制。
 - 七位居民使用原来的 42 张 CrossPet WebP。样板按原画布比例统一身高和脚底位置；静止聚会角色的展示间距不会写入生活存档、路径或友谊记录。
 - Claude 和 Codex 工作会话分别使用 Claude 小姐及 ChatGPT 小姐的原有立绘。保留实际 provider、会话编号、状态、键盘及详情入口；它们不新增居民、不订阅居民生活状态。
@@ -13,7 +13,7 @@
 
 ## 素材来源
 
-`web/public/town/storybook/props.png` 和 `nature.png` 为使用 Codex 内置 image_gen 独立生成的透明环境图集。游戏图像没有被下载或提取为素材。美术方向参考 Usagi Shima 的庭院组织及 Tsuki's Odyssey 的生活细节。
+`web/public/town/storybook/props.png`、`nature.png` 和 `buildings.png` 为使用 Codex 内置 image_gen 独立生成的透明环境图集。新增 `buildings.png` 包含工坊与五层高楼，沿用已有手绘图集的材质与色彩。游戏图像没有被下载或提取为素材。美术方向参考 Usagi Shima 的庭院组织及 Tsuki's Odyssey 的生活细节。
 
 图集由 SVG 子视口按物件单独显示，继续参与既有绘制和遮挡顺序；没有用完整背景图片替代交互世界。原居民素材的许可与致谢继续见 `web/public/residents/`，本轮未修改。
 
