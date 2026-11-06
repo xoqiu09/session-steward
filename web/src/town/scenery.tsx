@@ -168,10 +168,12 @@ type LakeShape = { ring: [number, number][]; cx: number; cy: number; island: { g
  * 按轮廓画的湖，轮廓由地形按位置生成，每个湖都不一样。湖是平的，统一画在地面层：
  * 先画所有湖的岸和描边，再盖上所有水面，相邻格子的湖叠在一起时看不到接缝。
  */
-export function Lakes({ shapes }: { shapes: LakeShape[] }) {
+export function Lakes({ shapes, joins = [] }: { shapes: LakeShape[]; joins?: [number, number][][] }) {
   const { illustrated, miniature } = useTownArt()
-  const rings = shapes.map((s) => pts(s.ring.map(([gx, gy]) => iso(gx, gy))))
-  const paths = illustrated ? shapes.map(s=>storyBlob(s.ring.map(([gx,gy])=>iso(gx,gy)))) : []
+  // joins 补四格湖交汇处的缺口，和水面一起画，看不到接缝。
+  const outlines = [...shapes.map((s) => s.ring), ...joins]
+  const rings = outlines.map((ring) => pts(ring.map(([gx, gy]) => iso(gx, gy))))
+  const paths = illustrated ? outlines.map(ring=>storyBlob(ring.map(([gx,gy])=>iso(gx,gy)))) : []
   return (
     <g aria-hidden>
       {illustrated ? <>

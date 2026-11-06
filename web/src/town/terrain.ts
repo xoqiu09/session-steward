@@ -148,6 +148,18 @@ export function sceneryOf(cell: Cell, near: boolean, lakeNeighbors: { e: boolean
   return out
 }
 
+/**
+ * 四格湖交汇的那一点：每格的湖是圆润的一团，四团之间会露出一块星形的草地。
+ * 用一块只落在这四格内部的圆角方块盖住它。(cx, cy) 是交汇点右下那一格。
+ */
+export function lakeJoin(cx: number, cy: number): [number, number][] {
+  const gx = cx * CELL_W, gy = cy * CELL_D, hw = CELL_W * 0.62, hd = CELL_D * 0.62
+  return Array.from({ length: 16 }, (_, i) => {
+    const a = (i / 16) * Math.PI * 2, c = Math.cos(a), s = Math.sin(a)
+    return [gx + Math.sign(c) * Math.abs(c) ** 0.5 * hw, gy + Math.sign(s) * Math.abs(s) ** 0.5 * hd] as [number, number]
+  })
+}
+
 /** 四邻里哪些方向也是湖（不考虑那里有没有项目，调用方可以覆盖）。 */
 export function lakeSides(cell: Cell) {
   const lake = (dx: number, dy: number) => terrainAtCell(cell.cx + dx, cell.cy + dy) === 'lake'

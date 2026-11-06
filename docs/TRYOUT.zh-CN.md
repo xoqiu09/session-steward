@@ -1,6 +1,6 @@
 # Session Steward 新结构体验试用清单
 
-这份清单对应 v0.3.0-rc.6 试用预发布（v0.2.0 不包含新的结构体验）。安装包在 [Releases](https://github.com/xoqiu09/session-steward/releases/tag/v0.3.0-rc.6)。
+这份清单对应 v0.3.0-rc.7 试用预发布（v0.2.0 不包含新的结构体验）。安装包在 [Releases](https://github.com/xoqiu09/session-steward/releases/tag/v0.3.0-rc.7)。
 
 我们最想知道：**你能否讲清一个项目，知道它正在做什么，并分清 Agent 回报和自己的验收。** 记录哪一步卡住或看不懂即可，不需要替我们定位代码。
 

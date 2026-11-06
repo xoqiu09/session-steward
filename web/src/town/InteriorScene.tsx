@@ -186,8 +186,10 @@ export function InteriorScene({ b, model, selected, highlight, onSelect, changed
       </g>
       {/* 白板：这个项目里等你决定的事 */}
       <g transform={`translate(${board[0]},${board[1]})`} className={dim(highlight === 'waiting')}>
-        <rect x="-92" y="-46" width="184" height={58 + Math.max(1, Math.min(3, approvals.length)) * 28} rx="6" fill="#fdfdfb" stroke="#8d8270" strokeWidth="3" />
-        <text x="0" y="-24" textAnchor="middle" fontSize="14" fontWeight="800" fill="#3a2a1c">等你决定 · {approvals.length}</text>
+        <g {...(approvals.length ? { className: 'town-obj', 'aria-label': `白板：${approvals.length} 件等你决定，打开第一件`, ...activate(() => onSelect({ kind: 'approval', key: approvals[0].id })) } : {})}>
+          <rect x="-92" y="-46" width="184" height={58 + Math.max(1, Math.min(3, approvals.length)) * 28} rx="6" fill="#fdfdfb" stroke="#8d8270" strokeWidth="3" />
+          <text x="0" y="-24" textAnchor="middle" fontSize="14" fontWeight="800" fill="#3a2a1c">等你决定 · {approvals.length}</text>
+        </g>
         {approvals.length === 0 && <text x="0" y="6" textAnchor="middle" fontSize="12" fill="#7a6a55">这里暂时没有</text>}
         {approvals.slice(0, 3).map((a, i) => (
           <g key={a.id} className={`town-obj${isSel('approval', a.id) ? ' is-selected' : ''}`} {...activate(() => onSelect({ kind: 'approval', key: a.id }))} aria-label={`待决定：${a.preview}`}>
