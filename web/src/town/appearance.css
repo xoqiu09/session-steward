@@ -1,8 +1,17 @@
-.town-scene-menu { position: relative; z-index: 80; font: inherit; color: var(--town-ink, #4a4033); }
-.town-scene-trigger { display: inline-flex; align-items: center; gap: 6px; min-height: 34px; padding: 6px 10px; border: 1px solid var(--town-line, #d9cdb6); border-radius: 10px; color: inherit; background: var(--town-card, #fffaf0); font: inherit; font-size: 12px; cursor: pointer; white-space: nowrap; }
-.town-scene-trigger:hover, .town-scene-trigger.is-open { border-color: #668d7c; box-shadow: 0 2px 8px #33574a12; }
-.town-scene-current { color: var(--town-muted, #89765e); font-size: 10px; }
-.town-scene-chevron { margin-left: 2px; color: #819285; }
+.town-scene-menu { position: relative; z-index: 80; flex: 1 0 100%; min-width: 0; width: 100%; box-sizing: border-box; padding: 10px 12px; border: 1px solid var(--town-line, #d9cdb6); border-radius: 14px; background: var(--town-card, #fffaf0); font: inherit; color: var(--town-ink, #4a4033); }
+.town-scene-bar { display: flex; align-items: center; gap: 18px; }
+.town-scene-label { display: flex; flex-direction: column; gap: 4px; flex-shrink: 0; }
+.town-scene-label strong { font-size: 14px; font-weight: 650; }
+.town-scene-label > span { font-size: 11px; line-height: 1.5; color: #657062; }
+.town-scene-shortcuts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; flex: 1; min-width: 0; max-width: 650px; }
+.town-scene-shortcut { position: relative; display: flex; align-items: center; gap: 9px; min-width: 0; min-height: 58px; padding: 6px 24px 6px 7px; border: 1px solid #d6ddcf; border-radius: 10px; background: #fffef9; color: #405347; font: inherit; text-align: left; cursor: pointer; transition: border-color .15s, background .15s; }
+.town-scene-shortcut:hover { border-color: #739981; background: #f5f8ee; }
+.town-scene-shortcut.is-current { border-color: #568c75; background: #edf5e9; box-shadow: inset 0 0 0 1px #568c75; }
+.town-scene-shortcut > .town-scene-thumbnail { width: 64px; flex-shrink: 0; border-radius: 6px; }
+.town-scene-shortcut-copy { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.town-scene-shortcut-copy strong { font-size: 13px; font-weight: 650; }
+.town-scene-shortcut-copy > span { font-size: 10px; line-height: 1.5; color: #647366; }
+.town-scene-shortcut-check { position: absolute; right: 8px; top: 8px; color: #365f49; font-size: 12px; font-weight: 700; }
 .town-scenes-panel { position: absolute; top: calc(100% + 10px); left: 0; width: 550px; max-width: calc(100vw - 32px); padding: 22px; box-sizing: border-box; background: #fcfcf6; border: 1px solid #d4ded2; border-radius: 20px; box-shadow: 0 18px 60px #1e44312b, 0 2px 8px #1e44310d; color: #304e43; text-align: left; cursor: default; }
 .town-scenes-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .town-scenes-eyebrow { display: block; font-size: 10px; font-weight: 550; letter-spacing: .06em; color: #718878; margin-bottom: 6px; }
@@ -44,8 +53,15 @@
 .town-view.is-miniature .town-resident-figure > ellipse:first-child { fill: #486e4e32; }
 .town-view.is-miniature .town-miniature-prop { filter: drop-shadow(0 2px 1px #50734616); }
 @media (max-width: 760px) {
-  .town-scene-trigger { min-height: 36px; }
-  .town-scene-current { display: none; }
+  .town-scene-menu { padding: 10px; }
+  .town-scene-bar { flex-direction: column; align-items: stretch; gap: 9px; }
+  .town-scene-label { flex-direction: row; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 10px; }
+  .town-scene-shortcuts { max-width: none; gap: 6px; }
+  .town-scene-shortcut { flex-direction: column; gap: 5px; min-height: 98px; padding: 6px 3px; text-align: center; }
+  .town-scene-shortcut > .town-scene-thumbnail { width: 56px; }
+  .town-scene-shortcut-copy { gap: 2px; }
+  .town-scene-shortcut-copy strong { font-size: 12px; }
+  .town-scene-shortcut-check { right: 5px; top: 5px; }
   .town-scenes-panel { position: fixed; top: 72px; left: 12px; right: 12px; width: auto; max-width: none; max-height: calc(100dvh - 88px); overflow-y: auto; padding: 18px; border-radius: 18px; }
   .town-scenes-heading h2 { font-size: 19px; }
   .town-scenes-options { grid-template-columns: 1fr; gap: 8px; }
@@ -60,4 +76,4 @@
   .town-scenes-footer button { min-height: 42px; }
   .town-scene-apply { flex: 1; }
 }
-@media (prefers-reduced-motion: reduce) { .town-scene-card { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .town-scene-card, .town-scene-shortcut { transition: none; } }
