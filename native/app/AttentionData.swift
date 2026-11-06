@@ -90,32 +90,35 @@ struct AttentionState: Equatable {
 struct AttentionGeometry: Equatable {
     let screen: CGRect
     let visibleTop: CGFloat
+    let safeTop: CGFloat
     let housingWidth: CGFloat
     let headerHeight: CGFloat
     let centerX: CGFloat
     var hasNotch: Bool { housingWidth > 0 }
-    var compactWidth: CGFloat { min(screen.width - 24, max(232, housingWidth + 148)) }
+    var compactWidth: CGFloat { min(screen.width - 24, 232) }
     var expandedWidth: CGFloat { min(screen.width - 24, max(416, compactWidth)) }
 
     init(screen: CGRect, visibleTop: CGFloat, safeTop: CGFloat, left: CGRect?, right: CGRect?) {
         self.screen = screen
         self.visibleTop = visibleTop
+        self.safeTop = max(0, safeTop)
+        headerHeight = 36
         if safeTop > 0, let left, let right, right.minX > left.maxX {
             housingWidth = right.minX - left.maxX
             centerX = (right.minX + left.maxX) / 2
-            headerHeight = max(28, safeTop)
         } else {
             housingWidth = 0
             centerX = screen.midX
-            headerHeight = 36
         }
     }
 
     func frame(expanded: Bool, rows: Int) -> CGRect {
         let width = expanded ? expandedWidth : compactWidth
         let body = expanded ? (rows > 0 ? CGFloat(min(rows, 3)) * 58 + 100 : 144) : 0
-        let height = min(screen.height - 60, headerHeight + body)
-        let top = hasNotch ? screen.maxY : min(screen.maxY, visibleTop) - 8
+        // Float below both the camera housing and menu bar, including when the
+        // menu bar auto-hides. No part of the interactive header uses the notch.
+        let top = min(screen.maxY - safeTop, visibleTop) - 8
+        let height = min(max(0, top - screen.minY - 12), headerHeight + body)
         let x = min(max(centerX - width / 2, screen.minX + 12), screen.maxX - width - 12)
         return CGRect(x: x, y: top - height, width: width, height: height)
     }

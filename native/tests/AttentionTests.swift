@@ -71,8 +71,20 @@ struct AttentionTests {
             left: CGRect(x: 1920, y: 1244, width: 656, height: 38), right: CGRect(x: 2776, y: 1244, width: 656, height: 38))
         check(builtIn.hasNotch && builtIn.housingWidth == 200, "camera housing comes from safe screen areas")
         check(builtIn.frame(expanded: false, rows: 0).midX == 2676, "global safe-area coordinates must not add the display origin twice")
-        check(builtIn.frame(expanded: true, rows: 3).maxY == 1282, "expansion remains anchored to the screen top")
+        check(builtIn.frame(expanded: false, rows: 0).maxY == 1236, "compact reminder stays below the notch and menu bar")
+        check(builtIn.frame(expanded: false, rows: 0).width == 232 && builtIn.headerHeight == 36, "floating header does not reserve camera-housing space")
+        check(builtIn.frame(expanded: true, rows: 3).maxY == 1236, "expanding must not move the header back into the notch")
         check(builtIn.frame(expanded: true, rows: 30).height == builtIn.frame(expanded: true, rows: 3).height, "only three rows expand the surface")
+        let hiddenMenu = AttentionGeometry(screen: builtIn.screen, visibleTop: builtIn.screen.maxY, safeTop: 38,
+            left: CGRect(x: 1920, y: 1244, width: 656, height: 38), right: CGRect(x: 2776, y: 1244, width: 656, height: 38))
+        check(hiddenMenu.frame(expanded: true, rows: 3).maxY < builtIn.screen.maxY - 38, "auto-hidden menu bar still preserves the physical camera safe area")
+        // Reproduce the installed MacBook's reported screen geometry.
+        let laptop = AttentionGeometry(screen: CGRect(x: 0, y: 0, width: 1728, height: 1117), visibleTop: 1084, safeTop: 32,
+            left: CGRect(x: 0, y: 1085, width: 771.5, height: 32), right: CGRect(x: 956.5, y: 1085, width: 771.5, height: 32))
+        for expanded in [false, true] {
+            let panel = laptop.frame(expanded: expanded, rows: 3)
+            check(panel.maxY == 1076 && laptop.screen.contains(panel), "actual laptop compact and expanded panels stay below its menu bar")
+        }
         print("\(count) attention filtering and multi-display geometry checks passed")
     }
 }

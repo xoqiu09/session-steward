@@ -138,11 +138,12 @@ struct AttentionSurfaceView: View {
             Button(action: onToggle) {
                 HStack(spacing: 8) {
                     Image(systemName: "house.fill").foregroundStyle(violet)
-                    Text("小镇").font(.system(size: 12, weight: .semibold))
-                    Spacer(minLength: model.geometry.housingWidth)
+                    Text("小镇").font(.system(size: 12, weight: .semibold)).lineLimit(1)
+                    Spacer(minLength: 8)
                     Circle().fill(model.state.online ? (model.state.count > 0 ? amber : Color.green) : Color.gray).frame(width: 5, height: 5)
                     Text(model.state.online ? (model.state.count > 0 ? "待处理 \(model.state.count)" : "无待处理") : "连接中")
                         .font(.system(size: 11, weight: .medium)).monospacedDigit()
+                        .lineLimit(1).fixedSize(horizontal: true, vertical: false)
                 }.padding(.horizontal, 14).frame(height: model.geometry.headerHeight)
                     .contentShape(Rectangle())
             }.buttonStyle(.plain)
@@ -179,7 +180,7 @@ struct AttentionSurfaceView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .foregroundStyle(.white)
         .background(.black)
-        .clipShape(RoundedRectangle(cornerRadius: model.expanded ? 22 : (model.geometry.hasNotch ? 9 : 18), style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: model.expanded ? 22 : 18, style: .continuous))
         .animation(model.reduceMotion ? nil : .spring(response: 0.32, dampingFraction: 0.87), value: model.expanded)
         .onHover(perform: onHover)
         .accessibilityElement(children: .contain)
