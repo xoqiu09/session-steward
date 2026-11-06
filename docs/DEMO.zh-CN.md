@@ -1,10 +1,10 @@
 # 新版合成演示
 
-对应 v0.3.0-rc.6 试用预发布。服务启动与示例资料合在一个 `steward demo` 命令里；不需要先启动普通服务或单独灌数据。
+对应 v0.3.0-rc.7 试用预发布。服务启动与示例资料合在一个 `steward demo` 命令里；不需要先启动普通服务或单独灌数据。
 
 ## 启动
 
-已安装 v0.3.0-rc.6 的 App 并完成第一次打开时，可以直接用 App 里的程序：
+已安装 v0.3.0-rc.7 的 App 并完成第一次打开时，可以直接用 App 里的程序：
 
 ```sh
 "/Applications/Session Steward.app/Contents/MacOS/steward" demo
