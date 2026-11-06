@@ -720,11 +720,14 @@ export function DecisionBoard({ place, model, isSel, dimClass, onSelect }: { pla
   const oy = place.anchor === 'bottom' ? place.y : place.y + (h + 20) * place.scale
   return (
     <g className={dimClass} transform={`translate(${place.x},${oy}) scale(${place.scale})`}>
-      <line x1={x - 62} y1={y} x2={x - 62} y2={top + 8} stroke="#6b4a2a" strokeWidth="4" />
-      <line x1={x + 62} y1={y} x2={x + 62} y2={top + 8} stroke="#6b4a2a" strokeWidth="4" />
-      <rect x={x - 74} y={top} width="148" height={h} rx="6" fill="#a87a48" stroke="#6b4a2a" strokeWidth="2" />
-      <rect x={x - 68} y={top + 6} width="136" height={h - 12} rx="4" fill="#d9b98a" />
-      <text x={x} y={top + 25} textAnchor="middle" fontSize="13" fontWeight="700" fill="#3a2a1c">等你决定 · {cards.length}</text>
+      {/* 木牌本身也能点：有待决定时打开最早一件，和指南里“点告示栏”一致；空告示栏不是按钮。 */}
+      <g {...(cards.length ? { className: 'town-obj', 'aria-label': `告示栏：${cards.length} 件等你决定，打开第一件`, ...activate(() => onSelect({ kind: 'approval', key: cards[0].id })) } : {})}>
+        <line x1={x - 62} y1={y} x2={x - 62} y2={top + 8} stroke="#6b4a2a" strokeWidth="4" />
+        <line x1={x + 62} y1={y} x2={x + 62} y2={top + 8} stroke="#6b4a2a" strokeWidth="4" />
+        <rect x={x - 74} y={top} width="148" height={h} rx="6" fill="#a87a48" stroke="#6b4a2a" strokeWidth="2" />
+        <rect x={x - 68} y={top + 6} width="136" height={h - 12} rx="4" fill="#d9b98a" />
+        <text x={x} y={top + 25} textAnchor="middle" fontSize="13" fontWeight="700" fill="#3a2a1c">等你决定 · {cards.length}</text>
+      </g>
       {cards.length === 0 && <text x={x} y={top + 56} textAnchor="middle" fontSize="11" fill="#6b5a44">暂时没有待决定</text>}
       {cards.map((a, i) => {
         const cy = top + 36 + i * 34

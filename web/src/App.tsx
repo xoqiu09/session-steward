@@ -99,6 +99,19 @@ function PanelApp() {
     window.addEventListener('hashchange', on)
     return () => window.removeEventListener('hashchange', on)
   }, [])
+  // 桌面模式的详情抽屉是最上层：Esc 只关它，不能穿透到底下的房间、收菜或浮层。
+  // 用捕获阶段：点抽屉里的文字后焦点会落到 body，冒泡版的处理收不到。
+  const kioskDrawerOpen = route.kiosk && (sel != null || kioskQueue)
+  useEffect(() => {
+    if (!kioskDrawerOpen) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || document.querySelector('[role="dialog"]:not(.kiosk-drawer)')) return
+      e.preventDefault(); e.stopImmediatePropagation()
+      setSel(null); setKioskQueue(false)
+    }
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
+  }, [kioskDrawerOpen])
   // 通知深链：快照到达后跳到对应条目（审批落到其工作项或会话），只消费一次
   useEffect(() => {
     if (!snap || !deep) return
@@ -174,7 +187,7 @@ function PanelApp() {
     const closeDrawer = () => { setSel(null); setKioskQueue(false) }
     const path = window.location.pathname
     return (
-      <div className="app is-kiosk" onKeyDown={(e) => { if (e.key === 'Escape' && drawer) closeDrawer() }}>
+      <div className="app is-kiosk">
         <main className="kiosk-main">
           {hubToast}
           <TownView coverage={coverage} world={route.world} snap={hub.merged ?? snap} conn={conn} repoId={repoId} provider={provider} sel={sel} onSelectItem={townItem} onSelectSession={townSession}

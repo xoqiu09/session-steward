@@ -6,7 +6,7 @@ import { IsoBox, IsoTile, iso, type Pt } from './iso'
 import { attentionManaged } from '../workManagement'
 import { characterStatusLabel, type BuildingView, type Highlight, type ParcelView, type TownModel } from './townModel'
 import {
-  Building, HOUSE_SHAPE, Character, DecisionBoard, DispatchTable, FailRack, Parcel, ReviewDesk, StatusPill, Tag, Tree,
+  Building, HOUSE_SHAPE, Character, DecisionBoard, boardHeight, DispatchTable, FailRack, Parcel, ReviewDesk, StatusPill, Tag, Tree,
   activate, buildingColors, charLook, characterPillName, charMatches, onReviewDesk, parcelMatches, parcelTitle,
   type BuildingShape, type Plot, type Selection,
 } from './TownScene'
@@ -19,7 +19,9 @@ import { InteriorScene } from './InteriorScene'
 import { TownGuide } from './TownGuide'
 import { TownStructure } from './TownStructure'
 import { Bush, Campfire, Fence, Flowers, Lakes, Mound, Pine, Pond, Reeds, Rock, Windmill, YARD_TINT, terrainOf, type Terrain } from './scenery'
-import { cellsInView, gridOfView, sceneryOf, terrainAtCell, tintBlob, type CellScenery } from './terrain'
+import { cellsInView, gridOfView, lakeJoin, sceneryOf, terrainAtCell, tintBlob, type CellScenery } from './terrain'
+import { separatePlates, type PlateBox } from './plates'
+import { plazaCoreBoxes, treeHidesPlaza } from './plazaView'
 import { statusChips, statusOf, sumStatus, type StatusCounts } from './status'
 import { Field } from './field'
 import { Cart, SHED_MAX, Track, Workshop, shedSeat, shedSpots, type ShedSpot } from './workshop'
@@ -43,7 +45,7 @@ import { DISTRICT_FOOTPRINT } from './world'
 import { ResidentClock } from './residentPresence'
 import { ResidentRoomVisitors, ResidentWorldVisitors } from './ResidentVisits'
 import { StoryClearing, StoryGrass, storyBlob } from './storybook'
-import { WorldRoads } from './roads'
+import { WorldRoads, roadCells } from './roads'
 import { useTownArt } from './appearance'
 import { addPoint, cellOrigin, residentWorld } from './residentTrips'
 import { ResidentFollow } from './ResidentFollow'
@@ -127,6 +129,7 @@ export function WorldScene({ model, world, view, far, selected, highlight, onSel
   const dim = (match: boolean) => (highlight && !match ? ' is-dim' : '')
   const flash = (key: string) => (changed.has(key) ? ' is-changed' : '')
   const { gx0, gy0, gx1, gy1 } = world.tiles
+  const roads = useMemo(() => roadCells(world), [world])
 
   // 道路：每个街区右侧和前方各一条，贯穿整个世界。
   const cxs = new Set<number>(), cys = new Set<number>()
@@ -145,13 +148,23 @@ export function WorldScene({ model, world, view, far, selected, highlight, onSel
   const inWorld = (c: Cell) => cxs.has(c.cx) && cys.has(c.cy)
   const sceneryCells = visible.length > SCENERY_MAX ? visible.filter(inWorld) : visible
   const isNear = (c: Cell) => { for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) if (used.has(`${c.cx + dx},${c.cy + dy}`)) return true; return false }
-  const lakeAt = (cx: number, cy: number) => !used.has(`${cx},${cy}`) && terrainAtCell(cx, cy) === 'lake' && !isNear({ cx, cy })
-  const landOf = (c: Cell) => sceneryOf(c, isNear(c), { e: lakeAt(c.cx + 1, c.cy), s: lakeAt(c.cx, c.cy + 1), w: lakeAt(c.cx - 1, c.cy), n: lakeAt(c.cx, c.cy - 1) })
+  // 路经过的格子不放湖：湖让路，路线和居民存档不动；这些格子按“紧挨项目”只长矮花草。
+  const roadLand = (c: Cell) => terrainAtCell(c.cx, c.cy) === 'lake' && roads.has(`${c.cx},${c.cy}`)
+  const lakeAt = (cx: number, cy: number) => !used.has(`${cx},${cy}`) && terrainAtCell(cx, cy) === 'lake' && !isNear({ cx, cy }) && !roads.has(`${cx},${cy}`)
+  const landOf = (c: Cell) => sceneryOf(c, isNear(c) || roadLand(c), { e: lakeAt(c.cx + 1, c.cy), s: lakeAt(c.cx, c.cy + 1), w: lakeAt(c.cx - 1, c.cy), n: lakeAt(c.cx, c.cy - 1) })
   const empty = sceneryCells.map((c) => ({ c, s: landOf(c) }))
   // 拉得很远时，世界外的空地只画湖（树太多太小，画了也看不清），拉远拉近山水的位置不变。
   if (sceneryCells !== visible) {
     const drawn = new Set(sceneryCells.map((c) => `${c.cx},${c.cy}`))
     for (const c of visible) if (!drawn.has(`${c.cx},${c.cy}`) && terrainAtCell(c.cx, c.cy) === 'lake') empty.push({ c, s: { ...landOf(c), props: [], mounds: [] } })
+  }
+  // 四格都是湖的交汇点补上水面。按视野内每个湖格的四个角去重，湖格刚出画面时也不露缝。
+  const lakeJoins = new Map<string, [number, number][]>()
+  for (const { c, s } of empty) {
+    if (!s.pond) continue
+    for (const cx of [c.cx, c.cx + 1]) for (const cy of [c.cy, c.cy + 1]) {
+      if (lakeAt(cx - 1, cy - 1) && lakeAt(cx, cy - 1) && lakeAt(cx - 1, cy) && lakeAt(cx, cy)) lakeJoins.set(`${cx},${cy}`, lakeJoin(cx, cy))
+    }
   }
   const ground = gridOfView(view)
 
@@ -210,10 +223,40 @@ export function WorldScene({ model, world, view, far, selected, highlight, onSel
   const boardModel = { ...model, pendingApprovals: model.pendingApprovals.slice(0, BOARD_MAX) }
   const boardAt = iso(6.0, 8.0)
   const P = world.plaza
+  // 画在广场之后的院子树不能挡告示栏和验收台。
+  const plazaCore = plazaCoreBoxes(boardAt, boardHeight(BOARD_MAX), { gx: P.ox + DESK.gx, gy: P.oy + DESK.gy })
+  const yardTreeClear = (d: District, gx: number, gy: number, k: number) => (d.cell.cx + d.cell.cy < 0 || (d.cell.cx + d.cell.cy === 0 && d.cell.cx <= 0)) || !treeHidesPlaza(iso(gx, gy), k, illustrated, plazaCore)
   // 远景名牌跟着视野放大，拉得再远也认得出项目名。
   const nowMs = Date.parse(model.now) || Date.now()
   const plateK = Math.min(2.4, Math.max(0.8, view.w / 2900))
   const mapMode = view.w > MAP_W
+  const onMap = far && mapMode
+  // 远景名牌：先算内容和位置，再统一避让，相邻项目的名牌不互相压。
+  const plazaStatus = { ...sumStatus([...statusAt.values()]), waiting: model.pendingApprovals.length }
+  const plazaPlate = { at: iso(P.ox + INNER_W / 2, P.oy + INNER_D / 2, 110), k: plateK * 1.1, title: '中央广场', chips: agents ? agentChips(sumAgents([...agentAt.values()])) : plateChips(plazaStatus, failedTotal), note: agents ? '没有会话' : '今天很安静' }
+  const villagePlates = world.villages.map((v) => {
+    const members = world.districts.filter((d) => d.village === v.key)
+    const st = sumStatus(members.map((d) => statusAt.get(d.key)!))
+    const ag = sumAgents(members.map((d) => agentAt.get(d.key)!))
+    return { v, members, ag, tone: toneOf(st, 'plaza'), k: plateK * 1.2, at: iso(v.square.cx * CELL_W + INNER_W / 2, v.square.cy * CELL_D + INNER_D / 2, villageLift(v.square, plateK)), sub: `${members.length} 个项目`,
+      chips: agents ? withWaiting(agentChips(ag), st) : plateChips(st, 0), note: agents ? '村里没有会话' : '村里很安静' }
+  })
+  const districtPlates = world.districts.map((d) => {
+    const st = statusAt.get(d.key)!
+    const failed = d.b.parcels.filter((p) => p.phase === 'failed').length
+    const open = d.b.items.filter((w) => w.status !== 'done' && w.status !== 'abandoned').length
+    return { d, tone: toneOf(st, 'calm'), k: plateK * (d.kind === 'wild' ? 0.85 : 1), at: plateAt(d),
+      chips: agents ? withWaiting(agentChips(agentAt.get(d.key)!), st) : plateChips(st, failed),
+      note: agents ? '没有会话' : open ? `${open} 项未完成 · 没人在干活` : '安静' }
+  })
+  const plateBox = (key: string, p: { at: Pt; k: number; chips: Chip[]; note: string }, title: string, sub?: string, fixed = false): PlateBox =>
+    ({ key, x: p.at[0], y: p.at[1] + 8 * p.k, w: plateWidth(title, sub, p.chips, p.note) * p.k, h: 46 * p.k, fixed })
+  const plateLifts = separatePlates([
+    plateBox('plaza', plazaPlate, plazaPlate.title, undefined, true),
+    ...(onMap ? villagePlates.filter((p) => p.v.key !== focusArea).map((p) => plateBox(`v:${p.v.key}`, p, p.v.name, p.sub)) : []),
+    // 地图模式下，村里的项目并进村名牌，不参与避让。
+    ...districtPlates.filter(({ d }) => !(onMap && d.village && d.village !== focusArea)).map((p) => plateBox(`d:${p.d.key}`, p, p.d.b.name)),
+  ])
 
   return (
     <svg ref={sceneRef} className={`town-svg is-world${far ? ' is-far' : ''}${far && mapMode ? ' is-map' : ''}${offline ? ' is-offline' : ''}`} viewBox={`${view.x} ${view.y} ${view.w} ${view.h}`}
@@ -232,7 +275,7 @@ export function WorldScene({ model, world, view, far, selected, highlight, onSel
         return tint ? illustrated ? <path key={`tn${c.cx},${c.cy}`} d={storyBlob(ring)} fill={tint} opacity=".4" aria-hidden="true" /> : <polygon key={`tn${c.cx},${c.cy}`} points={ring.map(p=>p.join(',')).join(' ')} fill={tint} opacity="0.75" aria-hidden /> : null
       })}
       <IsoTile gx={Math.min(ground.gx0, gx0)} gy={Math.min(ground.gy0, gy0)} w={Math.max(ground.gx1, gx1) - Math.min(ground.gx0, gx0)} d={Math.max(ground.gy1, gy1) - Math.min(ground.gy0, gy0)} fill="url(#world-grass)" />
-      <Lakes shapes={empty.flatMap((e) => (e.s.pond ? [e.s.pond] : []))} />
+      <Lakes shapes={empty.flatMap((e) => (e.s.pond ? [e.s.pond] : []))} joins={[...lakeJoins.values()]} />
       {/* 中央与村庄的庭院底色；下方路网另接通空格和野外项目。 */}
       {!illustrated && streetCells.map((c) => <IsoTile key={`st${c.cx},${c.cy}`} gx={c.cx * CELL_W - 1} gy={c.cy * CELL_D - 1} w={CELL_W + 0.1} d={CELL_D + 0.1} fill="#e6d9bd" />)}
       {streetCells.map((c) => illustrated ? <StoryClearing key={`yd${c.cx},${c.cy}`} gx={c.cx*CELL_W} gy={c.cy*CELL_D} w={INNER_W} d={INNER_D} fill={tintOf(c)} opacity={.32} /> : <IsoTile key={`yd${c.cx},${c.cy}`} gx={c.cx * CELL_W} gy={c.cy * CELL_D} w={INNER_W} d={INNER_D} fill={tintOf(c)} />)}
@@ -271,9 +314,9 @@ export function WorldScene({ model, world, view, far, selected, highlight, onSel
         return (
           <g key={d.key} className={fadeDistrict(d.key) || undefined}>
             {lead && <AgentYard d={d} color={AGENTS.find((a) => a.key === lead)!.color} />}
-            {terrainAt.get(`${d.cell.cx},${d.cell.cy}`) === 'forest' || terrainAt.get(`${d.cell.cx},${d.cell.cy}`) === 'hill'
+            {yardTreeClear(d, d.ox + 8.6, d.oy + 0.4, 1.1) && (terrainAt.get(`${d.cell.cx},${d.cell.cy}`) === 'forest' || terrainAt.get(`${d.cell.cx},${d.cell.cy}`) === 'hill'
               ? <Pine at={iso(d.ox + 8.6, d.oy + 0.4)} k={0.9 + (h % 3) * 0.1} />
-              : <Tree at={iso(d.ox + 8.6, d.oy + 0.4)} k={0.8 + (h % 3) * 0.1} />}
+              : <Tree at={iso(d.ox + 8.6, d.oy + 0.4)} k={0.8 + (h % 3) * 0.1} />)}
             {terrainAt.get(`${d.cell.cx},${d.cell.cy}`) === 'hill' && <Rock gx={d.ox + 8.2} gy={d.oy + 4.4} k={1.2} />}
             <Flowers gx={d.ox + 0.2} gy={d.oy + 4.6} seed={h} />
             <Flowers gx={d.ox + 5.0} gy={d.oy + 8.0} seed={h >> 4} />
@@ -349,7 +392,8 @@ export function WorldScene({ model, world, view, far, selected, highlight, onSel
               const pair = relays.filter((r) => r.from === shown.from && r.to === shown.to).length
               return <g className={dim(false)}><Cart relay={shown} from={at(shown.from)!} to={at(shown.to)!} count={pair} onSelect={onSelect} /></g>
             })()}
-            <Tree at={iso(d.ox + 0.15, d.oy + 8.1)} k={0.6 + ((h >> 3) % 3) * 0.1} />
+            {/* 门前左角的树紧贴作坊门口：有 Agent 在场时不种，免得挡住工作小人。 */}
+            {!shedsOf.get(d.key)?.length && yardTreeClear(d, d.ox + 0.15, d.oy + 8.1, 0.8) && <Tree at={iso(d.ox + 0.15, d.oy + 8.1)} k={0.6 + ((h >> 3) % 3) * 0.1} />}
             {agents && <AgentFlags gx={plot.gx - 0.3} gy={plot.gy + plot.d + 0.2} counts={agentAt.get(d.key)!} />}
             <g data-resident-ground={`${d.cell.cx},${d.cell.cy}`} /><g data-resident-door={d.id} />
           </g>
@@ -385,38 +429,24 @@ export function WorldScene({ model, world, view, far, selected, highlight, onSel
 
       {/* 远景名牌：拉远时代替招牌、小人和包裹。四种状态始终用同样的色点和顺序。 */}
       <g className="town-far">
-        {world.villages.map((v) => {
-          const members = world.districts.filter((d) => d.village === v.key)
-          const st = sumStatus(members.map((d) => statusAt.get(d.key)!))
-          const ag = sumAgents(members.map((d) => agentAt.get(d.key)!))
+        {villagePlates.map(({ v, members, ag, tone, k, at, sub, chips, note }) => {
           if (v.key === focusArea) return null
           return (
             <g key={`fv-${v.key}`} className={`town-map-only${onNavigate ? ' town-obj' : ''}${focus && ag[focus] === 0 ? ' is-dim' : ''}`}
               {...(onNavigate ? { ...activate(() => onNavigate({ kind: 'area', key: v.key })), 'aria-label': `看片区「${v.name}」的 ${members.length} 个项目` } : {})}>
-              <FarPlate k={plateK * 1.2} at={iso(v.square.cx * CELL_W + INNER_W / 2, v.square.cy * CELL_D + INNER_D / 2, villageLift(v.square, plateK))} title={v.name} sub={`${members.length} 个项目`}
-                tone={toneOf(st, 'plaza')} chips={agents ? withWaiting(agentChips(ag), st) : plateChips(st, 0)} note={agents ? '村里没有会话' : '村里很安静'} />
+              <FarPlate k={k} at={at} title={v.name} sub={sub} lift={plateLifts.get(`v:${v.key}`)} tone={tone} chips={chips} note={note} />
             </g>
           )
         })}
-        {world.districts.map((d) => {
-          const st = statusAt.get(d.key)!
-          const failed = d.b.parcels.filter((p) => p.phase === 'failed').length
-          const open = d.b.items.filter((w) => w.status !== 'done' && w.status !== 'abandoned').length
-          const chips = agents ? withWaiting(agentChips(agentAt.get(d.key)!), st) : plateChips(st, failed)
-          const note = agents ? '没有会话' : open ? `${open} 项未完成 · 没人在干活` : '安静'
-          return (
-            <g key={`far-${d.key}`} className={`town-obj${d.village && d.village !== focusArea ? ' town-hide-on-map' : ''}${fadeDistrict(d.key)}`}
-              {...(onNavigate ? activate(() => onNavigate({ kind: 'project', id: d.id })) : {})}
-              aria-label={`${onNavigate ? '去门前花园：' : ''}${d.b.name}：${chips.length ? chips.map((c) => c.text).join('，') : note}`}>
-              <FarPlate k={plateK * (d.kind === 'wild' ? 0.85 : 1)} at={plateAt(d)} title={d.b.name}
-                tone={toneOf(st, 'calm')} chips={chips} note={note} accent={buildingColors(d.b.repo?.id).accent} />
-            </g>
-          )
-        })}
+        {districtPlates.map(({ d, tone, k, at, chips, note }) => (
+          <g key={`far-${d.key}`} className={`town-obj${d.village && d.village !== focusArea ? ' town-hide-on-map' : ''}${fadeDistrict(d.key)}`}
+            {...(onNavigate ? activate(() => onNavigate({ kind: 'project', id: d.id })) : {})}
+            aria-label={`${onNavigate ? '去门前花园：' : ''}${d.b.name}：${chips.length ? chips.map((c) => c.text).join('，') : note}`}>
+            <FarPlate k={k} at={at} title={d.b.name} lift={plateLifts.get(`d:${d.key}`)} tone={tone} chips={chips} note={note} accent={buildingColors(d.b.repo?.id).accent} />
+          </g>
+        ))}
         {/* 广场名牌最后画：全镇合计，不被村庄名牌盖住 */}
-        <FarPlate k={plateK * 1.1} at={iso(P.ox + INNER_W / 2, P.oy + INNER_D / 2, 110)} title="中央广场" tone="plaza"
-          chips={agents ? agentChips(sumAgents([...agentAt.values()])) : plateChips({ ...sumStatus([...statusAt.values()]), waiting: model.pendingApprovals.length }, failedTotal)}
-          note={agents ? '没有会话' : '今天很安静'} />
+        <FarPlate k={plazaPlate.k} at={plazaPlate.at} title={plazaPlate.title} tone="plaza" chips={plazaPlate.chips} note={plazaPlate.note} />
       </g>
       {residents && <ResidentWorldVisitors store={residents.store} world={world} svgRef={sceneRef} far={far} selected={residents.selected}
         onSelect={residents.onSelect} onEnter={(id) => residents.onEnter?.(id)} />}
@@ -532,17 +562,24 @@ function toneOf(st: StatusCounts, rest: 'calm' | 'plaza'): Tone {
 const PLATE_FILL: Record<Tone, string> = { urgent: '#fff4c2', blocked: '#fde8e4', busy: '#fffaf0', calm: '#fffaf0', plaza: '#eef0ff' }
 const PLATE_EDGE: Record<Tone, string> = { urgent: '#e0a400', blocked: '#d2483d', busy: '#e3a23d', calm: '', plaza: '#5b6cd8' }
 
-/** 远景名牌：游戏里那种头顶名牌，一行写完：项目名 + 状态色点和数字，下面一个小尖角指着建筑。 */
-function FarPlate({ at, title, sub, chips, note, tone, accent = '#8a7a63', k = 1 }: { at: Pt; title: string; sub?: string; chips: Chip[]; note: string; tone: Tone; accent?: string; k?: number }) {
+function plateMetrics(title: string, sub: string | undefined, chips: Chip[], note: string) {
   const name = title.length > 22 ? `${title.slice(0, 21)}…` : title
   const words = chips.length ? chips.map((c) => c.short ?? c.text) : [note]
   const widths = words.map((t) => measureText(t, 17) + (chips.length ? 26 : 8))
   const nameW = measureText(name, 22) + (sub ? measureText(sub, 15) + 10 : 0)
-  const w = 28 + nameW + 12 + widths.reduce((n, x) => n + x + 6, 0)
+  return { name, words, widths, nameW, w: 28 + nameW + 12 + widths.reduce((n, x) => n + x + 6, 0) }
+}
+const plateWidth = (title: string, sub: string | undefined, chips: Chip[], note: string) => plateMetrics(title, sub, chips, note).w
+
+/** 远景名牌：游戏里那种头顶名牌，一行写完：项目名 + 状态色点和数字，下面一个小尖角指着建筑。 */
+function FarPlate({ at, title, sub, chips, note, tone, accent = '#8a7a63', k = 1, lift = 0 }: { at: Pt; title: string; sub?: string; chips: Chip[]; note: string; tone: Tone; accent?: string; k?: number; lift?: number }) {
+  const { name, words, widths, nameW, w } = plateMetrics(title, sub, chips, note)
   let x = -w / 2 + 28 + nameW + 12
   return (
-    <g transform={`translate(${at[0]},${at[1]}) scale(${k})`}>
+    <g transform={`translate(${at[0]},${at[1] - lift}) scale(${k})`}>
       <title>{`${title}${sub ? ` · ${sub}` : ''}：${chips.length ? chips.map((c) => c.text).join('，') : note}`}</title>
+      {/* 为避让抬高时拉一根细线，仍然指得到自己的房子。 */}
+      {lift > 0 && <line x1="0" y1="6" x2="0" y2={lift / k + 6} stroke={PLATE_EDGE[tone] || accent} strokeWidth="2" />}
       <path d="M-7,-2 L0,8 L7,-2 Z" fill={PLATE_EDGE[tone] || accent} />
       <rect x={-w / 2 + 2} y={-36} width={w} height={36} rx="10" fill="rgba(40,25,10,.22)" />
       <rect x={-w / 2} y={-38} width={w} height={36} rx="10" fill={PLATE_FILL[tone]} stroke={PLATE_EDGE[tone] || accent} strokeWidth={tone === 'calm' ? 2 : 3.5} />
@@ -973,6 +1010,8 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
     if (!key || !at || !r || drag.current?.moved) { setHover(null); return }
     setHover({ key, x: Math.min(at.x - r.left + 16, r.width - 300), y: Math.max(8, Math.min(at.y - r.top + 12, r.height - 260)) })
   }
+  // 进房间时房子被卸载，收不到 pointerleave；这里清掉，回到世界时才不会留下一张失主的卡片。
+  useEffect(() => { if (inside) setHover(null) }, [inside])
   const hoverB = hover && !inside ? model.buildings.find((b) => b.key === hover.key) ?? null : null
   const onPointerDown = (e: RPointerEvent<HTMLDivElement>) => {
     if (e.button !== 0 || inside || structure) return

@@ -1,4 +1,6 @@
-.town-scene-menu { position: relative; z-index: 80; flex: 1 0 100%; min-width: 0; width: 100%; box-sizing: border-box; padding: 10px 12px; border: 1px solid var(--town-line, #d9cdb6); border-radius: 14px; background: var(--town-card, #fffaf0); font: inherit; color: var(--town-ink, #4a4033); }
+/* 收起时低于详情抽屉（30/31）和其他全局弹层；只有展开预览面板时才盖在地图工具上。 */
+.town-scene-menu { position: relative; z-index: 20; flex: 1 0 100%; min-width: 0; width: 100%; box-sizing: border-box; padding: 10px 12px; border: 1px solid var(--town-line, #d9cdb6); border-radius: 14px; background: var(--town-card, #fffaf0); font: inherit; color: var(--town-ink, #4a4033); }
+.town-scene-menu.is-open { z-index: 80; }
 .town-scene-bar { display: flex; align-items: center; gap: 18px; }
 .town-scene-label { display: flex; flex-direction: column; gap: 4px; flex-shrink: 0; }
 .town-scene-label strong { font-size: 14px; font-weight: 650; }

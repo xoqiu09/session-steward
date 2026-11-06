@@ -45,7 +45,7 @@ export function TownSceneMenu({ appearance, open, onOpenChange: setOpen }: { app
     return () => { window.removeEventListener('pointerdown', outside, true); window.removeEventListener('keydown', escape, true) }
   }, [open])
   const preview = (id: TownThemeId) => { void appearance.preview(id) }
-  return <div className="town-scene-menu" ref={root}>
+  return <div className={`town-scene-menu${open ? ' is-open' : ''}`} ref={root}>
     <div className="town-scene-bar">
       <div className="town-scene-label"><strong>小镇画风</strong><span>点选预览，确认后记住</span></div>
       <div className="town-scene-shortcuts" role="group" aria-label="切换小镇画风">

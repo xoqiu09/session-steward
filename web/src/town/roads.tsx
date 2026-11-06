@@ -55,6 +55,17 @@ export function worldRoads(world: WorldLayout): RoadSegment[] {
   return segments
 }
 
+/** 道路经过的格子（含相邻湖面会伸过来的 .8 格）。这些格子不放湖，路就不会铺在水上。 */
+export function roadCells(world: WorldLayout): Set<string> {
+  const cells = new Set<string>(), pad = .8
+  for (const { from, to } of worldRoads(world)) {
+    const x0 = Math.floor((Math.min(from.x, to.x) - pad) / CELL_W), x1 = Math.floor((Math.max(from.x, to.x) + pad) / CELL_W)
+    const y0 = Math.floor((Math.min(from.y, to.y) - pad) / CELL_D), y1 = Math.floor((Math.max(from.y, to.y) + pad) / CELL_D)
+    for (let cx = x0; cx <= x1; cx++) for (let cy = y0; cy <= y1; cy++) cells.add(`${cx},${cy}`)
+  }
+  return cells
+}
+
 export function WorldRoads({ world }: { world: WorldLayout }) {
   const paths = useMemo(() => {
     const segments = worldRoads(world)
