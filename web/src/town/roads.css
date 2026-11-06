@@ -1,0 +1,8 @@
+.town-view .town-world-roads { --road-edge: #a08d67; --road-surface: #e8d2a9; }
+.town-view.is-storybook .town-world-roads { --road-edge: #9c8b68; --road-surface: #e9d2a5; }
+.town-view.is-miniature .town-world-roads { --road-edge: #95916b; --road-surface: #efd7a4; }
+.town-view .town-world-roads path { fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.town-view .town-road-edge { stroke: var(--road-edge); stroke-width: 33; }
+.town-view .town-road-surface { stroke: var(--road-surface); stroke-width: 27; }
+.town-view .town-road-edge.is-path { stroke-width: 22; }
+.town-view .town-road-surface.is-path { stroke-width: 17; }
