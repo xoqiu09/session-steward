@@ -27,8 +27,10 @@ const host = vi.hoisted(() => {
   }
 })
 vi.mock('react', async (original) => ({ ...await original<typeof import('react')>(), useState: host.state, useRef: host.ref, useMemo: host.memo, useEffect: host.effect,
-  useCallback: (fn: (...args: any[]) => any, deps: any[]) => host.memo(() => fn, deps) }))
+  useCallback: (fn: (...args: any[]) => any, deps: any[]) => host.memo(() => fn, deps), useSyncExternalStore: (_subscribe: any, getSnapshot: () => any) => getSnapshot() }))
+vi.mock('./appearance', async original => ({ ...await original<typeof import('./appearance')>(), useTownArt: () => ({ theme: 'original', illustrated: false, miniature: false }) }))
 import { WorldScene, WorldStage } from './WorldScene'
+import { ResidentClock } from './residentPresence'
 import { MomentCard } from './MomentCard'
 import { TownGuide } from './TownGuide'
 import { TownView } from './TownView'
@@ -292,6 +294,18 @@ describe('WorldStage 跟随动态', () => {
 })
 
 describe('TownView 与 WorldStage 的真实组件连接', () => {
+  it('打开工作详情只暂停镜头，已接收的居民串门继续计时', () => {
+    viewProps = { sel: { kind: 'item', id: 'DEMO-2' } }
+    render()
+    const stage = nodes(townTree).find((n) => n.type === WorldStage)!
+    expect(stage.props.paused).toBe(true)
+    const clock = nodes(tree).find((n) => n.type === ResidentClock)!
+    const scene = nodes(tree).find((n) => n.type === WorldScene)!
+    const store = clock.props.store
+    expect(store.visit('gpt', scene.props.world.districts[0].id)).toBe(true)
+    expect(clock.props.active).toBe(true)
+  })
+
   it('全部设备视图仍可收菜，但完整收菜队列只含本机工作', () => {
     viewProps = { noReplay: true }
     snap = { ...snap, repos: [{ ...snap.repos![0], device: '本机演示' }, { id: 1_000_000_001, name: '远方合成菜地', device: '远方演示机', common_dir: '', is_git: true, target_ref: 'main' }],

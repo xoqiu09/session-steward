@@ -1,5 +1,7 @@
 // 小镇世界的景物：松树、花丛、石头、池塘、风车、营火、栅栏。全部自己画的 SVG，按格子坐标摆放。
 import { IsoBox, iso, pts, type Pt } from './iso'
+import { StoryProp, storyBlob } from './storybook'
+import { useTownArt } from './appearance'
 
 export type Terrain = 'meadow' | 'forest' | 'lake' | 'hill'
 
@@ -21,7 +23,19 @@ export const YARD_TINT: Record<Terrain, string> = {
 export const TERRAIN_NAME: Record<Terrain, string> = { meadow: '草地', forest: '森林', lake: '湖边', hill: '山坡' }
 
 export function Pine({ at, k = 1 }: { at: Pt; k?: number }) {
+  const { illustrated, miniature } = useTownArt()
   const [x, y] = at
+  if (miniature) return <g aria-hidden="true" pointerEvents="none" transform={`translate(${x},${y}) scale(${k})`}>
+    <ellipse rx="17" ry="5" fill="#5d7952" opacity=".15" />
+    <path d="M-3 0V-22H3V0Z" fill="#a48561" />
+    {[[-10, 28],[-24, 24],[-38, 18]].map(([y,w],i)=><path key={i} d={`M0 ${y-26} Q${-w*.35} ${y-17} ${-w} ${y} Q0 ${y+12} ${w} ${y} Q${w*.35} ${y-17} 0 ${y-26}Z`} fill={['#82ad74','#99bf82','#bdd795'][i]} stroke="#628b5a" strokeOpacity=".13" />)}
+  </g>
+  if (illustrated) return <g aria-hidden="true" transform={`translate(${x},${y}) scale(${k})`}>
+    <ellipse rx="17" ry="5.5" fill="#69794d" opacity=".14" />
+    <path d="M-3 0 L-2-27 3-27 3 0Z" fill="#977249" />
+    <path d="M0-64 Q-4-51-14-43 Q-10-40-5-41 Q-12-31-22-23 Q-15-19-9-21 Q-15-10-24-8 Q-11 2 0-3 Q15 3 24-8 Q13-16 9-21 Q18-19 22-23 Q12-32 5-41 Q11-40 14-43 Q5-53 0-64Z" fill="#799668" stroke="#65855e" strokeWidth=".8" strokeLinejoin="round" />
+    <path d="M0-59 Q-3-48-11-43 M-4-36 Q-8-28-15-24 M-7-17 Q-11-11-17-8" fill="none" stroke="#a9bd85" strokeWidth="3" opacity=".65" strokeLinecap="round" />
+  </g>
   return (
     <g aria-hidden transform={`translate(${x},${y}) scale(${k})`}>
       <ellipse rx="13" ry="5" fill="rgba(40,25,10,.18)" />
@@ -36,7 +50,9 @@ export function Pine({ at, k = 1 }: { at: Pt; k?: number }) {
 const PETALS = ['#f2a3b3', '#f7d36b', '#ffffff', '#b9a3f2', '#f29b6b']
 
 export function Flowers({ gx, gy, seed }: { gx: number; gy: number; seed: number }) {
+  const { illustrated } = useTownArt()
   const [x, y] = iso(gx, gy)
+  if (illustrated) return <StoryProp kind="wildflowers" at={[x,y]} width={23+Math.abs(seed)%5} />
   return (
     <g aria-hidden transform={`translate(${x},${y})`}>
       {[0, 1, 2, 3, 4].map((i) => {
@@ -53,11 +69,20 @@ export function Flowers({ gx, gy, seed }: { gx: number; gy: number; seed: number
 }
 
 export function Rock({ gx, gy, k = 1 }: { gx: number; gy: number; k?: number }) {
+  const { illustrated, miniature } = useTownArt()
+  if (miniature) return <g aria-hidden="true" pointerEvents="none" transform={`translate(${iso(gx+.3*k,gy+.25*k).join(',')}) scale(${k})`}>
+    <ellipse rx="20" ry="6" fill="#729563" opacity=".13" />
+    <path d="M-19-3Q-19-12-8-12Q0-22 11-13Q20-10 19-2Q3 7-19-3" fill="#adbba6" />
+    <path d="M-17-6Q-15-13-7-13Q0-20 9-12Q5-5-6-3Z" fill="#d8dfc9" />
+    <ellipse cx="21" cy="1" rx="5" ry="3" fill="#c8d5bb" />
+  </g>
+  if (illustrated) return <StoryProp kind="stones" at={iso(gx+.3*k,gy+.25*k)} width={29*k} />
   return <IsoBox gx={gx} gy={gy} w={0.7 * k} d={0.55 * k} h={9 * k} top="#c4c2b8" left="#a8a59a" right="#93907f" />
 }
 
 /** 池塘：不规则的水面，水波线条会闪。 */
 export function Pond({ gx, gy, w, d }: { gx: number; gy: number; w: number; d: number }) {
+  const { illustrated, miniature } = useTownArt()
   const ring: Pt[] = []
   for (let i = 0; i < 12; i++) {
     const a = (i / 12) * Math.PI * 2
@@ -65,10 +90,13 @@ export function Pond({ gx, gy, w, d }: { gx: number; gy: number; w: number; d: n
     ring.push(iso(gx + w / 2 + Math.cos(a) * (w / 2) * r, gy + d / 2 + Math.sin(a) * (d / 2) * r))
   }
   const c = iso(gx + w / 2, gy + d / 2)
+  const mid = (a: Pt, b: Pt): Pt => [(a[0]+b[0])/2,(a[1]+b[1])/2]
+  const waterPath = `M${mid(ring[ring.length-1],ring[0]).join(',')} ${ring.map((p,i) => `Q${p.join(',')} ${mid(p,ring[(i+1)%ring.length]).join(',')}`).join(' ')} Z`
   return (
     <g aria-hidden>
       <polygon points={pts(ring)} fill="#a9c98f" transform={`translate(0,3)`} />
-      <polygon points={pts(ring)} fill="#7fb3d5" stroke="#6a9cbd" strokeWidth="1.5" />
+      {illustrated ? <path d={waterPath} fill={miniature ? "#a7d2ca" : "#8db8bf"} stroke={miniature ? "#7fafa5" : "#789ea3"} strokeWidth="1.5" /> : <polygon points={pts(ring)} fill="#7fb3d5" stroke="#6a9cbd" strokeWidth="1.5" />}
+      {illustrated && ring.map(([x,y], i) => <ellipse key={i} cx={x} cy={y} rx={4.5+i%3} ry={2.5+i%2} transform={`rotate(${i*27},${x},${y})`} fill={i%2 ? '#d4cbb0' : '#e7dec6'} stroke="#b4ad91" strokeWidth=".6" />)}
       {[-1, 0, 1].map((i) => (
         <line key={i} className="town-shimmer" x1={c[0] - 18 + i * 10} y1={c[1] + i * 7} x2={c[0] + 10 + i * 10} y2={c[1] + i * 7} stroke="#e8f4fb" strokeWidth="2" strokeLinecap="round" strokeDasharray="6 10" />
       ))}
@@ -141,12 +169,19 @@ type LakeShape = { ring: [number, number][]; cx: number; cy: number; island: { g
  * 先画所有湖的岸和描边，再盖上所有水面，相邻格子的湖叠在一起时看不到接缝。
  */
 export function Lakes({ shapes }: { shapes: LakeShape[] }) {
+  const { illustrated, miniature } = useTownArt()
   const rings = shapes.map((s) => pts(s.ring.map(([gx, gy]) => iso(gx, gy))))
+  const paths = illustrated ? shapes.map(s=>storyBlob(s.ring.map(([gx,gy])=>iso(gx,gy)))) : []
   return (
     <g aria-hidden>
-      {rings.map((r, i) => <polygon key={`b${i}`} points={r} fill="#a9c98f" transform="translate(0,4)" />)}
-      {rings.map((r, i) => <polygon key={`s${i}`} points={r} fill="#6a9cbd" stroke="#6a9cbd" strokeWidth="3" strokeLinejoin="round" />)}
-      {rings.map((r, i) => <polygon key={`w${i}`} points={r} fill="#7fb3d5" />)}
+      {illustrated ? <>
+        {paths.map((p,i)=><path key={`shore${i}`} d={p} fill="#a9b995" stroke="#b8c49c" strokeWidth="10" />)}
+        {paths.map((p,i)=><path key={`water${i}`} d={p} fill={miniature ? "#a7d2ca" : "#91b9bc"} />)}
+      </> : <>
+        {rings.map((r, i) => <polygon key={`b${i}`} points={r} fill="#a9c98f" transform="translate(0,4)" />)}
+        {rings.map((r, i) => <polygon key={`s${i}`} points={r} fill="#6a9cbd" stroke="#6a9cbd" strokeWidth="3" strokeLinejoin="round" />)}
+        {rings.map((r, i) => <polygon key={`w${i}`} points={r} fill="#7fb3d5" />)}
+      </>}
       {shapes.map((s, i) => {
         const c = iso(s.cx, s.cy)
         return [-1, 0, 1].map((j) => (
@@ -178,7 +213,9 @@ export function Mound({ ring, lift }: { ring: [number, number][]; lift: number }
 
 /** 矮灌木：几团圆。 */
 export function Bush({ at, k = 1 }: { at: Pt; k?: number }) {
+  const { illustrated } = useTownArt()
   const [x, y] = at
+  if (illustrated) return <StoryProp kind="ferns" at={at} width={34*k} />
   return (
     <g aria-hidden transform={`translate(${x},${y}) scale(${k})`}>
       <ellipse rx="11" ry="4" fill="rgba(40,25,10,.16)" />

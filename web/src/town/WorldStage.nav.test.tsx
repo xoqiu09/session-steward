@@ -16,6 +16,7 @@ const host = vi.hoisted(() => {
       active = contexts.get(scope)!; active.index = 0; active.dirty = false; active.pending = []
     },
     commit() { const c = active; c.pending.forEach((f) => f()); return c.dirty },
+    changed(scope = 'stage') { return contexts.get(scope)?.dirty ?? false },
     reset() { contexts.forEach((c) => c.cleanups.forEach((f) => f?.())); contexts.clear() },
     state(init: any) { const c = active, i = c.index++; if (!(i in c.slots)) c.slots[i] = typeof init === 'function' ? init() : init
       return [c.slots[i], (value: any) => { const next = typeof value === 'function' ? value(c.slots[i]) : value; if (!Object.is(next, c.slots[i])) { c.slots[i] = next; c.dirty = true } }] },
@@ -27,7 +28,10 @@ const host = vi.hoisted(() => {
   }
 })
 vi.mock('react', async (original) => ({ ...await original<typeof import('react')>(), useState: host.state, useRef: host.ref, useMemo: host.memo, useEffect: host.effect,
-  useCallback: (fn: (...args: any[]) => any, deps: any[]) => host.memo(() => fn, deps) }))
+  useCallback: (fn: (...args: any[]) => any, deps: any[]) => host.memo(() => fn, deps), useSyncExternalStore: (_subscribe: any, getSnapshot: () => any) => getSnapshot() }))
+// This hook host calls scene components directly. Keep its original-art fixture;
+// actual context switching is covered by appearance tests and the browser flow.
+vi.mock('./appearance', async original => ({ ...await original<typeof import('./appearance')>(), useTownArt: () => ({ theme: 'original', illustrated: false, miniature: false }) }))
 import { WorldScene, WorldStage, type NavTarget } from './WorldScene'
 import { InteriorScene } from './InteriorScene'
 import { TownStructure } from './TownStructure'
@@ -38,6 +42,10 @@ import { fakeItem, fakeSession } from './fixtures'
 import { FAR_W, type Box } from './world'
 import { iso } from './iso'
 import type { WorldPlan } from './clusters'
+import { ResidentFollow } from './ResidentFollow'
+import { ResidentsPanel } from './ResidentVillage'
+import type { ResidentStore } from './residentLife'
+import type { ResidentId } from './residents'
 
 type Node = ReactElement<any>
 /** 项目列表、验收台列表是函数组件（无 hook），展开它们的输出一起找按钮和文字。 */
@@ -58,7 +66,7 @@ const button = (tree: Node, text: string) => nodes(tree).find((n) => n.type === 
 const needsYou = () => false
 const selected = vi.fn()
 const noop = () => {}
-let snap: Snapshot, tree: Node, townTree: Node
+let snap: Snapshot, tree: Node, townTree: Node, residentTree: Node | null
 let props: Partial<Parameters<typeof WorldStage>[0]>
 let viewProps: Partial<Parameters<typeof TownView>[0]> | null
 let reduced = true
@@ -83,7 +91,12 @@ const render = () => {
   for (let n = 0; n < 12; n++) {
     host.begin()
     tree = WorldStage(stageProps)
-    if (!host.commit()) return tree
+    host.commit()
+    const resident = nodes(tree).find((n) => n.type === ResidentFollow)!
+    host.begin('resident-follow')
+    residentTree = ResidentFollow(resident.props)
+    host.commit()
+    if (!host.changed()) return tree
   }
   throw new Error('组件没有稳定下来')
 }
@@ -280,6 +293,26 @@ describe('30 秒内不被自动巡游抢镜', () => {
   })
 })
 
+describe('看居民时留在花园', () => {
+  it('居民面板开着超过巡游周期也不飞走，关闭后恢复巡游', () => {
+    reduced = false; props = { plan, kiosk: true, rotateMs: 5000 }; render()
+    press('居民 7')
+    const flights = vi.mocked(requestAnimationFrame).mock.calls.length
+    walk(65_000)
+    expect(requestAnimationFrame).toHaveBeenCalledTimes(flights)
+    press('居民 7')
+    walk(40_000)
+    expect(vi.mocked(requestAnimationFrame).mock.calls.length).toBeGreaterThan(flights)
+  })
+  it('看居民超过手动操作保护期后，新交付仍只入队，不抢走镜头', () => {
+    render(); press('居民 7'); const at = view(); walk(35_000)
+    snap = { ...snap, cursor: 2, work_items: snap.work_items!.map((w) => w.id === 'SYN-1' ? { ...w, status: 'review', updated_at: new Date().toISOString() } : w) }
+    render(); advance(3000)
+    expect(view()).toEqual(at)
+    expect(words(tree)).toContain('1 处有新动态')
+  })
+})
+
 describe('两台设备同名项目不串位', () => {
   it('同名项目按来源设备各自定位；设备顺序变了也去同一块地', () => {
     const devices = [{ id: 'self', name: '本机演示', self: true, online: true, received_at: snap.now }, { id: 'r1', name: '远方演示机', self: false, online: true, received_at: snap.now }]
@@ -412,5 +445,90 @@ describe('验收台去项目门口', () => {
   it('没有待验收时照旧打开关注队列', () => {
     render(); desk()
     expect(selected).toHaveBeenCalledWith({ kind: 'review-desk', key: 'review-desk' })
+  })
+})
+
+// 使用真实居民 store、面板回调和跟随组件 effect；每拍显式重画，模拟浏览器的外部 store 订阅。
+const followNode = () => nodes(tree).find((n) => n.type === ResidentFollow)!
+const residentStore = (): ResidentStore => followNode().props.store
+const residentPanel = () => {
+  const panel = nodes(tree).find((n) => n.type === ResidentsPanel)!
+  host.begin('resident-panel'); const result = ResidentsPanel(panel.props); host.commit(); return result
+}
+const startResidentVisit = (id: ResidentId = 'gpt', destination?: string) => {
+  if (!tree) render()
+  if (!nodes(tree).some((n) => n.type === ResidentsPanel)) press('居民 7')
+  nodes(tree).find((n) => n.type === ResidentsPanel)!.props.onSelect(id); render()
+  let panel = residentPanel()
+  if (destination) { nodes(panel).find((n) => n.type === 'select')!.props.onChange({ target: { value: destination } }); panel = residentPanel() }
+  button(panel, '去串门')!.props.onClick(); render()
+  return residentStore()
+}
+const residentTick = (ms = 500) => { vi.advanceTimersByTime(ms); residentStore().tick(Date.now()); render() }
+const followedInView = (id: ResidentId) => {
+  const trip = residentStore().getSnapshot().actors[id].trip!
+  return within(iso(trip.x, trip.y), view())
+}
+const followButton = (label: string) => { button(residentTree!, label)!.props.onClick(); render() }
+
+describe('跟着串门居民走', () => {
+  it('点去串门自动跟随，位置推进时镜头也推进', () => {
+    render(); const before = view(), store = startResidentVisit()
+    expect(followNode().props).toMatchObject({ id: 'gpt', following: true })
+    expect(view()).not.toEqual(before); expect(followedInView('gpt')).toBe(true)
+    const first = view(); residentTick(); residentTick()
+    expect(view()).not.toEqual(first); expect(followedInView('gpt')).toBe(true)
+    expect(store.getSnapshot().actors.gpt.trip).toBeDefined()
+  })
+  it('工作详情打开只暂停巡游，显式居民跟随仍然推进', () => {
+    viewProps = { sel: { kind: 'item', id: 'SYN-1' } }; render(); startResidentVisit()
+    expect(nodes(townTree).find((n) => n.type === WorldStage)!.props.paused).toBe(true)
+    const before = view(); residentTick(); residentTick()
+    expect(view()).not.toEqual(before); expect(followedInView('gpt')).toBe(true)
+  })
+  it('拖动交还镜头但居民继续走，可继续跟随，也能停止跟随', () => {
+    render(); const store = startResidentVisit()
+    tree.props.ref.current = { getBoundingClientRect: () => ({ width: 800, height: 500, left: 0, top: 0 }), querySelector: () => null, setPointerCapture: vi.fn(), releasePointerCapture: vi.fn(), addEventListener: vi.fn(), removeEventListener: vi.fn() }
+    tree.props.onPointerDown({ button: 0, clientX: 10, clientY: 10, pointerId: 1 }); tree.props.onPointerMove({ clientX: 100, clientY: 30, pointerId: 1 }); render()
+    expect(followNode().props.following).toBe(false)
+    const manual = view(), before = { ...store.getSnapshot().actors.gpt.trip! }; residentTick(); residentTick()
+    expect(view()).toEqual(manual); expect(store.getSnapshot().actors.gpt.trip).not.toEqual(before)
+    followButton('继续跟随'); expect(followNode().props.following).toBe(true); expect(followedInView('gpt')).toBe(true)
+    followButton('停止跟随'); expect(followNode().props.following).toBe(false)
+  })
+  it('缩放和手动项目导航都退出跟随，镜头不会被下一拍抢回', () => {
+    render(); startResidentVisit(); press('放大')
+    expect(followNode().props.following).toBe(false)
+    const zoom = view(); residentTick(); expect(view()).toEqual(zoom)
+    followButton('继续跟随'); scene().props.onNavigate({ kind: 'project', id: 'self#1' }); render()
+    expect(followNode().props.following).toBe(false)
+    const project = view(); residentTick(); expect(view()).toEqual(project)
+  })
+  it('一只进屋时自动跟进，返程回世界，回到家后结束跟随', () => {
+    render(); const original = JSON.stringify(snap), destination = scene().props.world.districts[0]
+    const store = startResidentVisit('gpt', destination.id)
+    for (let i = 0; i < 360 && store.getSnapshot().actors.gpt.trip?.phase !== 'inside'; i++) residentTick()
+    expect(store.getSnapshot().actors.gpt.trip?.phase).toBe('inside')
+    expect(nodes(tree).find((n) => n.type === InteriorScene)!.props.b.key).toBe(destination.key)
+    expect(followNode().props.following).toBe(true)
+    for (let i = 0; i < 500 && store.getSnapshot().actors.gpt.trip; i++) residentTick()
+    expect(store.getSnapshot().actors.gpt.trip).toBeUndefined(); expect(inside()).toBe(false)
+    expect(followNode().props.id).toBeNull(); expect(residentTree).toBeNull()
+    expect(JSON.stringify(snap)).toBe(original)
+  })
+  it('两只分别串门时只跟最近指定的一只，手动离开房间后不强行跟回去', () => {
+    render(); const destination = scene().props.world.districts[0], store = startResidentVisit('gpt', destination.id)
+    startResidentVisit('deepseek', destination.id)
+    expect(followNode().props.id).toBe('deepseek'); expect(store.getSnapshot().actors.gpt.trip).toBeDefined()
+    for (let i = 0; i < 360 && store.getSnapshot().actors.deepseek.trip?.phase !== 'inside'; i++) residentTick()
+    expect(inside()).toBe(true); press('← 回到世界')
+    expect(followNode().props.following).toBe(false); residentTick(); expect(inside()).toBe(false)
+  })
+  it('居民自己的暂停冻结路线，恢复后继续跟随；进入回放清掉跟随', () => {
+    render(); const store = startResidentVisit(); store.configure('paused', true); render()
+    const before = { ...store.getSnapshot().actors.gpt.trip! }, camera = view(); residentTick(); residentTick()
+    expect(store.getSnapshot().actors.gpt.trip).toEqual(before); expect(view()).toEqual(camera)
+    store.configure('paused', false); residentTick(); expect(view()).not.toEqual(camera)
+    props = { ...props, replaying: true }; render(); expect(followNode().props.id).toBeNull(); expect(residentTree).toBeNull()
   })
 })

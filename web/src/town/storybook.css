@@ -1,0 +1,55 @@
+/* Local preview art direction. Nothing applies until ?town-art=storybook is explicitly selected. */
+.town-view:is(.is-storybook,.is-miniature) {
+  --town-ink: #574736; --town-muted: #89765e; --town-card: #fffaf0; --town-line: #dbceb5;
+  --town-blue: #355d85; --story-shadow: 0 5px 18px rgba(78,61,36,.1);
+  gap: 5px; padding: 6px 10px 10px;
+}
+.town-view:is(.is-storybook,.is-miniature) .town-diorama { background: #f1ead9; border: 1px solid #e0d4ba; border-radius: 20px; box-shadow: 0 8px 28px #6c624010; }
+.town-view:is(.is-storybook,.is-miniature) .town-diorama::before, .town-view:is(.is-storybook,.is-miniature) .town-diorama::after { display: none; }
+.town-view:is(.is-storybook,.is-miniature) .town-bar { gap: 6px 10px; min-height: 30px; }
+.town-view:is(.is-storybook,.is-miniature) .town-meta { font-size: 10px; color: #91816a; }
+.town-view:is(.is-storybook,.is-miniature) .town-world-tools { left: 14px; right: 14px; top: 12px; gap: 5px; flex-wrap: wrap; align-items: center; }
+.town-view:is(.is-storybook,.is-miniature) .town-world-tools button { min-height: 34px; padding: 6px 10px; border-color: #dbceb5; border-radius: 10px; background: #fffaf2f2; box-shadow: 0 2px 3px #715b3110; font-size: 11px; color: #65533e; }
+.town-view:is(.is-storybook,.is-miniature) .town-world-tools button.is-on { background: #647e62; border-color: #647e62; color: #fffaf0; }
+.town-view:is(.is-storybook,.is-miniature) .town-world-hint { top: 56px; padding: 3px 9px; color: #7e795e; background: #faf6e5bf; font-size: 10px; }
+.town-view:is(.is-storybook,.is-miniature) .town-world-hint.is-inside { top: auto; bottom: 42px; left: 14px; transform: none; max-width: calc(100% - 28px); }
+.town-view:is(.is-storybook,.is-miniature) .town-away { top: 82px; left: 14px; right: auto; max-width: calc(100% - 28px); padding: 6px 10px; gap: 6px; border-radius: 10px; font-size: 11px; box-shadow: var(--story-shadow); }
+.town-view:is(.is-storybook,.is-miniature) .town-away span { flex-basis: auto; }
+.town-view:is(.is-storybook,.is-miniature) .town-away button { padding: 4px 7px; font-size: 10px; }
+.town-view:is(.is-storybook,.is-miniature) .town-legend { position: absolute; max-width: calc(100% - 240px); left: 14px; bottom: 10px; font-size: 10px; gap: 5px 10px; background: #fffaf0e8; border: 1px solid #e0d4ba; box-shadow: 0 2px 8px #6655370a; }
+.town-view:is(.is-storybook,.is-miniature) .town-legend i { width: 9px; height: 9px; }
+.town-view:is(.is-storybook,.is-miniature) .town-minimap { border-radius: 12px; border-color: #dfd3b9; background: #faf5e8dd; box-shadow: var(--story-shadow); }
+.town-view:is(.is-storybook,.is-miniature) .town-sign .town-task, .town-view:is(.is-storybook,.is-miniature) .town-sign .town-sub { opacity: 0; transition: opacity .15s; }
+.town-view:is(.is-storybook,.is-miniature) .town-building:hover .town-sign .town-task, .town-view:is(.is-storybook,.is-miniature) .town-building:focus .town-sign .town-task,
+.town-view:is(.is-storybook,.is-miniature) .town-building.is-selected .town-sign .town-task,
+.town-view:is(.is-storybook,.is-miniature) .town-building:hover .town-sign .town-sub, .town-view:is(.is-storybook,.is-miniature) .town-building:focus .town-sign .town-sub,
+.town-view:is(.is-storybook,.is-miniature) .town-building.is-selected .town-sign .town-sub { opacity: 1; }
+.town-view:is(.is-storybook,.is-miniature) .town-resident-figure > ellipse:first-child { fill: #6f67492e; }
+.town-view:is(.is-storybook,.is-miniature) .town-resident-name { font-size: 9.5px; font-weight: 550; stroke-width: 3.5px; }
+.town-view:is(.is-storybook,.is-miniature) .town-resident-figure .town-resident-name { opacity: 0; }
+.town-view:is(.is-storybook,.is-miniature) .town-resident-figure:is(:hover,:focus-visible,.is-selected) .town-resident-name { opacity: 1; }
+.town-view:is(.is-storybook,.is-miniature) .town-guide-bubble { background: #687e60; box-shadow: var(--story-shadow); font-size: 10px; }
+.town-view:is(.is-storybook,.is-miniature) .town-residents-panel { top: 82px; width: 310px; border-color: #d8c9ae; box-shadow: var(--story-shadow); }
+.town-view:is(.is-storybook,.is-miniature) .town-resident-follow { background: #fffaf2f5; border-color: #d8c9ae; box-shadow: var(--story-shadow); }
+.town-view:is(.is-storybook,.is-miniature) .town-resident-follow button { color: #526e50; }
+.town-view:is(.is-storybook,.is-miniature) .town-story-house-hit { fill: transparent; }
+.town-view:is(.is-storybook,.is-miniature) .town-story-nature { filter: saturate(.68) brightness(1.025); }
+.town-view:is(.is-storybook,.is-miniature) .town-char { filter: drop-shadow(0 1px 1px #6f5c3524); }
+.town-view:is(.is-storybook,.is-miniature) .town-char .town-bob { transform-origin: center bottom; }
+.town-view:is(.is-storybook,.is-miniature) .town-interior-grid { grid-template-columns: minmax(0,1fr) minmax(238px,30%); }
+.town-view:is(.is-storybook,.is-miniature) .town-feature-panel { border-color: #d8c9ae; background: #fffaf0; }
+@media (max-width: 1000px) {
+  .town-view:is(.is-storybook,.is-miniature) .town-interior-grid { grid-template-columns: minmax(0,1fr); }
+}
+@media (max-width: 760px) {
+  .town-view:is(.is-storybook,.is-miniature) .town-world-tools { left: 8px; right: 8px; top: 8px; gap: 4px; }
+  .town-view:is(.is-storybook,.is-miniature) .town-world-tools button { min-height: 36px; padding: 5px 8px; }
+  .town-view:is(.is-storybook,.is-miniature) .town-away { top: 100px; left: 8px; max-width: calc(100% - 16px); }
+  .town-view:is(.is-storybook,.is-miniature) .town-residents-panel { top: auto; bottom: 46px; width: calc(100% - 16px); }
+  .town-view:is(.is-storybook,.is-miniature) .town-legend { max-width: calc(100% - 160px); left: 8px; padding: 5px 7px; gap: 4px 8px; font-size: 9px; }
+  .town-view:is(.is-storybook,.is-miniature) .town-minimap { width: 132px; height: 84px; right: 8px; bottom: 10px; }
+  .town-view:is(.is-storybook,.is-miniature) .town-resident-follow { bottom: 72px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .town-view:is(.is-storybook,.is-miniature) .town-sign :is(.town-task,.town-sub) { transition: none; }
+}

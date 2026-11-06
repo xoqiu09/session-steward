@@ -1,5 +1,5 @@
 // 小镇世界：每个项目一个街区，中间是广场。远景只画街区名牌和计数，近景画小人、包裹和任务。只读。
-import { useEffect, useMemo, useRef, useState, type PointerEvent as RPointerEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type PointerEvent as RPointerEvent, type RefObject } from 'react'
 import { STALE_REVIEW_MS } from '../workManagement'
 import { onRoomRequest, takeRoomRequest, type RoomFocus, type RoomRequest } from './roomRequest'
 import { IsoBox, IsoTile, iso, type Pt } from './iso'
@@ -7,7 +7,7 @@ import { attentionManaged } from '../workManagement'
 import { characterStatusLabel, type BuildingView, type Highlight, type ParcelView, type TownModel } from './townModel'
 import {
   Building, HOUSE_SHAPE, Character, DecisionBoard, DispatchTable, FailRack, Parcel, Path, ReviewDesk, StatusPill, Tag, Tree,
-  activate, buildingColors, charLook, charMatches, onReviewDesk, parcelMatches, parcelTitle,
+  activate, buildingColors, charLook, characterPillName, charMatches, onReviewDesk, parcelMatches, parcelTitle,
   type BuildingShape, type Plot, type Selection,
 } from './TownScene'
 import {
@@ -36,9 +36,19 @@ import { identityKeys, projectIdentity } from './identity'
 import { isRemote as remoteAccess } from '../access'
 import { dispatchHref } from '../dispatch/dispatchModel'
 import { api } from '../api'
+import { ResidentsPanel, ResidentsVillage } from './ResidentVillage'
+import { createResidentStore, type ResidentActor, type ResidentStore } from './residentLife'
+import type { ResidentId } from './residents'
+import { DISTRICT_FOOTPRINT } from './world'
+import { ResidentClock } from './residentPresence'
+import { ResidentRoomVisitors, ResidentWorldVisitors } from './ResidentVisits'
+import { StoryClearing, StoryGrass, StoryTrail, storyBlob } from './storybook'
+import { useTownArt } from './appearance'
+import { addPoint, cellOrigin, residentWorld } from './residentTrips'
+import { ResidentFollow } from './ResidentFollow'
 
 // 小镇里的浮动面板，面板本身和它的开关按钮都标上同一个名字，点在这些元素以外就收起。
-type Popover = 'guide' | 'projects' | 'desk' | 'moments'
+type Popover = 'guide' | 'projects' | 'desk' | 'moments' | 'residents'
 const POPOVER_ATTR = 'data-town-popover'
 
 /** 每个街区的退件筐最多摆几个箱子，其余只计数。 */
@@ -85,6 +95,8 @@ interface SceneProps {
   onNavigate?: (t: NavTarget) => void
   /** 刚按片区取景的片区：地图远景下也显示它每个成员的名牌，村名牌让位。 */
   focusArea?: string | null
+  residents?: { store: ResidentStore; active: boolean; selected: ResidentId | null; onSelect: (id: ResidentId) => void; onEnter?: (projectId: string) => void }
+  sceneRef?: RefObject<SVGSVGElement | null>
 }
 
 /** 手动导航的目标：项目按稳定项目键（来源设备 + 原始项目编号），片区按片区键。 */
@@ -97,10 +109,10 @@ const DISPATCH = { gx: 0.8, gy: 4.2 }
 
 /** 四档建筑：占地、墙色、高度、窗户层数。占满院子后排，远看也认得出大小差别。 */
 const TIERS: Record<Tier, { shape: BuildingShape; w: number; d: number }> = {
-  0: { w: 3.8, d: 3.0, shape: { kind: 'cabin', name: '小木屋', h: 48, rise: 38, floors: 1, walls: { top: '#b48a5c', front: '#c99c6a', side: '#ad8152', edge: '#7a5636' } } },
-  1: { w: 5.0, d: 3.6, shape: { ...HOUSE_SHAPE, h: 72, rise: 44, floors: 2 } },
-  2: { w: 5.6, d: 3.9, shape: { kind: 'workshop', name: '工坊', h: 86, rise: 34, floors: 2, walls: { top: '#e9dcc4', front: '#efe1c8', side: '#dccaa8', edge: '#8f7350' } } },
-  3: { w: 5.0, d: 4.0, shape: { kind: 'tower', name: '大楼', h: 196, rise: 30, floors: 5, walls: { top: '#e7e2d6', front: '#f1ece0', side: '#dcd4c3', edge: '#8d8270' } } },
+  0: { ...DISTRICT_FOOTPRINT[0], shape: { kind: 'cabin', name: '小木屋', h: 48, rise: 38, floors: 1, walls: { top: '#b48a5c', front: '#c99c6a', side: '#ad8152', edge: '#7a5636' } } },
+  1: { ...DISTRICT_FOOTPRINT[1], shape: { ...HOUSE_SHAPE, h: 72, rise: 44, floors: 2 } },
+  2: { ...DISTRICT_FOOTPRINT[2], shape: { kind: 'workshop', name: '工坊', h: 86, rise: 34, floors: 2, walls: { top: '#e9dcc4', front: '#efe1c8', side: '#dccaa8', edge: '#8f7350' } } },
+  3: { ...DISTRICT_FOOTPRINT[3], shape: { kind: 'tower', name: '大楼', h: 196, rise: 30, floors: 5, walls: { top: '#e7e2d6', front: '#f1ece0', side: '#dcd4c3', edge: '#8d8270' } } },
 }
 
 function districtPlot(d: District): Plot {
@@ -108,7 +120,8 @@ function districtPlot(d: District): Plot {
   return { gx: d.ox + 0.8, gy: d.oy + 0.5, w: t.w, d: t.d, facing: 'x', ...buildingColors(d.b.repo?.id) }
 }
 
-export function WorldScene({ model, world, view, far, selected, highlight, onSelect, changed = new Set(), offline = false, needsYou, stalled, onHoverHouse, agents = null, momentGlow, progressSparks, onNavigate, focusArea = null, dispatch = [], onDispatch }: SceneProps) {
+export function WorldScene({ model, world, view, far, selected, highlight, onSelect, changed = new Set(), offline = false, needsYou, stalled, onHoverHouse, agents = null, momentGlow, progressSparks, onNavigate, focusArea = null, dispatch = [], onDispatch, residents, sceneRef }: SceneProps) {
+  const { illustrated, miniature } = useTownArt()
   const isSel = (kind: Selection['kind'], key: string) => selected?.kind === kind && selected.key === key
   const dim = (match: boolean) => (highlight && !match ? ' is-dim' : '')
   const flash = (key: string) => (changed.has(key) ? ' is-changed' : '')
@@ -118,8 +131,8 @@ export function WorldScene({ model, world, view, far, selected, highlight, onSel
   const cxs = new Set<number>(), cys = new Set<number>()
   for (let gx = gx0; gx < gx1; gx += CELL_W) cxs.add(Math.floor(gx / CELL_W))
   for (let gy = gy0; gy < gy1; gy += CELL_D) cys.add(Math.floor(gy / CELL_D))
-  const used = new Set(['0,0', ...world.districts.map((d) => `${d.cell.cx},${d.cell.cy}`), ...world.villages.map((v) => `${v.square.cx},${v.square.cy}`)])
-  const streetCells: Cell[] = [{ cx: 0, cy: 0 }, ...world.districts.filter((d) => d.kind !== 'wild').map((d) => d.cell), ...world.villages.map((v) => v.square)]
+  const used = new Set(['0,0', ...world.districts.map((d) => `${d.cell.cx},${d.cell.cy}`), ...world.villages.map((v) => `${v.square.cx},${v.square.cy}`), ...(world.residential ? [`${world.residential.cx},${world.residential.cy}`] : [])])
+  const streetCells: Cell[] = [{ cx: 0, cy: 0 }, ...world.districts.filter((d) => d.kind !== 'wild').map((d) => d.cell), ...world.villages.map((v) => v.square), ...(world.residential ? [world.residential] : [])]
   // 地形：中央是草地；村庄和野外小屋按名字固定一种。
   const terrainAt = new Map<string, Terrain>([['0,0', 'meadow']])
   for (const v of world.villages) for (const c of v.cells) terrainAt.set(`${c.cx},${c.cy}`, terrainOf(v.key))
@@ -179,7 +192,7 @@ export function WorldScene({ model, world, view, far, selected, highlight, onSel
   }
   // 空地和街区一起按前后顺序画：前面一格的树不会被后面的房子盖住。
   const emptyAt = new Map(empty.map((e) => [`__e${e.c.cx},${e.c.cy}`, e]))
-  const depthOrder = [{ key: '__plaza', depth: 0, cx: 0 }, ...world.districts.map((d) => ({ key: d.key, depth: d.cell.cx + d.cell.cy, cx: d.cell.cx })),
+  const depthOrder = [{ key: '__plaza', depth: 0, cx: 0 }, ...(world.residential && residents ? [{ key: '__residents', depth: world.residential.cx + world.residential.cy, cx: world.residential.cx }] : []), ...world.districts.map((d) => ({ key: d.key, depth: d.cell.cx + d.cell.cy, cx: d.cell.cx })),
     ...empty.map((e) => ({ key: `__e${e.c.cx},${e.c.cy}`, depth: e.c.cx + e.c.cy, cx: e.c.cx }))]
     .sort((a, b) => a.depth - b.depth || a.cx - b.cx)
   const byKey = new Map(world.districts.map((d) => [d.key, d]))
@@ -200,27 +213,37 @@ export function WorldScene({ model, world, view, far, selected, highlight, onSel
   const nowMs = Date.parse(model.now) || Date.now()
   const plateK = Math.min(2.4, Math.max(0.8, view.w / 2900))
   const mapMode = view.w > MAP_W
+  const storyHouse = illustrated ? [...world.districts].sort((a,b) => {
+    const home = world.residential ?? { cx: 0, cy: 0 }
+    const distance = (c: Cell) => Math.abs(c.cx-home.cx) + Math.abs(c.cy-home.cy)
+    return distance(a.cell)-distance(b.cell) || a.id.localeCompare(b.id)
+  })[0]?.key : undefined
 
   return (
-    <svg className={`town-svg is-world${far ? ' is-far' : ''}${far && mapMode ? ' is-map' : ''}${offline ? ' is-offline' : ''}`} viewBox={`${view.x} ${view.y} ${view.w} ${view.h}`}
+    <svg ref={sceneRef} className={`town-svg is-world${far ? ' is-far' : ''}${far && mapMode ? ' is-map' : ''}${offline ? ' is-offline' : ''}`} viewBox={`${view.x} ${view.y} ${view.w} ${view.h}`}
       role="group" aria-label="工作小镇世界">
       <defs>
-        <pattern id="world-grass" width="60" height="30" patternUnits="userSpaceOnUse">
-          <path d="M0 15 L30 0 L60 15 L30 30 Z" fill="none" stroke="#b9cba0" strokeWidth="0.8" />
+        <pattern id="world-grass" width={illustrated ? 240 : 60} height={illustrated ? 120 : 30} patternUnits="userSpaceOnUse">
+          {illustrated ? <StoryGrass /> : <path d="M0 15 L30 0 L60 15 L30 30 Z" fill="none" stroke="#b9cba0" strokeWidth="0.8" />}
         </pattern>
       </defs>
 
       {/* 大地铺满视野（再加世界范围），没有桌子边；上面是成片的地形色 */}
-      <IsoTile gx={Math.min(ground.gx0, gx0)} gy={Math.min(ground.gy0, gy0)} w={Math.max(ground.gx1, gx1) - Math.min(ground.gx0, gx0)} d={Math.max(ground.gy1, gy1) - Math.min(ground.gy0, gy0)} fill="#d7e2bf" />
+      <IsoTile gx={Math.min(ground.gx0, gx0)} gy={Math.min(ground.gy0, gy0)} w={Math.max(ground.gx1, gx1) - Math.min(ground.gx0, gx0)} d={Math.max(ground.gy1, gy1) - Math.min(ground.gy0, gy0)} fill={miniature ? '#cbdcba' : illustrated ? '#bfcca4' : '#d7e2bf'} />
       {visible.length <= TINT_MAX && visible.map((c) => {
         const tint = LAND_TINT[terrainAtCell(c.cx, c.cy)]
-        return tint ? <polygon key={`tn${c.cx},${c.cy}`} points={tintBlob(c).map(([gx, gy]) => iso(gx, gy).join(',')).join(' ')} fill={tint} opacity="0.75" aria-hidden /> : null
+        const ring = tintBlob(c).map(([gx,gy]) => iso(gx,gy))
+        return tint ? illustrated ? <path key={`tn${c.cx},${c.cy}`} d={storyBlob(ring)} fill={tint} opacity=".4" aria-hidden="true" /> : <polygon key={`tn${c.cx},${c.cy}`} points={ring.map(p=>p.join(',')).join(' ')} fill={tint} opacity="0.75" aria-hidden /> : null
       })}
       <IsoTile gx={Math.min(ground.gx0, gx0)} gy={Math.min(ground.gy0, gy0)} w={Math.max(ground.gx1, gx1) - Math.min(ground.gx0, gx0)} d={Math.max(ground.gy1, gy1) - Math.min(ground.gy0, gy0)} fill="url(#world-grass)" />
       <Lakes shapes={empty.flatMap((e) => (e.s.pond ? [e.s.pond] : []))} />
       {/* 街道：只铺在中央和各村庄的格子上；野外是草地和树林 */}
-      {streetCells.map((c) => <IsoTile key={`st${c.cx},${c.cy}`} gx={c.cx * CELL_W - 1} gy={c.cy * CELL_D - 1} w={CELL_W + 0.1} d={CELL_D + 0.1} fill="#e6d9bd" />)}
-      {streetCells.map((c) => <IsoTile key={`yd${c.cx},${c.cy}`} gx={c.cx * CELL_W} gy={c.cy * CELL_D} w={INNER_W} d={INNER_D} fill={tintOf(c)} />)}
+      {!illustrated && streetCells.map((c) => <IsoTile key={`st${c.cx},${c.cy}`} gx={c.cx * CELL_W - 1} gy={c.cy * CELL_D - 1} w={CELL_W + 0.1} d={CELL_D + 0.1} fill="#e6d9bd" />)}
+      {streetCells.map((c) => illustrated ? <StoryClearing key={`yd${c.cx},${c.cy}`} gx={c.cx*CELL_W} gy={c.cy*CELL_D} w={INNER_W} d={INNER_D} fill={tintOf(c)} opacity={.32} /> : <IsoTile key={`yd${c.cx},${c.cy}`} gx={c.cx * CELL_W} gy={c.cy * CELL_D} w={INNER_W} d={INNER_D} fill={tintOf(c)} />)}
+      {illustrated && streetCells.map(c => <g key={`road${c.cx},${c.cy}`}>
+        <StoryTrail from={[c.cx*CELL_W-1.3,c.cy*CELL_D+8.9]} to={[c.cx*CELL_W+9.7,c.cy*CELL_D+8.9]} width={27} />
+        <StoryTrail from={[c.cx*CELL_W+9.7,c.cy*CELL_D-1.1]} to={[c.cx*CELL_W+9.7,c.cy*CELL_D+8.9]} width={27} />
+      </g>)}
       {/* 村庄之间的土路：从村口小广场通到中央广场 */}
       {world.villages.map((v) => {
         const a = [v.square.cx * CELL_W + INNER_W / 2, v.square.cy * CELL_D + INNER_D / 2] as [number, number]
@@ -228,16 +251,17 @@ export function WorldScene({ model, world, view, far, selected, highlight, onSel
         return <Path key={`road-${v.key}`} from={a} to={b} />
       })}
       {/* 野外小屋脚下的空地 */}
-      {world.districts.filter((d) => d.kind === 'wild').map((d) => <IsoTile key={`cl${d.key}`} gx={d.ox + 0.2} gy={d.oy + 0.1} w={INNER_W - 0.4} d={INNER_D - 0.6} fill={tintOf(d.cell)} />)}
+      {world.districts.filter((d) => d.kind === 'wild').map((d) => illustrated ? <StoryClearing key={`cl${d.key}`} gx={d.ox+.2} gy={d.oy+.1} w={INNER_W-.4} d={INNER_D-.6} fill={tintOf(d.cell)} /> : <IsoTile key={`cl${d.key}`} gx={d.ox + 0.2} gy={d.oy + 0.1} w={INNER_W - 0.4} d={INNER_D - 0.6} fill={tintOf(d.cell)} />)}
       {/* 村口小广场：井和村名牌 */}
       {world.villages.map((v) => <VillageSquare key={v.key} cell={v.square} name={v.name} terrain={terrainOf(v.key)} />)}
 
       {depthOrder.map(({ key }) => {
         const e = emptyAt.get(key)
-        if (e) return <EmptyLand key={key} s={e.s} />
+        if (e) return <g key={key}><EmptyLand s={e.s} /><g data-resident-ground={`${e.c.cx},${e.c.cy}`} /></g>
+        if (key === '__residents' && residents && world.residential) return <ResidentsVillage key={key} cell={world.residential} {...residents} far={far} />
         if (key === '__plaza') return (
           <g key="__plaza">
-            <IsoTile gx={P.ox + 0.4} gy={P.oy + 0.4} w={INNER_W - 0.4} d={INNER_D - 0.4} fill="#e9dcc2" stroke="#cdbb98" />
+            {illustrated ? <StoryClearing gx={P.ox+.4} gy={P.oy+.4} w={INNER_W-.4} d={INNER_D-.4} fill="#e9dcc2" opacity={.7} /> : <IsoTile gx={P.ox + 0.4} gy={P.oy + 0.4} w={INNER_W - 0.4} d={INNER_D - 0.4} fill="#e9dcc2" stroke="#cdbb98" />}
             {/* 告示栏立在广场左前方、卡片多了会长高，验收台和退件架放到右边，不被它挡住 */}
             <ReviewDesk at={{ gx: P.ox + DESK.gx, gy: P.oy + DESK.gy }} count={reviewTotal} selected={isSel('review-desk', 'review-desk')} dimDesk={dim(highlight === 'review')} onSelect={onSelect} />
             {/* 验收台上的箱子只是示意，数量看招牌 */}
@@ -248,6 +272,7 @@ export function WorldScene({ model, world, view, far, selected, highlight, onSel
             {onDispatch && <DispatchTable at={{ gx: P.ox + DISPATCH.gx, gy: P.oy + DISPATCH.gy }} count={dispatch.filter((m) => m.status !== 'desktop').length} onOpen={() => onDispatch()} />}
             <DecisionBoard place={{ x: boardAt[0], y: boardAt[1], anchor: 'bottom', scale: 1 }} model={boardModel} isSel={(k) => isSel('approval', k)} dimClass={dim(highlight === 'waiting')} onSelect={onSelect} />
             {model.pendingApprovals.length > BOARD_MAX && <Tag at={[boardAt[0], boardAt[1] + 16]} text={`另有 ${model.pendingApprovals.length - BOARD_MAX} 条在关注队列`} bg="#fffaf0" fg="#6b5a44" small />}
+            <g data-resident-ground="0,0" />
           </g>
         )
         const d = byKey.get(key)!
@@ -270,7 +295,7 @@ export function WorldScene({ model, world, view, far, selected, highlight, onSel
             {d.kind === 'wild' && <Fence gx={d.ox + 4.6} gy={d.oy + INNER_D - 0.5} len={4.0} />}
             <g onPointerEnter={(e) => onHoverHouse?.(d.b.key, { x: e.clientX, y: e.clientY })} onPointerLeave={() => onHoverHouse?.(null)}
               onFocus={(e) => { const r = (e.target as Element).getBoundingClientRect(); onHoverHouse?.(d.b.key, { x: r.right, y: r.top }) }} onBlur={() => onHoverHouse?.(null)}>
-              <Building plot={plot} shape={TIERS[d.tier].shape} b={d.b} selected={isSel('building', d.b.key)} dimClass={dim(false)} onSelect={() => onSelect({ kind: 'building', key: d.b.key })} />
+              <Building plot={plot} shape={TIERS[d.tier].shape} b={d.b} storybookHouse={d.key === storyHouse} selected={isSel('building', d.b.key)} dimClass={dim(false)} onSelect={() => onSelect({ kind: 'building', key: d.b.key })} />
             </g>
             {onDispatch && (() => {
               // 派活台发起的工作在门口挂个牌子，点了直接到那件任务（最近的一件）。
@@ -339,6 +364,7 @@ export function WorldScene({ model, world, view, far, selected, highlight, onSel
             })()}
             <Tree at={iso(d.ox + 0.15, d.oy + 8.1)} k={0.6 + ((h >> 3) % 3) * 0.1} />
             {agents && <AgentFlags gx={plot.gx - 0.3} gy={plot.gy + plot.d + 0.2} counts={agentAt.get(d.key)!} />}
+            <g data-resident-ground={`${d.cell.cx},${d.cell.cy}`} /><g data-resident-door={d.id} />
           </g>
         )
       })}
@@ -364,7 +390,7 @@ export function WorldScene({ model, world, view, far, selected, highlight, onSel
           return (
             <g key={`${c.key}-pill`} style={{ transform: `translate(${at[0]}px,${at[1]}px) scale(1.22)` }}
               className={`town-obj town-move${fadeChar(c) || dim(highlight ? charMatches(c, highlight) : true)}`} aria-hidden onClick={() => onSelect({ kind: 'character', key: c.key })}>
-              <StatusPill at={[0, 17]} name={c.name} status={offline && c.status === 'working' ? `断线前·${label}` : label} bg={st.bg} fg={st.fg} edge={style.body} />
+              <StatusPill at={[0, 17]} name={characterPillName(c, illustrated)} status={offline && c.status === 'working' ? `断线前·${label}` : label} bg={st.bg} fg={st.fg} edge={style.body} />
             </g>
           )
         })}
@@ -405,6 +431,8 @@ export function WorldScene({ model, world, view, far, selected, highlight, onSel
           chips={agents ? agentChips(sumAgents([...agentAt.values()])) : plateChips({ ...sumStatus([...statusAt.values()]), waiting: model.pendingApprovals.length }, failedTotal)}
           note={agents ? '没有会话' : '今天很安静'} />
       </g>
+      {residents && <ResidentWorldVisitors store={residents.store} world={world} svgRef={sceneRef} far={far} selected={residents.selected}
+        onSelect={residents.onSelect} onEnter={(id) => residents.onEnter?.(id)} />}
     </svg>
   )
 }
@@ -590,7 +618,7 @@ export interface ViewContext { scope: 'here' | 'all'; repoId: number | 'all'; pr
 /** 第一次手动导航或自动跟随之前的完整位置；连续导航沿用它，返回或手动拖动缩放后清空。 */
 interface NavBack { camera: Camera; context?: ViewContext; byAgent: boolean; agentFocus: Agent | null }
 
-export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'onNavigate' | 'focusArea'> & { kiosk?: boolean; rotateMs?: number; paused?: boolean; focusKey?: string; plan?: WorldPlan; replaying?: boolean; snapshot?: Snapshot
+export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'onNavigate' | 'focusArea' | 'residents' | 'sceneRef'> & { kiosk?: boolean; rotateMs?: number; paused?: boolean; focusKey?: string; plan?: WorldPlan; replaying?: boolean; snapshot?: Snapshot; startWithResidents?: boolean
   /** 画的是本机快照还是全部设备的合并视图；切换时保持镜头，新动态从这一张重新起算。 */
   source?: 'here' | 'all'
   /** 本机设备名：合并视图里认出哪些项目是本机的。 */
@@ -604,12 +632,18 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
   const [inside, setInside] = useState<string | null>(null)
   const [byAgent, setByAgent] = useState(false)
   const [agentFocus, setAgentFocus] = useState<Agent | null>(null)
+  const [residentStore] = useState(() => createResidentStore())
+  const residentSceneRef = useRef<SVGSVGElement>(null)
+  const [residentSelected, setResidentSelected] = useState<ResidentId>('deepseek')
+  const [residentFollow, setResidentFollow] = useState<ResidentId | null>(null)
+  const [residentWatch, setResidentWatch] = useState<ResidentId | null>(null)
+  const residentFrame = useRef<(actor: ResidentActor | null) => void>(() => {})
   const legend = useMemo(() => agentLegend(model.buildings), [model])
   // 收菜：开始时记下这一批熟了的菜，一棵一棵飞过去打开验收卡片；收下或退回后自动去下一棵。
   const [harvest, setHarvest] = useState<{ ids: string[]; index: number } | null>(null)
   // 使用说明：第一次来时按钮旁冒一个小提示，打开过一次就不再提示（只记在这个浏览器里）。
   // 浮动面板（怎么看、项目列表、验收台列表、新动态）同一时间只开一个；点面板和它的按钮以外的地方、按 Esc 都会收起。
-  const [popover, setPopover] = useState<Popover | null>(null)
+  const [popover, setPopover] = useState<Popover | null>(() => props.startWithResidents && typeof window !== 'undefined' && window.innerWidth >= 760 ? 'residents' : null)
   const toggle = (name: Popover) => (on: boolean) => setPopover((p) => (on ? name : p === name ? null : p))
   const guide = popover === 'guide', setGuide = toggle('guide')
   const projectsOpen = popover === 'projects', setProjectsOpen = toggle('projects')
@@ -626,15 +660,15 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
   const [structure, setStructure] = useState(false)
   const structureTrigger = useRef<HTMLButtonElement | null>(null)
   const [guideSeen, setGuideSeen] = useState(() => { try { return localStorage.getItem(GUIDE_SEEN) === '1' } catch { return true } })
-  const openGuide = () => { setGuide(true); setGuideSeen(true); try { localStorage.setItem(GUIDE_SEEN, '1') } catch { /* 隐私模式：下次再提示 */ } }
+  const openGuide = () => { releaseResident(); setGuide(true); setGuideSeen(true); try { localStorage.setItem(GUIDE_SEEN, '1') } catch { /* 隐私模式：下次再提示 */ } }
   const insideB = inside ? model.buildings.find((b) => b.key === inside) ?? null : null
   useEffect(() => {
     if (!inside) return
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setInside(null) }
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { releaseResident(); setInside(null) } }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [inside])
-  const enter = (key: string) => { stop(); lastTouch.current = Date.now(); setArrived(null); setProjectsOpen(false); setInside(key) }
+  const enter = (key: string) => { releaseResident(); stop(); lastTouch.current = Date.now(); setArrived(null); setProjectsOpen(false); setInside(key) }
   // 右键菜单等从小镇外请求进入房间：等房子出现在地图上再进去，并展开指定区块。
   const [roomReq, setRoomReq] = useState<RoomRequest | null>(() => takeRoomRequest())
   const [roomFocus, setRoomFocus] = useState<{ key: string; focus?: RoomFocus; nonce: number } | null>(null)
@@ -663,9 +697,11 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
   memo.current ??= loadWorldMemo()
   const world = useMemo(() => {
     const ids = identityKeys(model.buildings, selfName)
-    return stableLayout(model.buildings, needsYou, plan, memo.current!, (b) => ids.get(b.key)!)
+    return stableLayout(model.buildings, needsYou, plan, memo.current!, (b) => ids.get(b.key)!, true)
   }, [model, needsYou, plan, selfName])
   useEffect(() => { if (memo.current) saveWorldMemo(memo.current) }, [world])
+  const residentContext = useMemo(() => residentWorld(world), [world])
+  useEffect(() => { residentStore.setWorld(residentContext) }, [residentStore, residentContext])
   const isRemote = (d: District) => !!d.b.repo && projectIdentity(d.b.repo, selfName).device !== 'self'
   const box = useRef<HTMLDivElement>(null)
   const [aspect, setAspect] = useState(1.6)
@@ -711,20 +747,27 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
   }, [])
 
   const fitAll = () => fitCamera(world.bounds, aspect, 1.02)
+  const fitResidents = () => {
+    if (!world.residential) return fitAll()
+    const to = fitCamera(cellBox(world.residential.cx * CELL_W, world.residential.cy * CELL_D), aspect, 1.12)
+    return { ...to, cx: to.cx - (compact ? 0 : to.w * 0.1), cy: to.cy + (compact ? to.w / aspect * 0.1 : 0) }
+  }
   // 切换本机 / 全部设备时世界范围会变；还没手动移动过镜头也停在原处，不跟着新全景跳。
   const seenSource = useRef(source)
   const shownCam = useRef<Camera | null>(null)
-  const camera = cam ?? (seenSource.current !== source && shownCam.current ? shownCam.current : fitAll())
+  const camera = cam ?? (seenSource.current !== source && shownCam.current ? shownCam.current : props.startWithResidents ? fitResidents() : fitAll())
   useEffect(() => {
     if (seenSource.current === source) return
+    setResidentFollow(null); setResidentWatch(null)
     seenSource.current = source
     if (!cam && shownCam.current) setCam(shownCam.current)
   }, [source])
   useEffect(() => { shownCam.current = camera })
   const stop = () => { if (anim.current != null) cancelAnimationFrame(anim.current); anim.current = null }
+  const releaseResident = () => { setResidentFollow(null); stop() }
   const openStructure = (trigger: HTMLButtonElement) => {
     structureTrigger.current = trigger
-    stop(); drag.current = null; setCam(camera); lastTouch.current = Date.now()
+    releaseResident(); stop(); drag.current = null; setCam(camera); lastTouch.current = Date.now()
     setPopover(null); setStructure(true)
   }
   const closeStructure = () => { lastTouch.current = Date.now(); setStructure(false) }
@@ -751,7 +794,7 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
 
   // 选中某个会话时飞到它的街区。
   useEffect(() => {
-    if (!focusKey || structure) return
+    if (!focusKey || structure || residentFollow) return
     const d = world.districts.find((x) => x.b.characters.some((c) => c.key === focusKey))
     if (d) flyTo(fitCamera(cellBox(d.ox, d.oy), aspect, 1.15))
   }, [focusKey])
@@ -779,6 +822,7 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
   const oldestWait = freshWaits.length ? Math.max(0, ...freshWaits) : null
   const results = harvest ? harvest.ids.map((id) => harvestResult(id, model.buildings)) : []
   const goHarvest = (ids: string[], index: number) => {
+    releaseResident()
     setHarvest({ ids, index })
     const id = ids[index]
     const d = world.districts.find((x) => x.b.items.some((w) => w.id === id))
@@ -793,6 +837,7 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
   const remember = () => setBack((saved) => saved ?? { camera, context: props.context, byAgent, agentFocus })
   // 手动导航：立即飞（不进新动态的 3 秒归并），记下返回点，并按用户操作算 30 秒保护。只改镜头，不写任何东西。
   const navigate = (t: NavTarget) => {
+    releaseResident()
     if (t.kind === 'project') {
       const d = world.districts.find((x) => x.id === t.id)
       if (!d) { setNavNote('这个项目不在当前显示范围：可能已归档、被筛选，或来源设备暂时不在。没有换去别的项目。'); return }
@@ -816,6 +861,7 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
   }
   const goBack = () => {
     if (!back) return
+    releaseResident()
     stop(); lastTouch.current = Date.now()
     setBack(null); setMoment(null); setArrived(null); setFocusArea(null)
     setByAgent(back.byAgent); setAgentFocus(back.agentFocus)
@@ -825,7 +871,7 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
   }
   // 手动拖动、缩放后返回点作废，并说一声。
   const dropBack = () => { if (back) setNavNote('你手动移动了地图，“回到刚才的位置”已作废。'); setBack(null) }
-  const leaveNav = () => { dropBack(); setArrived(null); setFocusArea(null) }
+  const leaveNav = () => { releaseResident(); dropBack(); setArrived(null); setFocusArea(null) }
   useEffect(() => {
     if (!navNote) return
     const t = window.setTimeout(() => setNavNote(''), 6000)
@@ -834,6 +880,7 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
   const visitMoment = (m: TownMoment) => {
     const d = world.districts.find((d) => d.key === m.buildingKey)
     if (!d) return
+    releaseResident()
     remember()
     lastFlight.current = Date.now()
     followUntil.current = Date.now() + 20_000
@@ -844,7 +891,7 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
   }
   const feed = useMoments(props.snapshot, (batch) => {
     if (!canAutoFollow({ now: Date.now(), lastTouch: lastTouch.current, lastFlight: lastFlight.current,
-      paused, inside: !!inside, harvesting: !!harvest, replaying: !!props.replaying, guide: guide || structure, hidden: document.hidden, offline: !!props.offline, presenting: !!moment || showMoments })) return
+      paused: paused || popover === 'residents' || !!residentFollow, inside: !!inside, harvesting: !!harvest, replaying: !!props.replaying, guide: guide || structure, hidden: document.hidden, offline: !!props.offline, presenting: !!moment || showMoments })) return
     const first = batch.find((m) => autoMoment(m, feed.preferences) && world.districts.some((d) => d.key === m.buildingKey))
     if (first) visitMoment(first)
   }, (progress) => {
@@ -902,7 +949,7 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
   const [stopIndex, setStopIndex] = useState(0)
   const [tick, setTick] = useState(0)
   useEffect(() => {
-    if (!kiosk || paused || inside || harvest || guide || structure || showMoments || props.replaying || props.offline || document.hidden || stops.length < 2) return
+    if (!kiosk || paused || residentFollow || inside || harvest || guide || structure || showMoments || popover === 'residents' || props.replaying || props.offline || document.hidden || stops.length < 2) return
     const resumeDelay = Math.max(0, followUntil.current - Date.now(), 30_000 - (Date.now() - lastTouch.current))
     const t = window.setTimeout(() => {
       // 刚拖过或缩放过：这一轮先不动，过一会儿再试。
@@ -914,7 +961,7 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
       flyTo(stops[next], 1400)
     }, moment ? resumeDelay : rotateMs)
     return () => window.clearTimeout(t)
-  }, [kiosk, paused, inside, harvest, guide, structure, showMoments, props.replaying, props.offline, moment, stops, stopIndex, rotateMs, tick])
+  }, [kiosk, paused, residentFollow, inside, harvest, guide, structure, showMoments, popover, props.replaying, props.offline, moment, stops, stopIndex, rotateMs, tick])
 
   // 滚轮缩放：以光标为中心。
   useEffect(() => {
@@ -949,7 +996,7 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
     if (!d || d.id !== e.pointerId) return
     const dx = e.clientX - d.x, dy = e.clientY - d.y
     if (!d.moved && Math.hypot(dx, dy) < 5) return
-    if (!d.moved) { d.moved = true; stop(); dropBack(); setHover(null); box.current?.setPointerCapture(e.pointerId) }
+    if (!d.moved) { d.moved = true; releaseResident(); stop(); dropBack(); setHover(null); box.current?.setPointerCapture(e.pointerId) }
     lastTouch.current = Date.now()
     const r = box.current!.getBoundingClientRect()
     const k = d.cam.w / r.width
@@ -961,6 +1008,45 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
     if (d?.moved) { swallowClick.current = true; box.current?.releasePointerCapture(e.pointerId) }
   }
   const zoomBy = (f: number) => { lastTouch.current = Date.now(); leaveNav(); flyTo(clampCamera(zoomAt(camera, f, 0.5, 0.5, aspect), world.bounds), 350) }
+  const visitResidents = () => {
+    if (!world.residential) return
+    setInside(null); lastTouch.current = Date.now(); leaveNav()
+    flyTo(fitResidents(), 650)
+  }
+  const selectResident = (id: ResidentId) => { setResidentSelected(id); setPopover('residents') }
+  const enterResidentProject = (id: string) => { const d = world.districts.find((d) => d.id === id); if (d) { setPopover(null); enter(d.key) } }
+  const locateResident = (id: ResidentId) => {
+    const trip = residentStore.getSnapshot().actors[id].trip
+    if (!trip) { visitResidents(); return }
+    lastTouch.current = Date.now(); leaveNav(); setHarvest(null); setMoment(null); setShowMoments(false)
+    setResidentSelected(id); setPopover(null); setResidentWatch(id); setResidentFollow(id)
+  }
+  // 订阅只发生在 ResidentFollow；每次生活推进用最新相机、房间与布局，避免动画自身触发跟随循环。
+  residentFrame.current = (actor) => {
+    if (!actor || !world.residential) { releaseResident(); setResidentWatch(null); return }
+    if (!actor.trip && !residentFollow) { setResidentWatch(null); return }
+    if (!residentFollow || document.hidden || props.replaying || structure) return
+    if (actor.trip?.phase === 'inside') {
+      const destination = world.districts.find((d) => d.id === actor.trip!.projectId)
+      if (destination) { stop(); setInside(destination.key) }
+      return
+    }
+    if (inside) setInside(null)
+    const point = actor.trip ?? addPoint(cellOrigin(world.residential), actor)
+    const p = iso(point.x, point.y), w = 900, h = w / aspect
+    let fx = .5, fy = .56
+    if (popover === 'residents') {
+      const rect = box.current?.getBoundingClientRect(), panel = box.current?.querySelector('.town-residents-panel')?.getBoundingClientRect()
+      if (rect && panel) {
+        if (panel.width > rect.width * .75) fy = .25
+        else fx = Math.min(.85, .5 + (panel.right - rect.left) / rect.width / 2)
+      } else { fx = compact ? .5 : .72; fy = compact ? .25 : .56 }
+    }
+    const target = clampCamera({ cx: p[0] - (fx - .5) * w, cy: p[1] - (fy - .5) * h, w }, world.bounds)
+    if (Math.abs(camera.cx - target.cx) > 2 || Math.abs(camera.cy - target.cy) > 2 || Math.abs(camera.w - target.w) > 2) flyTo(target, 420)
+    if (!actor.trip) { setResidentFollow(null); setResidentWatch(null) }
+  }
+  useEffect(() => { if (props.replaying) { releaseResident(); setResidentWatch(null) } }, [props.replaying])
 
   const view = viewBoxOf(camera, aspect)
   const far = camera.w > FAR_W
@@ -972,6 +1058,8 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
       onPointerDownCapture={() => { lastTouch.current = Date.now(); stop() }} onKeyDownCapture={() => { lastTouch.current = Date.now(); stop() }}
       onClickCapture={(e) => { if (swallowClick.current) { swallowClick.current = false; e.stopPropagation(); e.preventDefault() } }}>
       <div className="town-world-surface" inert={structure}>
+      {/* 工作详情与抽屉暂停的是镜头；居民只由自己的“暂停散步”控制。 */}
+      <ResidentClock store={residentStore} active={!props.replaying && !structure} />
       <div className="town-moment-status" role="status" aria-live="polite" aria-atomic="true">{visibleMoment?.message ?? ''}</div>
       {hoverB && hover && <HouseCard info={houseInfo(hoverB, props.snapshot?.features, props.snapshot?.structures?.find(s => s.repo_id === hoverB.repo?.id))} style={{ left: Math.max(8, hover.x), top: hover.y }} />}
       {insideB ? (
@@ -979,9 +1067,11 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
           <InteriorScene b={insideB} model={model} selected={props.selected} highlight={props.highlight} onSelect={props.onSelect} changed={props.changed} offline={props.offline}
             features={props.snapshot?.features ?? null} structure={props.snapshot?.structures?.find(s => s.repo_id === insideB.repo?.id)}
             writeable={!remoteAccess() && !props.replaying && !props.offline && !!insideB.repo && insideB.repo.id < 1_000_000_000}
-            focus={roomFocus?.key === insideB.key ? roomFocus : null} />
+            focus={roomFocus?.key === insideB.key ? roomFocus : null}
+            residentVisitors={props.replaying ? undefined : <ResidentRoomVisitors store={residentStore} projectId={world.districts.find((d) => d.key === insideB.key)?.id ?? ''} />} />
           <div className="town-world-tools is-inside" onPointerDown={(e) => e.stopPropagation()}>
-            <button type="button" onClick={() => setInside(null)} title="回到世界（Esc）">← 回到世界</button>
+            <button type="button" onClick={() => { releaseResident(); setInside(null) }} title="回到世界（Esc）">← 回到世界</button>
+            {!props.replaying && <button type="button" data-town-popover="residents" aria-expanded={popover === 'residents'} onClick={() => setPopover(popover === 'residents' ? null : 'residents')}>居民 7</button>}
             <button type="button" aria-haspopup="dialog" aria-expanded={structure} onClick={e => openStructure(e.currentTarget)} title={insideB ? "查看这个项目的目标、功能关系与验证依据" : "查看 SS 自身的结构说明首版样本"}>结构说明</button>
           </div>
           <p className="town-world-hint is-inside">{insideB.name} · 室内：工作台是工作项，点任何东西看详情</p>
@@ -990,6 +1080,7 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
       ) : (
         <>
       <WorldScene {...props} stalled={stalledByHouse} onHoverHouse={hoverHouse} onSelect={sceneSelect} onNavigate={navigate} focusArea={focusArea} world={world} view={view} far={far} agents={byAgent ? { focus: agentFocus } : null}
+        sceneRef={residentSceneRef} residents={props.replaying ? undefined : { store: residentStore, active: !paused && !structure, selected: popover === 'residents' ? residentSelected : null, onSelect: selectResident, onEnter: enterResidentProject }}
         dispatch={source === 'here' ? props.snapshot?.dispatch ?? [] : []} onDispatch={remoteAccess() || props.snapshot?.dispatch_available === false ? undefined : (task) => window.location.assign(dispatchHref(task))}
         momentGlow={!reducedMotion && !props.replaying ? moment?.buildingKey : undefined} progressSparks={reducedMotion ? undefined : sparks} />
       <div className="town-world-tools" onPointerDown={(e) => e.stopPropagation()}>
@@ -997,6 +1088,8 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
         <button type="button" onClick={() => zoomBy(1.4)} aria-label="缩小" title="缩小">－</button>
         <button type="button" onClick={() => { lastTouch.current = Date.now(); leaveNav(); flyTo(fitAll()) }} title="看全部街区">全景</button>
         <button type="button" onClick={() => { lastTouch.current = Date.now(); leaveNav(); flyTo(fitCamera(cellBox(world.plaza.ox, world.plaza.oy), aspect, 1.1)) }} title="回到中央广场">广场</button>
+        {!props.replaying && <button type="button" data-town-popover="residents" aria-expanded={popover === 'residents'} className={popover === 'residents' ? 'is-on' : undefined}
+          onClick={() => { const open = popover !== 'residents'; setPopover(open ? 'residents' : null); if (open && !residentFollow) visitResidents() }} title="七位常住居民：去她们家，摸摸头，看看今天的小事">居民 7</button>}
         {!props.replaying && <button type="button" className={`town-basket${ripe.length ? ' has-ripe' : ''}`} onClick={startHarvest} disabled={!ripe.length && !harvest}
           title={`${ripe.length ? `熟了 ${ripe.length} 棵：一棵一棵打开验收卡片，收下或退回` : '现在没有熟了的菜（没有待验收的工作项）'}。菜地只放待验收交付；Agent 交给你的事在右侧“待审阅／验收”，卡住的工作在“每日十分钟”。`}>收菜 {ripe.length}</button>}
         {!props.replaying && oldestWait != null && <span className={`town-basket-wait${oldestWait >= OVERDUE_MS ? ' is-overdue' : ''}`} role="status"
@@ -1071,6 +1164,10 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
         onReopen={() => goHarvest(harvest.ids, harvest.index)} onEnd={() => setHarvest(null)} />}
         </>
       )}
+      {popover === 'residents' && !props.replaying && <ResidentsPanel store={residentStore} selected={residentSelected} onSelect={setResidentSelected} onClose={() => setPopover(null)} onVisit={visitResidents}
+        destinations={residentContext?.destinations} onLocate={locateResident} following={residentFollow} onStopFollow={releaseResident} />}
+      <ResidentFollow store={residentStore} id={residentWatch} following={residentFollow === residentWatch && !!residentFollow} active={!props.replaying && !structure}
+        controls={popover !== 'residents'} onFrame={residentFrame} onFollow={locateResident} onStop={releaseResident} />
       </div>
       {structure && <TownStructure onClose={closeStructure} project={insideB ? { b: insideB, features: props.snapshot?.features ?? null, structure: props.snapshot?.structures?.find(s => s.repo_id === insideB.repo?.id) } : undefined} />}
     </div>

@@ -1,0 +1,189 @@
+{
+  "project": "lokicorvus/crosspet",
+  "version": "v1.3.10",
+  "license": "CC BY-NC-SA 4.0",
+  "files": {
+    "deepseek": {
+      "idle": {
+        "source": "deepseek/idle.webp",
+        "sha256": "4d827db8f758afd35dbbbbedba1924721bf8a29090554ede1e1607acfaa80378"
+      },
+      "pat": {
+        "source": "deepseek/pat.webp",
+        "sha256": "1282964a09221eb6f500951cd58daad704ff15e4b8794ec8cfb5aba4e42ac29b"
+      },
+      "sleep": {
+        "source": "deepseek/sleeping.webp",
+        "sha256": "8788a39c89eba44635f80c3dff66f932342fe242aa75366452874efae324bb10"
+      },
+      "activity": {
+        "source": "deepseek/eat.webp",
+        "sha256": "e18510f108166ad84c7d605292b2d0fef272718b7abe3a0d12c83c1f97b9d6c5"
+      },
+      "greet": {
+        "source": "deepseek/roll_call.webp",
+        "sha256": "64fd440651ad40176823ee29fb71eae5cf3abc5f6f1e397bb59f894bb472f849"
+      },
+      "avatar": {
+        "source": "deepseek/avatar.webp",
+        "sha256": "f95cbc289748d8f979feee79e92ef5fdd8892cc6ed0cdc43f5ddb3fc4c67243e"
+      }
+    },
+    "claude": {
+      "idle": {
+        "source": "claude/idle.webp",
+        "sha256": "cb4540df9325fd246de61c673e29027de0821ea70eeeafb3220a97546f440653"
+      },
+      "pat": {
+        "source": "claude/pat-2.webp",
+        "sha256": "50c8701328963fdec18b93ce27ce1d3623d2389a2ea7e8087b7969d3a0a3ec4f"
+      },
+      "sleep": {
+        "source": "claude/sleeping-2.webp",
+        "sha256": "a85e7147fce85737588775e27c751223c53f02a5a5a85d36c49ef4fc8ab45564"
+      },
+      "activity": {
+        "source": "claude/reading-2.webp",
+        "sha256": "47e587cd43032d4af10ff611b766b1c8ae7d7ac3fd333d55a6dcdaecd3c3a834"
+      },
+      "greet": {
+        "source": "claude/roll_call.webp",
+        "sha256": "d795dc51a9ca31a7f498ec0e871094d1f8514483a2702b352a2324032f9c32e9"
+      },
+      "avatar": {
+        "source": "claude/avatar.webp",
+        "sha256": "b0f62c60fd3c83bb382b93432646e7a5a6fd552cbe41a7bc24956afdc241038b"
+      }
+    },
+    "gpt": {
+      "idle": {
+        "source": "gpt/idle.webp",
+        "sha256": "329ac22977c06b481abfea8d9a857b4d758a606e88b5d98651ad867aec692587"
+      },
+      "pat": {
+        "source": "gpt/pat.webp",
+        "sha256": "2a4a27a143d82b5cc23dd420be2c2b928e7dfc2f7e8bf32854a53a770381bcf1"
+      },
+      "sleep": {
+        "source": "gpt/sleeping.webp",
+        "sha256": "05fc3b383695433882770d0b5f45695b03899627e14345a5ec0dbf0061f93bec"
+      },
+      "activity": {
+        "source": "gpt/running.webp",
+        "sha256": "d4593768aae4b178acf39eaddc92b7a65409c94abc8998ce2578c78e1fc6535c"
+      },
+      "greet": {
+        "source": "gpt/roll_call.webp",
+        "sha256": "5a9f532a73831ee23b443592bcbeb477b7dff19143792d298b09756d38bca2a8"
+      },
+      "avatar": {
+        "source": "gpt/avatar.webp",
+        "sha256": "5e9a681163ee267803992e3ae5386d80b599829157fb63e0d79cf97137070a33"
+      }
+    },
+    "gemini": {
+      "idle": {
+        "source": "gemini/idle.webp",
+        "sha256": "fa0c2937114fdd283a65d113a356626c1f02d8a1ba892d8ca85f50b97d7b44f4"
+      },
+      "pat": {
+        "source": "gemini/pat.webp",
+        "sha256": "fb931506a0e861310ad7029d2666aaefe80868ccba3afe43353e83b7cad9895d"
+      },
+      "sleep": {
+        "source": "gemini/sleeping.webp",
+        "sha256": "977b199b24104e40b1093d862df1bc4b7cf795e7105acc7701e0ce97a128a044"
+      },
+      "activity": {
+        "source": "gemini/drawing.webp",
+        "sha256": "b25b7f706b117618e13133dc4d21ee84fd29e2c995514b61fe4526456d43b1fd"
+      },
+      "greet": {
+        "source": "gemini/roll_call.webp",
+        "sha256": "774ab78106c6b782482ea7dfe74ca747d22d5b7068b718a4b1a92eec0f3110f2"
+      },
+      "avatar": {
+        "source": "gemini/avatar.webp",
+        "sha256": "7c2b59e66381151bbdd8ce4a8a94183186270993f4302f26870158b5b8d4e22a"
+      }
+    },
+    "glm": {
+      "idle": {
+        "source": "glm/idle.webp",
+        "sha256": "b89cb49fd81efdd687010d6db08cd09051a0bba654833e6d2c3eafb466b3015e"
+      },
+      "pat": {
+        "source": "glm/pat.webp",
+        "sha256": "828557e31472778709b66abb5902ccc9c206919f07b9158c97fa50d5ed54d94d"
+      },
+      "sleep": {
+        "source": "glm/sleeping.webp",
+        "sha256": "8ba0a468627d80cdc955814746cdcf8d6c0018a1a333eea393c3eb1d4d9bab6a"
+      },
+      "activity": {
+        "source": "glm/masked.webp",
+        "sha256": "059c66ca7678ca0d5ac569612e8887f720ffd5ed5f8191847c9fbb45870ced81"
+      },
+      "greet": {
+        "source": "glm/roll_call.webp",
+        "sha256": "2ac3cb6d2ec77177229d89b62b446fed65e15c36ef0b46904e6566c3c72fd47a"
+      },
+      "avatar": {
+        "source": "glm/avatar.webp",
+        "sha256": "3fc5ef1a2dc6f5f159304b911815e35b58e2625897a7c8372706fd34569fc230"
+      }
+    },
+    "grok": {
+      "idle": {
+        "source": "grok/idle.webp",
+        "sha256": "c48967289c1258ab8f52e653780e792d980656d686011da1ecd5e090bcd7cb49"
+      },
+      "pat": {
+        "source": "grok/pat.webp",
+        "sha256": "3d7fd34c04896725e4e496db1f3ebc29b6ee1c3e02ae6cc55f9946bbdf7d5dea"
+      },
+      "sleep": {
+        "source": "grok/sleeping.webp",
+        "sha256": "9e39b84a71626a58e5abc59ddd9377c6e25e4cc069b132ec4092d191cb2b350a"
+      },
+      "activity": {
+        "source": "grok/sass.webp",
+        "sha256": "57684a555d9ca2aeaa79db6c7a02a712ed2524b4a2979670f1b13a58400bb1b5"
+      },
+      "greet": {
+        "source": "grok/roll_call.webp",
+        "sha256": "7a49acc971c95ef15301c36e3562821c34b265512db73d0679db9390e5d7c25b"
+      },
+      "avatar": {
+        "source": "grok/avatar.webp",
+        "sha256": "588dd3c44b33db0a4315598370700101c32159c6a3cd400efd81a9d698c6b492"
+      }
+    },
+    "qwen": {
+      "idle": {
+        "source": "qwen/idle.webp",
+        "sha256": "60f54eb4b6995e32edc8e4e0970ce75d9c75b55f6f42c720a126565cee23f639"
+      },
+      "pat": {
+        "source": "qwen/pat.webp",
+        "sha256": "756fb487eeaddcd54beb31816354c9fcee8d5d66f2f677681710b9cb526c40fa"
+      },
+      "sleep": {
+        "source": "qwen/sleeping.webp",
+        "sha256": "16d707f00ccc2b06ac2cc84c9171db8de516b99edd9c11ba1f62eed03ceb9d99"
+      },
+      "activity": {
+        "source": "qwen/gift.webp",
+        "sha256": "4e9c3c8886e1013828aff716304db3587b46f475caa17acd7951ca79d4b8ecae"
+      },
+      "greet": {
+        "source": "qwen/roll_call.webp",
+        "sha256": "c5b5b73beb151bc6b526cf7a1db7e41ad43b5d2f9c768cee5d579784dd6f4ce1"
+      },
+      "avatar": {
+        "source": "qwen/avatar.webp",
+        "sha256": "a0b6cbfc6f54563f64d62295d25363adbba0d0f3bed065d2e4ca90ab2c26c964"
+      }
+    }
+  }
+}

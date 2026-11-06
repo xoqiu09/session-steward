@@ -34,6 +34,9 @@ export interface District {
 }
 
 export type Tier = 0 | 1 | 2 | 3
+export const DISTRICT_FOOTPRINT: Record<Tier, { w: number; d: number }> = {
+  0: { w: 3.8, d: 3 }, 1: { w: 5, d: 3.6 }, 2: { w: 5.6, d: 3.9 }, 3: { w: 5, d: 4 },
+}
 
 /** 建筑档次看项目体量：未完成的工作项、近 7 天活动量、正在这里干活的会话。 */
 export function buildingTier(b: BuildingView, activity = 0): Tier {
@@ -60,6 +63,8 @@ export interface WorldLayout {
   bounds: Box
   /** 记得的片区里，当前显示范围一个项目都没有的（已归档、被筛选或来源设备不在）。 */
   emptyVillages: { key: string; name: string }[]
+  /** 常住居民独立的一块地，不属于项目，也不参与工作计数。 */
+  residential?: Cell
 }
 
 export interface Box { x: number; y: number; w: number; h: number }
@@ -155,12 +160,12 @@ export function worldLayout(buildings: readonly BuildingView[], needsYou: (b: Bu
   return finish(districts, villages, [])
 }
 
-function finish(districts: District[], villages: VillageArea[], emptyVillages: WorldLayout['emptyVillages']): WorldLayout {
-  const all = [{ cx: 0, cy: 0 }, ...districts.map((d) => d.cell), ...villages.map((v) => v.square)]
+function finish(districts: District[], villages: VillageArea[], emptyVillages: WorldLayout['emptyVillages'], residential?: Cell): WorldLayout {
+  const all = [{ cx: 0, cy: 0 }, ...districts.map((d) => d.cell), ...villages.map((v) => v.square), ...(residential ? [residential] : [])]
   // 外面再留一圈空地（树林），世界不是刚好卡在最后一栋房子边上。
   const gx0 = (Math.min(...all.map((c) => c.cx)) - 0.35) * CELL_W, gy0 = (Math.min(...all.map((c) => c.cy)) - 0.35) * CELL_D
   const gx1 = (Math.max(...all.map((c) => c.cx)) + 1.25) * CELL_W, gy1 = (Math.max(...all.map((c) => c.cy)) + 1.25) * CELL_D
-  return { districts, plaza: { ox: 0, oy: 0 }, villages, tiles: { gx0, gy0, gx1, gy1 }, bounds: boxOfTiles(gx0, gy0, gx1, gy1), emptyVillages }
+  return { districts, plaza: { ox: 0, oy: 0 }, villages, tiles: { gx0, gy0, gx1, gy1 }, bounds: boxOfTiles(gx0, gy0, gx1, gy1), emptyVillages, ...(residential ? { residential } : {}) }
 }
 
 // ---- 稳定位置：第一次按分组排好后记住每个项目的格子；之后状态、排名、设备顺序变了也不搬家，新项目往外追加 ----
@@ -171,6 +176,7 @@ export interface Placement { cell: Cell; kind: DistrictKind; village?: string }
 export interface WorldMemo {
   places: Map<string, Placement>
   villages: Map<string, { name: string; square: Cell }>
+  residential?: Cell
 }
 
 export const newWorldMemo = (): WorldMemo => ({ places: new Map(), villages: new Map() })
@@ -193,6 +199,9 @@ export function loadWorldMemo(storage: Pick<Storage, 'getItem'> | undefined = gl
     for (const [k, v] of Array.isArray(raw?.villages) ? raw.villages : []) {
       if (typeof k === 'string' && typeof v?.name === 'string' && isCell(v?.square)) memo.villages.set(k, { name: v.name, square: { cx: v.square.cx, cy: v.square.cy } })
     }
+    if (isCell(raw?.residential) && (raw.residential.cx !== 0 || raw.residential.cy !== 0)
+      && ![...memo.places.values()].some((p) => keyOf(p.cell) === keyOf(raw.residential))
+      && ![...memo.villages.values()].some((v) => keyOf(v.square) === keyOf(raw.residential))) memo.residential = { ...raw.residential }
   } catch { /* 读不到或格式不对：当作第一次排布。 */ }
   // 片区引用了不存在的村子时整份作废，免得排出半个村子。
   for (const p of memo.places.values()) if (p.village && !memo.villages.has(p.village)) return newWorldMemo()
@@ -204,7 +213,7 @@ export function saveWorldMemo(memo: WorldMemo, storage: Pick<Storage, 'setItem'>
   const places = [...memo.places].slice(-LAYOUT_MAX)
   const used = new Set(places.map(([, p]) => p.village).filter(Boolean))
   const villages = [...memo.villages].filter(([k]) => used.has(k))
-  try { storage?.setItem(LAYOUT_KEY, JSON.stringify({ places, villages })) } catch { /* 存不下时本次会话照常可用。 */ }
+  try { storage?.setItem(LAYOUT_KEY, JSON.stringify({ places, villages, residential: memo.residential })) } catch { /* 存不下时本次会话照常可用。 */ }
 }
 
 /** 野外空地：离所有占用格子至少隔一格，从内圈往外找。 */
@@ -224,16 +233,25 @@ function wildCell(taken: ReadonlySet<string>): Cell {
 }
 
 /** 按记住的位置排布；memo 为空时用 worldLayout 的分组排第一次并记下来。memo 会被更新。 */
-export function stableLayout(buildings: readonly BuildingView[], needsYou: (b: BuildingView) => boolean, plan: WorldPlan | undefined, memo: WorldMemo, idOf: (b: BuildingView) => string): WorldLayout {
-  if (!memo.places.size) {
+export function stableLayout(buildings: readonly BuildingView[], needsYou: (b: BuildingView) => boolean, plan: WorldPlan | undefined, memo: WorldMemo, idOf: (b: BuildingView) => string, residents = false): WorldLayout {
+  const includeResidents = (layout: WorldLayout) => {
+    if (!residents) return layout
+    if (!memo.residential) {
+      const occupied = new Set(['0,0', ...[...memo.places.values()].map((p) => keyOf(p.cell)), ...[...memo.villages.values()].map((v) => keyOf(v.square))])
+      memo.residential = spiralCells(1, { cx: 0, cy: 0 }, occupied)[0]
+    }
+    return finish(layout.districts, layout.villages, layout.emptyVillages, memo.residential)
+  }
+  if (!memo.places.size && !memo.residential) {
     const first = worldLayout(buildings, needsYou, plan, idOf)
     for (const d of first.districts) memo.places.set(d.id, { cell: d.cell, kind: d.kind, village: d.village })
     for (const v of first.villages) memo.villages.set(v.key, { name: v.name, square: v.square })
-    return first
+    return includeResidents(first)
   }
   const taken = new Set<string>([keyOf({ cx: 0, cy: 0 })])
   for (const p of memo.places.values()) taken.add(keyOf(p.cell))
   for (const v of memo.villages.values()) taken.add(keyOf(v.square))
+  if (memo.residential) taken.add(keyOf(memo.residential))
   const byRepo = new Map(buildings.filter((b) => b.repo).map((b) => [b.repo!.id, b]))
   const villageOf = new Map<number, Village>()
   for (const v of plan?.villages ?? []) for (const id of v.repoIds) villageOf.set(id, v)
@@ -279,7 +297,7 @@ export function stableLayout(buildings: readonly BuildingView[], needsYou: (b: B
     if (cells.length) villages.push({ key, name: v.name, square: v.square, cells: [v.square, ...cells] })
     else emptyVillages.push({ key, name: v.name })
   }
-  return finish(districts, villages, emptyVillages)
+  return includeResidents(finish(districts, villages, emptyVillages))
 }
 
 /** 一个片区全部成员（含村口广场）的屏幕框。 */
