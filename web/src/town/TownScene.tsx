@@ -6,7 +6,7 @@ import { MAX_SEATS, characterStatusLabel, clip, itemStatusLabel, parcelPhaseLabe
 import type { WorkItem } from '../types'
 import { attentionManaged } from '../workManagement'
 import { shownNo } from '../hub/ids'
-import { StoryProp, StoryTrail, StoryTree } from './storybook'
+import { StoryProp, StoryTrail, StoryTree, storyPropBox } from './storybook'
 import { useTownArt } from './appearance'
 import { ResidentSprite, workCompanion } from './ResidentSprite'
 
@@ -357,10 +357,8 @@ export const HOUSE_SHAPE: BuildingShape = {
   walls: { top: '#efe3cc', front: '#f6ecda', side: '#e4d4b8', edge: '#9b7b55' },
 }
 
-export function Building({ plot: p, b, selected, dimClass, onSelect, signScale = 1, shape = HOUSE_SHAPE, storybookHouse = false }: { plot: Plot; b: BuildingView; selected: boolean; dimClass: string; onSelect: () => void; signScale?: number; shape?: BuildingShape; storybookHouse?: boolean }) {
-  const { miniature } = useTownArt()
-  storybookHouse = storybookHouse || miniature && (shape.kind === 'cabin' || shape.kind === 'house')
-  if (miniature) shape = { ...shape, walls: { top: '#f6f3df', front: '#f2ebd2', side: '#d9e2ce', edge: '#a9b9a1' } }
+export function Building({ plot: p, b, selected, dimClass, onSelect, signScale = 1, shape = HOUSE_SHAPE }: { plot: Plot; b: BuildingView; selected: boolean; dimClass: string; onSelect: () => void; signScale?: number; shape?: BuildingShape }) {
+  const { theme, illustrated, miniature } = useTownArt()
 
   const H = shape.h
   const active = b.items.filter((w) => w.status !== 'done' && w.status !== 'abandoned').length
@@ -371,7 +369,14 @@ export function Building({ plot: p, b, selected, dimClass, onSelect, signScale =
   const signW = measure(sign, 14) + 26
   const storyWidth = (p.w + p.d) * 30 + 10
   const houseFoot = iso(p.gx + p.w / 2, p.gy + p.d - .3)
-  const label = storybookHouse ? [houseFoot[0], houseFoot[1] - storyWidth * (miniature ? 1.1 : .88) - 18] as Pt : iso(p.gx + p.w / 2, p.gy + p.d / 2, H + 66)
+  const artKind = shape.kind === 'cabin' || shape.kind === 'house' ? 'cottage' : shape.kind
+  // New large-building sprites use the actual project door as their pivot,
+  // so resident arrivals and entrance badges keep their existing coordinates.
+  const artAnchor = artKind === 'cottage' ? houseFoot : iso(p.gx + p.w / 2, p.gy + p.d + .4)
+  const initialArt = storyPropBox(artKind, artAnchor, storyWidth, miniature)
+  const artWidth = artKind === 'cottage' ? storyWidth : Math.min(storyWidth, ((p.w + p.d) * 16 + H + shape.rise + 12) * initialArt.width / initialArt.height)
+  const artBox = storyPropBox(artKind, artAnchor, artWidth, miniature)
+  const label = illustrated ? [artBox.x + artBox.width / 2, artBox.y - 18] as Pt : iso(p.gx + p.w / 2, p.gy + p.d / 2, H + 66)
   const corner = iso(p.gx + p.w, p.gy + p.d)
   // 窗户与门画在朝向镜头的长面上。
   const win = (u: number, v: number, ww: number, wh: number, color: string) => {
@@ -380,11 +385,11 @@ export function Building({ plot: p, b, selected, dimClass, onSelect, signScale =
   }
   const long = p.facing === 'x' ? p.w : p.d
   return (
-    <g className={`town-obj town-building${selected ? ' is-selected' : ''}${dimClass}`} data-repo-id={b.repo?.id}
+    <g className={`town-obj town-building${selected ? ' is-selected' : ''}${dimClass}`} data-repo-id={b.repo?.id} data-building-kind={shape.kind} data-building-art={illustrated ? theme : 'original'}
       aria-label={`项目建筑 ${b.name}：${b.characters.length} 个会话，${active} 个未完成任务${hidden ? `，另有 ${hidden} 个会话不在画面中` : ''}`} {...activate(onSelect)}>
-      {storybookHouse ? <>
-        <rect className="town-story-house-hit" x={houseFoot[0] - storyWidth / 2} y={houseFoot[1] - storyWidth * (miniature ? 1.08 : .85)} width={storyWidth} height={storyWidth * (miniature ? 1.13 : .9)} />
-        <StoryProp kind="cottage" at={houseFoot} width={storyWidth} />
+      {illustrated ? <>
+        <rect className="town-story-house-hit" {...artBox} />
+        <StoryProp kind={artKind} at={artAnchor} width={artWidth} />
       </> : <>
       <IsoTile gx={p.gx - 0.4} gy={p.gy - 0.4} w={p.w + 0.8} d={p.d + 0.8} fill="#c9b48e" opacity={0.5} />
       <IsoBox gx={p.gx} gy={p.gy} w={p.w} d={p.d} h={H} top={shape.walls.top} left={p.facing === 'x' ? shape.walls.front : shape.walls.side} right={p.facing === 'x' ? shape.walls.side : shape.walls.front} stroke={shape.walls.edge} />
@@ -401,7 +406,7 @@ export function Building({ plot: p, b, selected, dimClass, onSelect, signScale =
           {shape.kind !== 'cabin' && long > 4.6 && win(long / 2 + 0.7, 22 + f * 30, 0.8, 18, '#ffe2a0')}
         </g>
       ))}
-      <HipRoof gx={p.gx} gy={p.gy} w={p.w} d={p.d} z={H} rise={shape.rise} front={miniature ? '#d99577' : p.roof} side={miniature ? '#bd806c' : p.roofSide} stroke={miniature ? '#bf8c75' : '#5a3a2a'} />
+      <HipRoof gx={p.gx} gy={p.gy} w={p.w} d={p.d} z={H} rise={shape.rise} front={p.roof} side={p.roofSide} stroke="#5a3a2a" />
       {/* 烟囱 */}
       <IsoBox gx={p.gx + (p.facing === 'x' ? p.w * 0.72 : 0.6)} gy={p.gy + (p.facing === 'x' ? 0.5 : p.d * 0.72)} w={0.45} d={0.45} h={28} z={H + 14} top="#8d5b45" left="#b07258" right="#94604a" />
       {shape.kind === 'tower' && (

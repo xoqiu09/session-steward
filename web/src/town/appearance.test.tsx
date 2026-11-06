@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { APPEARANCE_KEY, createAppearanceStore, readAppearance, requestedTheme, TownArtProvider } from './appearance'
 import { WorldScene } from './WorldScene'
 import { buildTown } from './townModel'
-import { demoSnapshot } from './fixtures'
+import { demoSnapshot, fakeItem } from './fixtures'
 import { createResidentStore } from './residentLife'
 import { newWorldMemo, stableLayout } from './world'
 import { RESIDENT_IDS } from './residents'
@@ -79,6 +79,44 @@ describe('整镇外观偏好', () => {
 })
 
 describe('两套美术共享世界与角色身份', () => {
+  it.each(['original','storybook','miniature'] as const)('%s 覆盖每个项目的四档建筑，保留独立入口和原有世界数据', theme => {
+    const repos=[1,3,8,16].map((size,i)=>({id:i+1,name:`synthetic-tier-${size}`,common_dir:`/synthetic/tier-${i}`,is_git:true,target_ref:'main'}))
+    const work_items=[1,3,8,16].flatMap((size,i)=>Array.from({length:size},(_,j)=>fakeItem({id:`T${i}-${j}`,title:'合成建筑覆盖验证',status:'todo',repo_id:i+1})))
+    const model=buildTown({...demoSnapshot,repos,work_items,sessions:[],runs:[],approvals:[],deps:[]}), none=()=>false
+    const world=stableLayout(model.buildings,none,undefined,newWorldMemo(),b=>b.key,true)
+    expect(world.districts.map(d=>d.tier).sort()).toEqual([0,1,2,3])
+    const before=JSON.stringify({model,world})
+    const html=renderToStaticMarkup(<TownArtProvider theme={theme}><WorldScene model={model} world={world} view={world.bounds} far={false} selected={null} highlight={null} onSelect={()=>{}} needsYou={none} /></TownArtProvider>)
+    const buildings=html.split('<g class="town-obj town-building').slice(1).map(part=>part.split('class="town-sign"')[0])
+    expect(buildings).toHaveLength(4)
+    for (const kind of ['cabin','house','workshop','tower']) {
+      const building=buildings.find(part=>part.includes(`data-building-kind="${kind}"`))!
+      expect(building).toBeDefined()
+      expect(building).toContain(`data-building-art="${theme}"`)
+      expect(building).toContain('role="button"')
+      expect(building).toContain('tabindex="0"')
+      if (theme==='original') {
+        expect(building).not.toContain('data-town-prop=')
+        expect(building).toContain('<polygon')
+      } else {
+        expect(building).toContain(`data-town-prop="${kind==='cabin'||kind==='house'?'cottage':kind}"`)
+        expect(building).toContain('aria-hidden="true" pointer-events="none"')
+        const hit=/<rect class="town-story-house-hit" x="([^"]+)" y="([^"]+)" width="([^"]+)" height="([^"]+)"/.exec(building)!
+        const [x,y,width,height]=hit.slice(1).map(Number)
+        expect([x,y,width,height].every(Number.isFinite)).toBe(true)
+        expect(width).toBeGreaterThan(100)
+        expect(width).toBeLessThan(310)
+        expect(height).toBeLessThanOrEqual(382)
+        expect(building).toContain(`x="${x}" y="${y}" width="${width}" height="${height}" viewBox=`)
+        if (kind==='workshop'||kind==='tower') {
+          expect(building).toContain(`/town/${theme}/buildings.png`)
+          expect(building).not.toContain('town-story-nature')
+        }
+      }
+    }
+    expect(JSON.stringify({model,world})).toBe(before)
+  })
+
   it.each(['storybook','miniature'] as const)('%s 保留七只、工作会话、独立点击目标和原布局', theme => {
     const model=buildTown(demoSnapshot), none=()=>false
     const world=stableLayout(model.buildings,none,undefined,newWorldMemo(),b=>b.key,true)

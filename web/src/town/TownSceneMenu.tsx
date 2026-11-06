@@ -24,13 +24,14 @@ export function TownSceneMenu({ appearance, open, onOpenChange: setOpen }: { app
   const root = useRef<HTMLDivElement>(null)
   const trigger = useRef<HTMLButtonElement>(null)
   const baseline = useRef(appearance.theme)
+  const firstChoice = useRef(appearance.theme)
   const cancel = useRef(appearance.cancel)
   cancel.current = appearance.cancel
   const heading = useId(), panel = useId()
   const close = () => { appearance.cancel(baseline.current); setOpen(false); trigger.current?.focus() }
   useEffect(() => {
     if (!open) return
-    root.current?.querySelector<HTMLButtonElement>(`[data-scene-id="${baseline.current}"]`)?.focus()
+    root.current?.querySelector<HTMLButtonElement>(`[data-scene-id="${firstChoice.current}"]`)?.focus()
     const outside = (event: PointerEvent) => {
       if (!root.current?.contains(event.target as Node)) { cancel.current(baseline.current); setOpen(false) }
     }
@@ -45,14 +46,27 @@ export function TownSceneMenu({ appearance, open, onOpenChange: setOpen }: { app
   }, [open])
   const preview = (id: TownThemeId) => { void appearance.preview(id) }
   return <div className="town-scene-menu" ref={root}>
-    <button type="button" ref={trigger} className={`town-scene-trigger${open ? ' is-open' : ''}`} aria-haspopup="dialog" aria-expanded={open} aria-controls={open ? panel : undefined}
-      onClick={() => { if (open) close(); else { baseline.current = appearance.theme; setOpen(true) } }}>
-      <svg viewBox="0 0 20 20" width="17" height="17" fill="none" aria-hidden="true"><path d="M3 15 8 7l3 4 2-3 4 7Z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" /><circle cx="14" cy="4.5" r="1.5" fill="currentColor" /></svg>
-      场景<span className="town-scene-current">{themeName(appearance.theme)}</span><span className="town-scene-chevron" aria-hidden="true">⌄</span>
-    </button>
+    <div className="town-scene-bar">
+      <div className="town-scene-label"><strong>小镇画风</strong><span>点选预览，确认后记住</span></div>
+      <div className="town-scene-shortcuts" role="group" aria-label="切换小镇画风">
+        {TOWN_THEMES.map(t => <button type="button" key={t.id} className={`town-scene-shortcut${appearance.theme === t.id ? ' is-current' : ''}`}
+          aria-label={`预览${t.name}`} aria-pressed={appearance.theme === t.id} aria-haspopup="dialog" aria-expanded={open} aria-controls={open ? panel : undefined}
+          onClick={event => {
+            trigger.current = event.currentTarget
+            if (!open) baseline.current = appearance.theme
+            firstChoice.current = t.id
+            setOpen(true)
+            preview(t.id)
+          }}>
+          <SceneThumbnail theme={t.id} />
+          <span className="town-scene-shortcut-copy"><strong>{t.name}</strong><span>{appearance.loading === t.id ? '正在准备…' : appearance.theme === t.id ? open ? '正在预览' : '当前显示' : '点击预览'}</span></span>
+          {appearance.theme === t.id && <span className="town-scene-shortcut-check" aria-hidden="true">✓</span>}
+        </button>)}
+      </div>
+    </div>
     {open && <div className="town-scenes-panel" role="dialog" aria-labelledby={heading} id={panel}>
       <div className="town-scenes-heading"><div><span className="town-scenes-eyebrow">给小镇换个风景</span><h2 id={heading}>选一个喜欢的场景</h2></div><button type="button" className="town-scenes-close" aria-label="关闭场景菜单，取消预览" onClick={close}>×</button></div>
-      <p className="town-scenes-intro">同一座小镇，换一种心情。</p>
+      <p className="town-scenes-intro">原场景：{themeName(baseline.current)}。点“使用并记住”后，下次打开也会保留。</p>
       <div className="town-scenes-options" role="radiogroup" aria-label="小镇画风" aria-busy={!!appearance.loading}
         onKeyDown={event => {
           if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key)) return
@@ -71,7 +85,7 @@ export function TownSceneMenu({ appearance, open, onOpenChange: setOpen }: { app
       </div>
       <div className="town-scenes-feedback" role={appearance.error ? 'alert' : 'status'}>{appearance.error || (appearance.loading ? `正在准备${themeName(appearance.loading)}…` : `正在预览 · ${themeName(appearance.theme)}`)}</div>
       <div className="town-scenes-footer"><p>为当前 App／浏览器记住选择。<br />角色、进度和小镇位置都会保留。</p><div><button type="button" className="town-scene-cancel" onClick={close}>取消</button><button type="button" className="town-scene-apply" disabled={!!appearance.loading || !!appearance.error}
-        onClick={() => { if (appearance.apply()) { baseline.current = appearance.theme; setOpen(false); trigger.current?.focus() } }}>使用此场景</button></div></div>
+        onClick={() => { if (appearance.apply()) { baseline.current = appearance.theme; setOpen(false); trigger.current?.focus() } }}>使用并记住</button></div></div>
     </div>}
     {appearance.notice && <span className="town-scene-notice" role="status" aria-live="polite">{appearance.notice}</span>}
   </div>
