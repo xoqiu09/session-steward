@@ -132,4 +132,19 @@ describe('托管与非托管会话', () => {
     expect(html).toContain('Codex')
     expect(html).not.toContain('命令')
   })
+  it('全局新建不默认选择第一条 Git 项目，明确项目上下文显示完整目标目录', () => {
+    const snap: Snapshot = { ...base, agents: ['codex'], repos: [
+      { id: 90, name: '合成缓存', common_dir: '/synthetic/Caches/proxy/.git', is_git: true, target_ref: 'main' },
+      { id: 91, name: '目标项目', common_dir: '/synthetic/Projects/garden/.git', is_git: true, target_ref: 'main' },
+    ] }
+    const global = renderToStaticMarkup(<NewManaged snap={snap} onLaunched={() => {}} />)
+    expect(global).toContain('项目：请选择项目')
+    expect(global).not.toContain('将在 合成缓存 启动')
+    const scoped = renderToStaticMarkup(<NewManaged snap={snap} initialRepoId={91} onLaunched={() => {}} />)
+    expect(scoped).toContain('将在 目标项目 启动')
+    expect(scoped).toContain('/synthetic/Projects/garden')
+    const stale = renderToStaticMarkup(<NewManaged snap={snap} initialRepoId={999} onLaunched={() => {}} />)
+    expect(stale).toContain('项目：请选择项目')
+    expect(stale).not.toContain('将在 合成缓存 启动')
+  })
 })

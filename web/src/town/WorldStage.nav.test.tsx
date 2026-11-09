@@ -28,6 +28,7 @@ const host = vi.hoisted(() => {
   }
 })
 vi.mock('react', async (original) => ({ ...await original<typeof import('react')>(), useState: host.state, useRef: host.ref, useMemo: host.memo, useEffect: host.effect,
+  useId: () => host.ref('synthetic-map-tools').current,
   useCallback: (fn: (...args: any[]) => any, deps: any[]) => host.memo(() => fn, deps), useSyncExternalStore: (_subscribe: any, getSnapshot: () => any) => getSnapshot() }))
 // This hook host calls scene components directly. Keep its original-art fixture;
 // actual context switching is covered by appearance tests and the browser flow.
