@@ -5,28 +5,35 @@ import { AgentBadge, ErrorLine, useAction } from './bits'
 import { ago, providerLabel } from './model'
 import { managedStateLabel } from './live'
 import { shownNo } from './hub/ids'
+import { ProjectPicker } from './ui/ProjectPicker'
+import { projectPath } from './ui/projectPickerModel'
 
 // 新建托管会话：只能选服务配置里的 Agent，不能提交命令。
 export function NewManaged({ snap, initialRepoId, onLaunched }: { snap: Snapshot; initialRepoId?: number; onLaunched: (m: ManagedSession) => void }) {
   const repos = (snap.repos ?? []).filter((r) => r.is_git)
   const agents = snap.agents ?? []
-  const [repo, setRepo] = useState<number | ''>(initialRepoId && repos.some((r) => r.id === initialRepoId) ? initialRepoId : repos[0]?.id ?? '')
+  const [repo, setRepo] = useState<number | null>(initialRepoId ?? null)
   const [agent, setAgent] = useState(agents[0] ?? '')
   const [title, setTitle] = useState('')
   const act = useAction()
+  const selected = repos.find(r => r.id === repo)
+  const validAgent = agents.includes(agent)
+  // 从顶部切换项目范围时同步上下文；全局入口始终让用户明确选项目。
+  useEffect(() => { setRepo(initialRepoId ?? null) }, [initialRepoId])
   if (snap.managed_unavailable) return <p className="hint">{snap.managed_unavailable}</p>
   if (!agents.length) return <p className="hint">本机服务未找到 tmux，暂时不能从面板启动托管会话；已有会话照常显示。</p>
   if (!repos.length) return <p className="hint">还没有已登记的 Git 项目。先在项目中运行一次 Agent，或让 Agent 用 begin 登记。</p>
   return <form className="new-item compact managed-new" aria-label="新建托管会话" onSubmit={(e) => {
     e.preventDefault()
-    if (repo === '' || !agent || !title.trim()) return
-    act.run(() => api.launchManaged({ repo_id: repo, agent, title: title.trim() }).then((m) => { setTitle(''); onLaunched(m) }))
+    if (!selected || !validAgent || !title.trim()) return
+    act.run(() => api.launchManaged({ repo_id: selected.id, agent, title: title.trim() }).then((m) => { setTitle(''); onLaunched(m) }))
   }}>
-    <label>项目<select value={repo} onChange={(e) => setRepo(Number(e.target.value))}>{repos.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}</select></label>
+    <div>项目<ProjectPicker repos={repos} value={selected?.id ?? null} onChange={next => { if (typeof next === 'number') setRepo(next) }} /></div>
     <label>Agent<select value={agent} onChange={(e) => setAgent(e.target.value)}>{agents.map((a) => <option key={a} value={a}>{providerLabel(a)}</option>)}</select></label>
     <label>任务标题<input value={title} onChange={(e) => setTitle(e.target.value)} required maxLength={200} placeholder="这次要做什么" /></label>
+    <div className="managed-target" role="status">{selected ? <><strong>将在 {selected.name} 启动 · {providerLabel(agent)}</strong><code>{projectPath(selected)}</code></> : '请先选择这次工作的项目。'}</div>
     <p className="hint">在独立 worktree 和新分支 steward/… 中启动，自动登记工作项。启动后在 Agent 自己的界面里交代任务，或开启“接管输入”。</p>
-    <button className="btn small primary" disabled={act.busy || !title.trim()}>{act.busy ? '启动中…' : '启动托管会话'}</button>
+    <button className="btn small primary" disabled={act.busy || !selected || !validAgent || !title.trim()}>{act.busy ? '启动中…' : '启动托管会话'}</button>
     <ErrorLine msg={act.error} />
   </form>
 }

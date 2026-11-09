@@ -1,5 +1,5 @@
 // 小镇世界：每个项目一个街区，中间是广场。远景只画街区名牌和计数，近景画小人、包裹和任务。只读。
-import { useEffect, useMemo, useRef, useState, type PointerEvent as RPointerEvent, type RefObject } from 'react'
+import { useEffect, useId, useMemo, useRef, useState, type PointerEvent as RPointerEvent, type RefObject } from 'react'
 import { STALE_REVIEW_MS } from '../workManagement'
 import { onRoomRequest, takeRoomRequest, type RoomFocus, type RoomRequest } from './roomRequest'
 import { IsoBox, IsoTile, iso, type Pt } from './iso'
@@ -51,7 +51,7 @@ import { addPoint, cellOrigin, residentWorld } from './residentTrips'
 import { ResidentFollow } from './ResidentFollow'
 
 // 小镇里的浮动面板，面板本身和它的开关按钮都标上同一个名字，点在这些元素以外就收起。
-type Popover = 'guide' | 'projects' | 'desk' | 'moments' | 'residents'
+type Popover = 'guide' | 'projects' | 'desk' | 'moments' | 'residents' | 'tools'
 const POPOVER_ATTR = 'data-town-popover'
 
 /** 每个街区的退件筐最多摆几个箱子，其余只计数。 */
@@ -668,6 +668,8 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
   // 使用说明：第一次来时按钮旁冒一个小提示，打开过一次就不再提示（只记在这个浏览器里）。
   // 浮动面板（怎么看、项目列表、验收台列表、新动态）同一时间只开一个；点面板和它的按钮以外的地方、按 Esc 都会收起。
   const [popover, setPopover] = useState<Popover | null>(() => props.startWithResidents && typeof window !== 'undefined' && window.innerWidth >= 760 ? 'residents' : null)
+  const toolsTrigger = useRef<HTMLButtonElement>(null)
+  const toolsId = useId()
   const toggle = (name: Popover) => (on: boolean) => setPopover((p) => (on ? name : p === name ? null : p))
   const guide = popover === 'guide', setGuide = toggle('guide')
   const projectsOpen = popover === 'projects', setProjectsOpen = toggle('projects')
@@ -676,7 +678,7 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
   useEffect(() => {
     if (!popover) return
     const away = (e: PointerEvent) => { if (!(e.target as Element | null)?.closest?.(`[${POPOVER_ATTR}="${popover}"]`)) setPopover(null) }
-    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.stopImmediatePropagation(); setPopover(null) } }
+    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.stopImmediatePropagation(); setPopover(null); if (popover === 'tools') toolsTrigger.current?.focus({ preventScroll: true }) } }
     window.addEventListener('pointerdown', away, true)
     window.addEventListener('keydown', esc, true)
     return () => { window.removeEventListener('pointerdown', away, true); window.removeEventListener('keydown', esc, true) }
@@ -730,6 +732,7 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
   const box = useRef<HTMLDivElement>(null)
   const [aspect, setAspect] = useState(1.6)
   const [compact, setCompact] = useState(() => typeof window !== 'undefined' && window.innerWidth < 760)
+  const [compactTools, setCompactTools] = useState(false)
   const [cam, setCam] = useState<Camera | null>(null)
   const anim = useRef<number | null>(null)
   const lastTouch = useRef(0)
@@ -765,7 +768,12 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
   useEffect(() => {
     const el = box.current
     if (!el || typeof ResizeObserver === 'undefined') return
-    const ro = new ResizeObserver(() => { const r = el.getBoundingClientRect(); if (r.width > 0 && r.height > 0) { setAspect(r.width / r.height); setCompact(r.width < 760) } })
+    const ro = new ResizeObserver(() => {
+      const r = el.getBoundingClientRect()
+      if (r.width <= 0 || r.height <= 0) return
+      setAspect(r.width / r.height); setCompact(r.width < 760); setCompactTools(r.width < 1000)
+      if (r.width >= 1000) setPopover(p => p === 'tools' ? null : p)
+    })
     ro.observe(el)
     return () => ro.disconnect()
   }, [])
@@ -790,7 +798,7 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
   const stop = () => { if (anim.current != null) cancelAnimationFrame(anim.current); anim.current = null }
   const releaseResident = () => { setResidentFollow(null); stop() }
   const openStructure = (trigger: HTMLButtonElement) => {
-    structureTrigger.current = trigger
+    structureTrigger.current = compactTools && !insideB ? toolsTrigger.current : trigger
     releaseResident(); stop(); drag.current = null; setCam(camera); lastTouch.current = Date.now()
     setPopover(null); setStructure(true)
   }
@@ -1079,8 +1087,20 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
   const arrivedAt = arrived?.kind === 'project'
     ? (() => { const d = world.districts.find((x) => x.id === arrived.id); return d ? { kind: 'project' as const, d } : null })()
     : arrived ? (() => { const v = world.villages.find((x) => x.key === arrived.key); return v ? { kind: 'area' as const, name: v.name, count: v.cells.length - 1 } : null })() : null
+  const secondaryTools = <>
+    <button type="button" onClick={() => { setPopover(null); lastTouch.current = Date.now(); leaveNav(); flyTo(fitCamera(cellBox(world.plaza.ox, world.plaza.oy), aspect, 1.1)) }} title="回到中央广场">广场</button>
+    <span className="town-guide-anchor">
+      <button type="button" {...{ [POPOVER_ATTR]: 'guide' }} aria-pressed={guide} className={guide ? 'is-on' : undefined} onClick={() => (guide ? setGuide(false) : openGuide())} title="小镇怎么看：地图上的东西、怎么操作、每天怎么用">怎么看</button>
+      {!compactTools && !guideSeen && !guide && <span className="town-guide-bubble" role="note">第一次来？点这里看怎么用</span>}
+    </span>
+    <button type="button" aria-haspopup="dialog" aria-expanded={structure} onClick={e => openStructure(e.currentTarget)} title="查看 SS 自身的结构说明首版样本">结构说明</button>
+    <button type="button" aria-pressed={byAgent} className={byAgent ? 'is-on' : undefined} onClick={() => { setByAgent(!byAgent); setAgentFocus(null) }} title="按会话来自哪个 Agent 着色">按 Agent 看</button>
+    <button type="button" {...{ [POPOVER_ATTR]: 'projects' }} aria-expanded={projectsOpen} className={projectsOpen ? 'is-on' : undefined} onClick={() => setProjectsOpen(!projectsOpen)} title="按片区列出全部项目：点项目名去它的房子和门前花园">项目 {world.districts.length}</button>
+    {!props.replaying && oldestWait != null && <span className={`town-basket-wait${oldestWait >= OVERDUE_MS ? ' is-overdue' : ''}`} role="status" title="最早熟的那棵从交付到现在的时间；超过 30 分钟变红，超过 7 天的另算">最久等了 {waitedText(oldestWait)}</span>}
+    {!props.replaying && staleRipe > 0 && <span className="town-basket-wait is-stale" role="status">另有 {staleRipe} 件超过 7 天</span>}
+  </>
   return (
-    <div className={`town-world${moment ? ' has-moment' : ''}`} ref={box} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp}
+    <div className={`town-world${compactTools ? ' has-compact-tools' : ''}${moment ? ' has-moment' : ''}`} ref={box} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp}
       onPointerDownCapture={() => { lastTouch.current = Date.now(); stop() }} onKeyDownCapture={() => { lastTouch.current = Date.now(); stop() }}
       onClickCapture={(e) => { if (swallowClick.current) { swallowClick.current = false; e.stopPropagation(); e.preventDefault() } }}>
       <div className="town-world-surface" inert={structure}>
@@ -1113,22 +1133,14 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
         <button type="button" onClick={() => zoomBy(0.7)} aria-label="放大" title="放大（也可以滚动滚轮）">＋</button>
         <button type="button" onClick={() => zoomBy(1.4)} aria-label="缩小" title="缩小">－</button>
         <button type="button" onClick={() => { lastTouch.current = Date.now(); leaveNav(); flyTo(fitAll()) }} title="看全部街区">全景</button>
-        <button type="button" onClick={() => { lastTouch.current = Date.now(); leaveNav(); flyTo(fitCamera(cellBox(world.plaza.ox, world.plaza.oy), aspect, 1.1)) }} title="回到中央广场">广场</button>
         {!props.replaying && <button type="button" data-town-popover="residents" aria-expanded={popover === 'residents'} className={popover === 'residents' ? 'is-on' : undefined}
           onClick={() => { const open = popover !== 'residents'; setPopover(open ? 'residents' : null); if (open && !residentFollow) visitResidents() }} title="七位常住居民：去她们家，摸摸头，看看今天的小事">居民 7</button>}
         {!props.replaying && <button type="button" className={`town-basket${ripe.length ? ' has-ripe' : ''}`} onClick={startHarvest} disabled={!ripe.length && !harvest}
           title={`${ripe.length ? `熟了 ${ripe.length} 棵：一棵一棵打开验收卡片，收下或退回` : '现在没有熟了的菜（没有待验收的工作项）'}。菜地只放待验收交付；Agent 交给你的事在右侧“待审阅／验收”，卡住的工作在“每日十分钟”。`}>收菜 {ripe.length}</button>}
-        {!props.replaying && oldestWait != null && <span className={`town-basket-wait${oldestWait >= OVERDUE_MS ? ' is-overdue' : ''}`} role="status"
-          title="最早熟的那棵从交付到现在的时间；超过 30 分钟变红，超过 7 天的另算">最久等了 {waitedText(oldestWait)}</span>}
-        {!props.replaying && staleRipe > 0 && <span className="town-basket-wait is-stale" role="status" title="交付超过 7 天还没收的；可以在每日十分钟里一起暂停提醒">另有 {staleRipe} 件超过 7 天</span>}
-        <span className="town-guide-anchor">
-          <button type="button" {...{ [POPOVER_ATTR]: 'guide' }} aria-pressed={guide} className={guide ? 'is-on' : undefined} onClick={() => (guide ? setGuide(false) : openGuide())} title="小镇怎么看：地图上的东西、怎么操作、每天怎么用">怎么看</button>
-          {!guideSeen && !guide && <span className="town-guide-bubble" role="note">第一次来？点这里看怎么用</span>}
-        </span>
-        <button type="button" aria-haspopup="dialog" aria-expanded={structure} onClick={e => openStructure(e.currentTarget)} title={insideB ? "查看这个项目的目标、功能关系与验证依据" : "查看 SS 自身的结构说明首版样本"}>结构说明</button>
-        <button type="button" aria-pressed={byAgent} className={byAgent ? 'is-on' : undefined} onClick={() => { setByAgent(!byAgent); setAgentFocus(null) }} title="按会话来自哪个 Agent 着色">按 Agent 看</button>
-        <button type="button" {...{ [POPOVER_ATTR]: 'projects' }} aria-expanded={projectsOpen} className={projectsOpen ? 'is-on' : undefined} onClick={() => setProjectsOpen(!projectsOpen)}
-          title="按片区列出全部项目：点项目名去它的房子和门前花园">项目 {world.districts.length}</button>
+        {compactTools ? <>
+          <button ref={toolsTrigger} type="button" data-town-popover="tools" aria-expanded={popover === 'tools'} aria-controls={toolsId} onClick={() => setPopover(popover === 'tools' ? null : 'tools')}>更多</button>
+          {popover === 'tools' && <div className="town-world-more-panel" data-town-popover="tools" role="group" aria-label="更多地图操作" id={toolsId}>{secondaryTools}</div>}
+        </> : secondaryTools}
       </div>
       {projectsOpen && <div {...{ [POPOVER_ATTR]: 'projects' }} style={{ display: 'contents' }}><ProjectList world={world} isRemote={isRemote} onNavigate={navigate} onEnter={enter} /></div>}
       {deskOpen && <div {...{ [POPOVER_ATTR]: 'desk' }} style={{ display: 'contents' }}><DeskList groups={deskProjects(world, isRemote)} onNavigate={(t) => { setDeskOpen(false); navigate(t) }}

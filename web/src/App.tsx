@@ -3,7 +3,6 @@ import { ReactFlowProvider } from '@xyflow/react'
 import { useSnapshot } from './api'
 import { Canvas } from './Canvas'
 import { Overview } from './Overview'
-import { repoLabel } from './workbench'
 import { ItemDetail, WorkItemsPanel, SessionDetail, SessionList } from './Panels'
 import { Queue } from './Queue'
 import { groupByRepo, itemStatusLabel, projectQueueCounts, providerLabel, queueCounts, sessionBuckets, type SessionScope } from './model'
@@ -32,6 +31,7 @@ import { requestRoom } from './town/roomRequest'
 import { inactiveRepo } from './town/activity'
 import { panelScope, type PanelView } from './panelScope'
 import { ConnectionState } from './ui/ConnectionState'
+import { ProjectPicker } from './ui/ProjectPicker'
 
 type Tab = 'queue' | 'items' | 'sessions' | 'launch' | 'review'
 type Sel = { kind: 'item'; id: string } | { kind: 'session'; id: number } | null
@@ -258,10 +258,7 @@ function PanelApp() {
           <select className="view-select" value={view} onChange={e => changeView(e.target.value as PanelView)} aria-label="页面">
             <option value="today">每日十分钟</option><option value="overview">项目简报</option><option value="town">小镇</option><option value="list">列表</option><option value="history">历史</option>{view === 'canvas' && <option value="canvas">画布</option>}
           </select>
-          {scope.global ? <span className="panel-scope" aria-label="当前范围">本机全部项目</span> : <select className="project-select" value={repoId} onChange={(e) => setRepoId(e.target.value === 'all' ? 'all' : Number(e.target.value))} aria-label="项目">
-            <option value="all">全部项目</option>
-            {(snap.repos ?? []).map((r) => <option key={r.id} value={r.id}>{repoLabel(snap, r.id)}</option>)}
-          </select>}
+          {scope.global ? <span className="panel-scope" aria-label="当前范围">本机全部项目</span> : <ProjectPicker className="project-select" repos={snap.repos ?? []} value={repoId} includeAll onChange={setRepoId} />}
           {!scope.global && <details className="panel-filters" open={!compact}>
             <summary>筛选{filterCount > 0 && <span className="badge">{filterCount}</span>}</summary>
             <div className="panel-filter-fields">
