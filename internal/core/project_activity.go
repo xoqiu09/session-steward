@@ -31,14 +31,34 @@ type querier interface {
 	Query(query string, args ...any) (*sql.Rows, error)
 }
 
+const repoLastSessionPrefix = "project_last_session_at:"
+
+// A session has only one current repository. Save its last visit before
+// moving it so that the old repository can still age out normally.
+func rememberRepoSessionActivity(tx *sql.Tx, repoID int64, at string) error {
+	_, err := tx.Exec(`INSERT INTO meta(k,v) VALUES(?||?,?)
+	 ON CONFLICT(k) DO UPDATE SET v=MAX(meta.v,excluded.v)`, repoLastSessionPrefix, repoID, at)
+	return err
+}
+
+func moveRepoSessionActivity(tx *sql.Tx, from, to int64) error {
+	if _, err := tx.Exec(`INSERT INTO meta(k,v) SELECT ?||?,v FROM meta WHERE k=?||?
+	 ON CONFLICT(k) DO UPDATE SET v=MAX(meta.v,excluded.v)`, repoLastSessionPrefix, to, repoLastSessionPrefix, from); err != nil {
+		return err
+	}
+	_, err := tx.Exec(`DELETE FROM meta WHERE k=?||?`, repoLastSessionPrefix, from)
+	return err
+}
+
 func repoActivities(q querier) (map[int64]repoActivity, error) {
 	rows, err := q.Query(`SELECT r.id,
 	 MAX(COALESCE((SELECT MAX(last_activity_at) FROM sessions s WHERE s.repo_id=r.id),''),
+	     COALESCE((SELECT v FROM meta WHERE k=?||r.id),''),
 	     COALESCE((SELECT MAX(created_at) FROM approvals a WHERE a.repo_id=r.id),'')),
 	 EXISTS(SELECT 1 FROM work_items w WHERE w.repo_id=r.id AND w.status NOT IN ('done','abandoned')
 	   AND NOT EXISTS(SELECT 1 FROM meta m WHERE m.k='work_management:'||w.id AND json_extract(m.v,'$.state') IN ('paused','delegated','accepted')))
 	 OR EXISTS(SELECT 1 FROM approvals a WHERE a.repo_id=r.id AND a.status='pending')
-	 FROM repos r`)
+	 FROM repos r`, repoLastSessionPrefix)
 	if err != nil {
 		return nil, err
 	}

@@ -39,7 +39,7 @@ func TestRepositoryIdentityReconciliationKeepsLedgerAndAcceptance(t *testing.T) 
 				return err
 			}
 		}
-		return nil
+		return rememberRepoSessionActivity(tx, 1, now)
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -76,6 +76,11 @@ func TestRepositoryIdentityReconciliationKeepsLedgerAndAcceptance(t *testing.T) 
 	}
 	if len(snap.Repos) != 2 || len(snap.WorkItems) != 1 || len(snap.Runs) != 1 || len(snap.Features) != 1 || !snap.Features[0].Accepted || snap.Features[0].RepoID != 2 || *snap.WorkItems[0].RepoID != 2 || *snap.Sessions[0].RepoID != 2 || snap.WorkItems[0].Status != "review" {
 		t.Fatalf("ledger/state lost: %+v", snap)
+	}
+	for _, r := range snap.Repos {
+		if r.ID == 2 && r.LastActivityAt != now {
+			t.Fatalf("last session visit lost during alias reconciliation: %q", r.LastActivityAt)
+		}
 	}
 	var count int
 	var audit string

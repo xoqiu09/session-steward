@@ -50,7 +50,7 @@ const SKIP_OUTCOMES = new Set(['historical', 'attribution_reverted'])
 
 // 只把“现在”的东西放进小镇：近期会话、当前工作项、未结束的运行、近一天的失败、每个待验收项最近一次运行。
 // 告示栏只放 SS 关注队列里“需你处理”的请求（与顶部“审批／决定”同一口径）。
-export function townSlice(snap: Snapshot, repoId: number | 'all', provider: string): Snapshot {
+export function townSlice(snap: Snapshot, repoId: number | 'all', provider: string, world = false): Snapshot {
   const groups = groupByRepo(snap, { query: '', showDone: false, repoId, provider })
   const sessions = sessionBuckets(snap, provider, repoId).recent
   const items = groups.flatMap(g => g.items)
@@ -59,8 +59,15 @@ export function townSlice(snap: Snapshot, repoId: number | 'all', provider: stri
   const repoIds = new Set<number>()
   for (const p of orderedProjects(snap, groups, provider)) if (p.group.repoId != null) repoIds.add(p.group.repoId)
   for (const s of sessions) if (s.repo_id != null) repoIds.add(s.repo_id)
-  const order = [...repoIds]
-  const repos = order.map(id => (snap.repos ?? []).find(r => r.id === id)).filter((r): r is Repo => !!r)
+  // 地图的房子不要求此刻有人在场。调用方已应用“不活跃的项目”开关；
+  // 回放仍按当时的会话与工作画，不能拿今天的项目活跃度填进去。
+  if (world && provider === 'all' && !snap.replay_at) {
+    for (const r of snap.repos ?? []) {
+      if (r.activity && (repoId === 'all' || r.id === repoId)) repoIds.add(r.id)
+    }
+  }
+  const repoById = new Map((snap.repos ?? []).map(r => [r.id, r]))
+  const repos = [...repoIds].map(id => repoById.get(id)).filter((r): r is Repo => !!r)
   const now = Date.parse(snap.now)
   const runs = snap.runs ?? []
   const open = runs.filter(r => !r.ended_at && sessionIds.has(r.session_id))
@@ -216,7 +223,7 @@ export function TownView({ snap, conn, repoId, provider, sel, onSelectItem, onSe
   }
   const extrasMenu = useDismissibleDetails()
   const quiet = useMemo(() => hideInactive(view, repoId), [view, repoId])
-  const slice = useMemo(() => townSlice(extras.inactive ? view : quiet.snap, repoId, provider), [view, quiet, extras.inactive, repoId, provider])
+  const slice = useMemo(() => townSlice(extras.inactive ? view : quiet.snap, repoId, provider, world), [view, quiet, extras.inactive, repoId, provider, world])
   const model = useMemo(() => buildTown(slice, replay && replaySnap ? replaySnap.now : clientNow), [slice, clientNow, replay, replaySnap])
   const changed = useChanged(model, source)
   const offline = conn === 'offline'

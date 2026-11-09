@@ -141,6 +141,72 @@ beforeEach(() => {
 })
 afterEach(() => { host.reset(); vi.unstubAllGlobals(); vi.useRealTimers(); vi.restoreAllMocks() })
 
+describe('全景不会随快照跳动', () => {
+  const withRecentSessions = (s: Snapshot) => ({
+    ...s,
+    sessions: (s.repos ?? []).map((r) => fakeSession({ id: 100 + r.id, provider: 'codex', state: 'running', repo_id: r.id, last_activity_at: s.now })),
+  })
+
+  it('项目反复出现和隐藏时保留镜头，点全景才框进新范围', () => {
+    viewProps = {}
+    props = {}
+    const show = (expanded: boolean) => {
+      snap = withRecentSessions({ ...snap, cursor: snap.cursor + 1, repos: repos.slice(0, expanded ? 8 : 2) })
+      render()
+    }
+    show(false)
+    const initial = view(), initialBounds = scene().props.world.bounds
+    for (const expanded of [true, false, true]) {
+      show(expanded)
+      expect(scene().props.world.districts).toHaveLength(expanded ? 8 : 2)
+      if (expanded) expect(scene().props.world.bounds).not.toEqual(initialBounds)
+      expect(view()).toEqual(initial)
+    }
+    press('全景')
+    expect(view()).not.toEqual(initial)
+    for (const d of scene().props.world.districts) {
+      expect(within(iso(d.ox + 4.5, d.oy + 4), view())).toBe(true)
+    }
+  })
+
+  it('空小镇等到第一批项目出现再记住初始全景', () => {
+    viewProps = {}
+    props = {}
+    const populated = withRecentSessions(snap)
+    snap = { ...snap, repos: [], work_items: [], sessions: [] }
+    render()
+    const empty = view()
+    snap = { ...populated, cursor: snap.cursor + 1 }
+    render()
+    const full = view()
+    expect(full).not.toEqual(empty)
+    expect(scene().props.world.districts).toHaveLength(8)
+    press('全景')
+    expect(view()).toEqual(full)
+  })
+})
+
+it('同一个会话在两个项目切换时，最近有活动的房子继续留在地图上', () => {
+  viewProps = {}
+  props = {}
+  const show = (workingIn: number, visitedBoth: boolean) => {
+    snap = { ...snap, cursor: snap.cursor + 1, work_items: [], repos: repos.slice(0, 2).map((r) => ({
+      ...r, activity: r.id === 1 || visitedBoth ? 'active' : 'dormant',
+    })), sessions: [fakeSession({ id: 41, provider: 'codex', state: 'running', repo_id: workingIn, last_activity_at: snap.now })] }
+    render()
+  }
+  show(1, false)
+  expect(scene().props.world.districts).toHaveLength(1)
+  const firstCell = district('self#1').cell
+  show(2, true)
+  expect(scene().props.world.districts).toHaveLength(2)
+  expect(district('self#1').cell).toEqual(firstCell)
+  const secondCell = district('self#2').cell
+  show(1, true)
+  expect(scene().props.world.districts).toHaveLength(2)
+  expect(district('self#2').cell).toEqual(secondCell)
+})
+
 describe('名牌去花园', () => {
   it('点项目名牌立即定位到房子和门前花园，仍在世界里，不开详情', () => {
     render(); const before = view()

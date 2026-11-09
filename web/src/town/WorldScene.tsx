@@ -776,17 +776,16 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
     const to = fitCamera(cellBox(world.residential.cx * CELL_W, world.residential.cy * CELL_D), aspect, 1.12)
     return { ...to, cx: to.cx - (compact ? 0 : to.w * 0.1), cy: to.cy + (compact ? to.w / aspect * 0.1 : 0) }
   }
-  // 切换本机 / 全部设备时世界范围会变；还没手动移动过镜头也停在原处，不跟着新全景跳。
-  const seenSource = useRef(source)
-  const shownCam = useRef<Camera | null>(null)
-  const camera = cam ?? (seenSource.current !== source && shownCam.current ? shownCam.current : props.startWithResidents ? fitResidents() : fitAll())
+  // 只在首次有项目时取全景。后台更新可改变地图范围，但不会重置视野；
+  // 窗口尺寸仍能调整初始取景，点“全景”则按当前范围重新取景。
+  const [initialBounds, setInitialBounds] = useState<Box | null>(() => world.districts.length ? world.bounds : null)
   useEffect(() => {
-    if (seenSource.current === source) return
+    if (!initialBounds && world.districts.length) setInitialBounds(world.bounds)
+  }, [initialBounds, world])
+  const camera = cam ?? (props.startWithResidents ? fitResidents() : fitCamera(initialBounds ?? world.bounds, aspect, 1.02))
+  useEffect(() => {
     setResidentFollow(null); setResidentWatch(null)
-    seenSource.current = source
-    if (!cam && shownCam.current) setCam(shownCam.current)
   }, [source])
-  useEffect(() => { shownCam.current = camera })
   const stop = () => { if (anim.current != null) cancelAnimationFrame(anim.current); anim.current = null }
   const releaseResident = () => { setResidentFollow(null); stop() }
   const openStructure = (trigger: HTMLButtonElement) => {

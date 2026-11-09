@@ -249,8 +249,9 @@ func (c *Core) upsertSession(tx *sql.Tx, e *event.Event, l *locInfo, now string)
 	var id int64
 	var dataSource string
 	var lastActivity string
-	err := tx.QueryRow(`SELECT id, data_source, last_activity_at FROM sessions WHERE host_id=? AND provider=? AND provider_session_id=?`,
-		e.Source.HostID, e.Source.Provider, e.SessionID).Scan(&id, &dataSource, &lastActivity)
+	var previousRepo sql.NullInt64
+	err := tx.QueryRow(`SELECT id, data_source, last_activity_at, repo_id FROM sessions WHERE host_id=? AND provider=? AND provider_session_id=?`,
+		e.Source.HostID, e.Source.Provider, e.SessionID).Scan(&id, &dataSource, &lastActivity, &previousRepo)
 	if errors.Is(err, sql.ErrNoRows) {
 		wt, br := "", e.Branch
 		if l != nil {
@@ -274,6 +275,11 @@ func (c *Core) upsertSession(tx *sql.Tx, e *event.Event, l *locInfo, now string)
 		version = CASE WHEN ? <> '' THEN ? ELSE version END`
 	args := []any{e.Source.Client, e.Source.Client, e.Source.Version, e.Source.Version}
 	if e.Cwd != "" && l != nil && (e.Kind != event.KindCwdChanged || store.TS(e.OccurredAt) >= lastActivity) {
+		if previousRepo.Valid && previousRepo.Int64 != repoID && lastActivity != "" {
+			if err := rememberRepoSessionActivity(tx, previousRepo.Int64, lastActivity); err != nil {
+				return 0, err
+			}
+		}
 		q += `, cwd=?, worktree=?, branch=?, repo_id=?`
 		args = append(args, e.Cwd, l.worktree, e.Branch, nullInt(repoID))
 	}

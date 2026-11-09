@@ -132,6 +132,9 @@ func (c *Core) ReconcileRepos(ctx context.Context) error {
 				if err = moveProjectVisibility(tx, e.id, winner.id); err != nil {
 					return err
 				}
+				if err = moveRepoSessionActivity(tx, e.id, winner.id); err != nil {
+					return err
+				}
 				if err = moveProjectStructure(tx, e.id, winner.id); err != nil {
 					return err
 				}

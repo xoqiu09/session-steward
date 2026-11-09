@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/xoqiu09/session-steward/internal/event"
+	"github.com/xoqiu09/session-steward/internal/store"
 )
 
 func TestProjectActivityTiersFollowWorkAndRecency(t *testing.T) {
@@ -74,4 +75,46 @@ func TestProjectActivityTiersFollowWorkAndRecency(t *testing.T) {
 	if got := tiers(); got["/synthetic-idle"] != ActivityActive {
 		t.Fatalf("new activity should bring a project back: %v", got)
 	}
+}
+
+func TestProjectActivitySurvivesSessionMovingBetweenToolDirectories(t *testing.T) {
+	c := newCore(t, mixedLocator{})
+	ctx := context.Background()
+	start := time.Date(2026, 10, 30, 8, 0, 0, 0, time.UTC)
+	clock := start
+	c.St.Now = func() time.Time { return clock }
+	send := func(kind event.Kind, cwd string, elapsed time.Duration) {
+		t.Helper()
+		clock = start.Add(elapsed)
+		e := ev("synthetic-moving", kind, clock)
+		e.Source.Provider, e.Cwd = "codex", cwd
+		mustIngest(t, c, e)
+	}
+	send(event.KindSessionStart, "/repo-a", 0)
+	send(event.KindToolPre, "/repo-b", time.Second)
+	send(event.KindToolPost, "/repo-a", 2*time.Second)
+	send(event.KindToolPre, "/repo-b", 3*time.Second)
+
+	check := func(wantTier string) {
+		t.Helper()
+		snap, err := c.Snapshot(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(snap.Repos) != 2 || len(snap.Sessions) != 1 || snap.Sessions[0].Cwd != "/repo-b" {
+			t.Fatal("expected one session now in the second repository")
+		}
+		for _, r := range snap.Repos {
+			wantAt := start.Add(2 * time.Second)
+			if r.Name == "repo-b" {
+				wantAt = start.Add(3 * time.Second)
+			}
+			if r.Activity != wantTier || r.LastActivityAt != store.TS(wantAt) {
+				t.Errorf("%s: got %s at %q; want %s at %s", r.Name, r.Activity, r.LastActivityAt, wantTier, wantAt)
+			}
+		}
+	}
+	check(ActivityActive)
+	clock = start.Add(8 * 24 * time.Hour)
+	check(ActivityQuiet)
 }
