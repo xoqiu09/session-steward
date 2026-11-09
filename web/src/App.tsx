@@ -30,9 +30,23 @@ import { NoticeBar } from './ui/NoticeBar'
 import { useHookCoverage } from './ui/setup'
 import { requestRoom } from './town/roomRequest'
 import { inactiveRepo } from './town/activity'
+import { panelScope, type PanelView } from './panelScope'
+import { ConnectionState } from './ui/ConnectionState'
 
 type Tab = 'queue' | 'items' | 'sessions' | 'launch' | 'review'
 type Sel = { kind: 'item'; id: string } | { kind: 'session'; id: number } | null
+
+function useCompactPanel() {
+  const [compact, setCompact] = useState(() => typeof window !== 'undefined' && !!window.matchMedia?.('(max-width: 1199px)').matches)
+  useEffect(() => {
+    const media = window.matchMedia?.('(max-width: 1199px)')
+    if (!media) return
+    const update = () => setCompact(media.matches)
+    media.addEventListener('change', update)
+    return () => media.removeEventListener('change', update)
+  }, [])
+  return compact
+}
 
 export default function App() {
 	// 原型的 ?view=native 已并入派活台。
@@ -41,7 +55,10 @@ export default function App() {
 }
 
 function PanelApp() {
-  const { snap, conn } = useSnapshot()
+  const { snap, conn, reload } = useSnapshot()
+  const compact = useCompactPanel()
+  const [retrying, setRetrying] = useState(false)
+  const retry = async () => { setRetrying(true); try { await reload() } finally { setRetrying(false) } }
   // 多设备：“全部设备”时小镇画合并视图；点到别台电脑上的东西只提示去那台处理。
   const hub = useHub()
   const [hubNotice, setHubNotice] = useState('')
@@ -61,10 +78,11 @@ function PanelApp() {
   const [provider, setProvider] = useState<string>('all')
   const [route, setRoute] = useState(() => parseTownRoute(window.location.search, window.location.hash))
   // 画布不在顶部导航里了（太复杂、暂时不用），仍可用 ?view=canvas 打开。
-  const [view, setView] = useState<'today' | 'overview' | 'town' | 'canvas' | 'list' | 'history'>(() => {
+  const [view, setView] = useState<PanelView>(() => {
     const v = new URLSearchParams(window.location.search).get('view')
     return v === 'today' ? 'today' : v === 'canvas' ? 'canvas' : route.town ? 'town' : 'overview'
   })
+  const scope = panelScope(view, repoId, provider, query, showDone)
   const openTown = () => {
     setRoute(worldTownRoute)
     setView('town')
@@ -122,7 +140,7 @@ function PanelApp() {
     history.replaceState(null, '', window.location.pathname + window.location.search)
   }, [snap, deep])
 
-  const groups = useMemo(() => (snap ? groupByRepo(snap, { query, showDone, repoId, provider }) : []), [snap, query, showDone, repoId, provider])
+  const groups = useMemo(() => (snap ? groupByRepo(snap, scope) : []), [snap, scope.query, scope.showDone, scope.repoId, scope.provider])
 
   const coverage = useHookCoverage()
   // 项目推进卡片和小镇房子的右键菜单：查看、整理和收起都在这里，危险操作再确认。
@@ -140,17 +158,17 @@ function PanelApp() {
   if (conn === 'unauthorized') {
     return <div className="center"><h1>Session Steward</h1><p>需要登录。请在终端运行 <code>steward open</code>。</p></div>
   }
-  if (!snap) return <div className="center muted">加载中…</div>
+  if (!snap) return <ConnectionState conn={conn} retrying={retrying} onRetry={() => void retry()} />
 
   const totalItems = groups.reduce((sum, g) => sum + g.items.length, 0)
   const providers = [...new Set((snap.sessions ?? []).map((s) => s.provider))]
-  const counts = queueCounts(snap, repoId, provider)
+  const counts = queueCounts(snap, scope.repoId, scope.provider)
   const summary = attentionSummary(snap)
   const todayLeft = summary.total
   const todayEntry = <a className="btn small today-entry" href={`${window.location.pathname}?view=today`} onClick={(e) => { if (!route.kiosk) { e.preventDefault(); setView('today') } }} title={`每日十分钟 · 要你处理 ${summary.total} 件：${summaryText(summary)}`}>{todayLeft ? `要你处理 ${todayLeft} 件` : '每日十分钟'}</a>
-  const actors = projectActorRows(snap, groups, provider)
-  const quietCount = sessionBuckets(snap, provider, repoId).quiet.length
-  const attributionRecords = scopedAttributions(snap, repoId, provider)
+  const actors = projectActorRows(snap, groups, scope.provider)
+  const quietCount = sessionBuckets(snap, scope.provider, scope.repoId).quiet.length
+  const attributionRecords = scopedAttributions(snap, scope.repoId, scope.provider)
   const attributionPending = attributionRecords.filter((a) => a.status === 'pending' && !a.plan.historical).length
   const openAttributions = () => { setSel(null); setAttributionOpen(true) }
   const selectItem = (id: string) => { setAttributionOpen(false); setNotificationSession(undefined); setSel({ kind: 'item', id }) }
@@ -163,7 +181,7 @@ function PanelApp() {
       <SessionDetail key={sel.id} snap={snap} id={sel.id} onClose={() => setSel(null)} onSelectItem={selectItem} foldEvents={route.kiosk} />
     )
   ) : null
-  const queuePanel = <Queue snap={snap} onSelectItem={selectItem} repoId={repoId} provider={provider} reviewOpen={queueFocus === 'review'} onReviewOpenChange={open => setQueueFocus(open ? 'review' : 'action')} />
+  const queuePanel = <Queue snap={snap} onSelectItem={selectItem} repoId={scope.repoId} provider={scope.provider} reviewOpen={queueFocus === 'review'} onReviewOpenChange={open => setQueueFocus(open ? 'review' : 'action')} />
 
   // 这台电脑能从面板启动 Agent 时才给“新建会话”；原因写在“设置”里。
   const canLaunch = (snap.agents?.length ?? 0) > 0 && !snap.managed_unavailable
@@ -181,6 +199,14 @@ function PanelApp() {
   </span>
   const projectManager = projectsOpen && <ProjectsPanel initialScope={projectsOpen} initialFilter={projectsFilter} device={hub.status?.device} onClose={() => { setProjectsOpen(null); setRepoId('all'); setSel(null) }} />
   const settings = settingsOpen && <HooksSettings onClose={() => setSettingsOpen(false)} />
+  const sum = liveSummary(snap, scope.repoId, scope.provider)
+  const filterCount = Number(provider !== 'all') + Number(scope.textFilters && !!query.trim()) + Number(scope.textFilters && showDone)
+  const changeView = (next: PanelView) => { if (next === 'town') openTown(); else setView(next) }
+  const connectionNotice = conn === 'offline' && <div className="connection-notice" role="status"><span><strong>连接已中断</strong> · 保留 {new Date(snap.now).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })} 的记录，正在重连。</span><button className="btn small" disabled={retrying} onClick={() => void retry()}>{retrying ? '正在重试…' : '重试'}</button></div>
+  const sessionShortcuts = <>
+    {quietCount > 0 && <button className="btn small" onClick={() => { setSel(null); setAttributionOpen(false); setTab('sessions'); setSessionScope('quiet') }}>已收起会话 {quietCount}</button>}
+    {attributionPending > 0 && <button className="btn small" onClick={openAttributions}>近期归属待确认 {attributionPending}</button>}
+  </>
 
   if (route.kiosk) {
     const drawer = sel != null || kioskQueue
@@ -189,6 +215,7 @@ function PanelApp() {
     return (
       <div className="app is-kiosk">
         <main className="kiosk-main">
+          {connectionNotice}
           {hubToast}
           <TownView coverage={coverage} world={route.world} snap={hub.merged ?? snap} conn={conn} repoId={repoId} provider={provider} sel={sel} onSelectItem={townItem} onSelectSession={townSession}
             onSelectRepo={(id) => setRepoId(id)} onAllRepos={() => setRepoId('all')} onQueue={openQueue} kiosk rotateMs={route.rotateMs} paused={drawer} noReplay={hub.scope === 'all'} {...townScope}
@@ -227,17 +254,25 @@ function PanelApp() {
             <strong>Session Steward</strong>
             <span className={`conn conn-${conn}`}>{conn === 'live' ? '实时' : conn === 'offline' ? '已断开，重连中' : '连接中'}</span>
           </div>
-          {projectShortcuts}
-          <select value={repoId} onChange={(e) => setRepoId(e.target.value === 'all' ? 'all' : Number(e.target.value))} aria-label="项目">
+          <div className="toolbar-management">{projectShortcuts}</div>
+          <select className="view-select" value={view} onChange={e => changeView(e.target.value as PanelView)} aria-label="页面">
+            <option value="today">每日十分钟</option><option value="overview">项目简报</option><option value="town">小镇</option><option value="list">列表</option><option value="history">历史</option>{view === 'canvas' && <option value="canvas">画布</option>}
+          </select>
+          {scope.global ? <span className="panel-scope" aria-label="当前范围">本机全部项目</span> : <select className="project-select" value={repoId} onChange={(e) => setRepoId(e.target.value === 'all' ? 'all' : Number(e.target.value))} aria-label="项目">
             <option value="all">全部项目</option>
             {(snap.repos ?? []).map((r) => <option key={r.id} value={r.id}>{repoLabel(snap, r.id)}</option>)}
-          </select>
-          <select value={provider} onChange={(e) => setProvider(e.target.value)} aria-label="Agent">
+          </select>}
+          {!scope.global && <details className="panel-filters" open={!compact}>
+            <summary>筛选{filterCount > 0 && <span className="badge">{filterCount}</span>}</summary>
+            <div className="panel-filter-fields">
+            <select value={provider} onChange={(e) => setProvider(e.target.value)} aria-label="Agent">
             <option value="all">全部 Agent</option>
             {providers.map((p) => <option key={p} value={p}>{providerLabel(p)}</option>)}
           </select>
-          <input className="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="查找 #编号或标题（展开相关依赖）" aria-label="搜索" />
-          <label className="check"><input type="checkbox" checked={showDone} onChange={(e) => setShowDone(e.target.checked)} /> 已完成</label>
+          {scope.textFilters && <><input className="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="查找 #编号或标题（展开相关依赖）" aria-label="搜索" />
+          <label className="check"><input type="checkbox" checked={showDone} onChange={(e) => setShowDone(e.target.checked)} /> 已完成</label></>}
+            </div>
+          </details>}
           <div className="seg" role="group" aria-label="视图">
             <button className={view === 'today' ? 'on' : ''} onClick={() => setView('today')}>每日十分钟</button>
             <button className={view === 'overview' ? 'on' : ''} onClick={() => setView('overview')}>项目简报</button>
@@ -248,14 +283,15 @@ function PanelApp() {
           </div>
           {view === 'town' && <a className="btn small" href={kioskHref(window.location.pathname, route.world)} title="全屏小镇，适合挂在副屏或手机上">桌面模式</a>}
           {view === 'canvas' && <button className="btn small" onClick={() => setExpandAll((v) => !v)}>{expandAll ? '默认折叠' : '全部展开'}</button>}
-          {quietCount > 0 && <button className="btn small" onClick={() => { setSel(null); setAttributionOpen(false); setTab('sessions'); setSessionScope('quiet') }}>已收起会话 {quietCount}</button>}
-          {attributionPending > 0 && <button className="btn small" onClick={openAttributions}>近期归属待确认 {attributionPending}</button>}
-          <button className="btn small" onClick={() => setSettingsOpen(true)}>设置</button>
+          <span className="toolbar-secondary">{sessionShortcuts}</span>
+          <button className="btn small toolbar-settings" onClick={() => setSettingsOpen(true)}>设置</button>
+          <details className="toolbar-more"><summary>更多</summary><div>{projectShortcuts}{sessionShortcuts}{view === 'town' && <a className="btn small" href={kioskHref(window.location.pathname, route.world)}>桌面模式</a>}</div></details>
         </header>
+        {connectionNotice}
         {isRemote() && <p className="warn-box" role="status">{remoteReadOnlyMessage}</p>}
-        {(() => {
-          const sum = liveSummary(snap, repoId, provider)
-          return <div className="live-summary" role="status" aria-label="谁在动">
+        {((snap.sessions ?? []).length > 0 || sum.running > 0 || counts.action > 0) && <details className="live-summary-fold" open={!compact}>
+          <summary>运行状态{sum.running > 0 ? ` · ${sum.running} 个会话工作中` : ' · 暂无运行中会话'}{sum.blocked > 0 ? ` · ${sum.blocked} 项受阻` : ''}</summary>
+          <div className="live-summary" role="status" aria-label="谁在动">
             <button className={counts.action ? 'is-user' : ''} onClick={() => { setSel(null); setAttributionOpen(false); setTab('queue') }}>审批／决定 <b>{counts.action}</b></button>
             <span className="is-run" title="收到近期活动事件的执行会话数，不是项目数">运行中 <b>{sum.running}</b> 个会话</span>
             <span className={sum.blocked ? 'is-blocked' : ''} title="当前推进中明确受阻的工作项；卡片也可能保留此前的卡点说明">受阻工作 <b>{sum.blocked}</b> 项</span>
@@ -264,11 +300,14 @@ function PanelApp() {
             {isRemote() ? <span className="remote-tag" title={remoteReadOnlyMessage}>远程</span>
               : canLaunch && <button className="btn small primary" onClick={() => { setSel(null); setAttributionOpen(false); setTab('launch') }}>＋ 新建会话</button>}
           </div>
-        })()}
-        <div className={view === 'overview' || view === 'today' || view === 'canvas' ? 'workbench-overview overview-hidden' : 'workbench-overview'}>
-          <div className="overview-line"><strong>项目推进</strong><span>{totalItems} 个工作项</span><span>{sessionBuckets(snap, provider, repoId).recent.length} 个近期会话</span><button onClick={() => { setSel(null); setAttributionOpen(false); setTab('queue') }}>审批／决定 {counts.action} · 待审阅／验收 {counts.review}</button></div>
+        </details>}
+        {(snap.repos ?? []).length > 0 && <details open={!compact} className={view === 'overview' || view === 'today' || view === 'canvas' ? 'workbench-overview overview-hidden project-summary-fold' : 'workbench-overview project-summary-fold'}>
+          <summary>项目推进 · {groups.length} 个项目</summary>
+          <div className="project-summary-body">
+          <div className="overview-line"><strong>项目推进</strong><span>{totalItems} 个工作项</span><span>{sessionBuckets(snap, scope.provider, scope.repoId).recent.length} 个近期会话</span><button onClick={() => { setSel(null); setAttributionOpen(false); setTab('queue') }}>审批／决定 {counts.action} · 待审阅／验收 {counts.review}</button></div>
           <div className="project-shortcuts">{groups.map((g) => <button key={g.key} {...(g.repoId != null ? { [REPO_ATTR]: g.repoId } : {})} disabled={g.repoId == null} className={repoId === g.repoId ? 'on' : ''} onClick={() => { if (g.repoId != null) { setRepoId(g.repoId); setSel(null); setAttributionOpen(false); setTab('queue') } }} title={g.name}><strong>{g.name}</strong><small>工作项 {g.items.length} · 待关联 {g.sessions.length}{projectQueueCounts(snap, g.repoId).action ? ` · 需审批 ${projectQueueCounts(snap, g.repoId).action}` : ''}</small></button>)}</div>
-        </div>
+          </div>
+        </details>}
         <div className="stage">
           {view === 'town' && hubToast}
           {view === 'town' ? <TownView coverage={coverage} world={route.world} snap={hub.merged ?? snap} conn={conn} repoId={repoId} provider={provider} sel={sel} onSelectItem={townItem} onSelectSession={townSession} replayDay={replayDay}
@@ -285,7 +324,7 @@ function PanelApp() {
         </div>
       </main>
       <aside className="side">
-        {attributionOpen ? <AttributionPanel snap={snap} repoId={repoId} provider={provider} onClose={() => setAttributionOpen(false)} onSelectItem={selectItem} /> : detail ?? (view === 'today' && !todaySideTabs ? (
+        {attributionOpen ? <AttributionPanel snap={snap} repoId={scope.repoId} provider={scope.provider} onClose={() => setAttributionOpen(false)} onSelectItem={selectItem} /> : detail ?? (view === 'today' && !todaySideTabs ? (
           <div className="side-body today-side">
             <p>点任意一行的标题或“详情”，完整的交付、简报和来源会在这里打开。</p>
             <button className="btn small" onClick={() => setTodaySideTabs(true)}>显示关注队列、工作项和会话</button>
@@ -301,10 +340,10 @@ function PanelApp() {
             </nav>
             <div className="side-body">
               {tab === 'queue' && <>{queuePanel}<button className="attribution-summary" onClick={openAttributions}>近期会话待归属 {attributionPending}<small>查看候选依据，按项目批量确认或撤销</small></button></>}
-              {tab === 'items' && <WorkItemsPanel snap={snap} items={groups.flatMap((g) => g.items)} history={groups.flatMap(g => g.history ?? [])} repoId={repoId} onSelect={selectItem} />}
+              {tab === 'items' && <WorkItemsPanel snap={snap} items={groups.flatMap((g) => g.items)} history={groups.flatMap(g => g.history ?? [])} repoId={scope.repoId} onSelect={selectItem} />}
               {tab === 'review' && <ReviewPanel />}
-              {tab === 'launch' && !isRemote() && canLaunch && <NewManaged snap={snap} initialRepoId={repoId === 'all' ? undefined : repoId} onLaunched={(m) => selectItem(m.work_item_id)} />}
-              {tab === 'sessions' && <SessionList snap={snap} onSelect={selectSession} provider={provider} repoId={repoId} scope={sessionScope} onScopeChange={setSessionScope} />}
+              {tab === 'launch' && !isRemote() && canLaunch && <NewManaged snap={snap} initialRepoId={scope.repoId === 'all' ? undefined : scope.repoId} onLaunched={(m) => selectItem(m.work_item_id)} />}
+              {tab === 'sessions' && <SessionList snap={snap} onSelect={selectSession} provider={scope.provider} repoId={scope.repoId} scope={sessionScope} onScopeChange={setSessionScope} />}
             </div>
           </>
         ))}

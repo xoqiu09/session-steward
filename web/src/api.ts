@@ -3,6 +3,7 @@ import { isRemote, remoteReadOnlyMessage } from './access'
 import type { AISummary, AttributionDecision, BriefEdit, DayDetail, Handoff, HistoryResp, HubStatus, ManagedSession, MergeJob, MergeSyncStatus, ProjectInfo, ProjectStructure, ProjectStructureDocument, Review, Worktree, SessionUsageDetail, Snapshot } from './types'
 import { snapshotRefresher } from './snapshotRefresh'
 import { publishNativeSnapshot } from './nativeBridge'
+import { snapshotStream } from './snapshotStream'
 
 export class ApiError extends Error {
   status: number
@@ -14,7 +15,7 @@ export class ApiError extends Error {
   }
 }
 
-async function call<T>(method: string, path: string, body?: unknown): Promise<T> {
+async function call<T>(method: string, path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
   if (isRemote() && method !== 'GET' && method !== 'HEAD') {
     throw new ApiError(403, remoteReadOnlyMessage)
   }
@@ -23,6 +24,7 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<T>
     credentials: 'same-origin',
     headers: { 'Content-Type': 'application/json', 'X-Steward': '1' },
     body: body === undefined ? undefined : JSON.stringify(body),
+    signal,
   })
   const text = await res.text()
   let data: unknown = {}
@@ -44,6 +46,15 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<T>
 
 export interface HookCoverage { provider: string; version: string; installed: string[]; missing: string[]; skipped: string[]; reason?: string; read_error?: boolean; untrusted?: number }
 
+// Bound snapshot reads so a stalled connection can expose a useful retry state.
+async function readSnapshot(): Promise<Snapshot> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), 10_000)
+  try { return await call<Snapshot>('GET', '/api/snapshot', undefined, controller.signal) }
+  catch (error) { if (controller.signal.aborted) throw new ApiError(0, '连接本机服务超时'); throw error }
+  finally { clearTimeout(timer) }
+}
+
 export const api = {
   hookCoverage: () => call<HookCoverage[]>('GET', '/api/hooks/status'),
   saveProjectStructure: (repo: number, document: ProjectStructureDocument, base_revision: string) => call<{ structure: ProjectStructure }>('PUT', `/api/projects/${repo}/structure`, { document, base_revision }),
@@ -58,7 +69,7 @@ export const api = {
   acceptFeature: (repo: number, id: string, candidate: string, revision: string, decision: 'accepted' | 'changes_requested') => call('POST', `/api/features/${repo}/${encodeURIComponent(id)}/accept`, { candidate, revision, decision }),
   reconcileAttributions: () => call<{ changed: number }>('POST', '/api/attributions/reconcile'),
   decideAttributions: (decisions: AttributionDecision[]) => call('POST', '/api/attributions/decide', { decisions }),
-  snapshot: () => call<Snapshot>('GET', '/api/snapshot'),
+  snapshot: readSnapshot,
   snapshotAt: (at: string) => call<Snapshot>('GET', `/api/snapshot?at=${encodeURIComponent(at)}`),
   hubStatus: () => call<HubStatus>('GET', '/api/hub/status'),
   hubSnapshot: () => call<Snapshot>('GET', '/api/hub/snapshot'),
@@ -107,6 +118,7 @@ export function useSnapshot() {
   const pending = useRef(false)
   const timer = useRef<number | undefined>(undefined)
   const reader = useRef<ReturnType<typeof snapshotRefresher> | null>(null)
+  const stream = useRef<ReturnType<typeof snapshotStream> | null>(null)
 
   useEffect(() => {
     pending.current = false
@@ -118,6 +130,7 @@ export function useSnapshot() {
     }, (e) => setConn(e instanceof ApiError && e.status === 401 ? 'unauthorized' : 'offline'))
     reader.current = load
     const schedule = () => {
+      stream.current?.reconnect()
       if (pending.current) return
       pending.current = true
       timer.current = window.setTimeout(async () => {
@@ -125,18 +138,16 @@ export function useSnapshot() {
         await load.request()
       }, 150)
     }
-    const refresh = () => { window.clearTimeout(timer.current); pending.current = false; void load.request() }
+    const refresh = () => { stream.current?.reconnect(); window.clearTimeout(timer.current); pending.current = false; void load.request() }
     const visible = () => { if (document.visibilityState === 'visible') refresh() }
     void load.request()
-    const es = new EventSource('/api/stream')
-    es.onopen = () => {
-      setConn('live')
-      streamUp = true
-      schedule()
-    }
-    es.onerror = () => { streamUp = false; setConn((c) => (c === 'unauthorized' ? c : 'offline')) }
-    es.addEventListener('changes', schedule)
-    es.addEventListener('reset', () => { void load.reset() })
+    const events = snapshotStream(() => new EventSource('/api/stream'), {
+      open: () => { setConn('live'); streamUp = true; schedule() },
+      error: () => { streamUp = false; setConn(c => c === 'unauthorized' ? c : 'offline') },
+      change: schedule,
+      reset: () => { void load.reset() },
+    })
+    stream.current = events
     window.addEventListener('focus', refresh)
     window.addEventListener('steward:foreground', refresh)
     window.addEventListener('steward:changed', refresh)
@@ -146,7 +157,8 @@ export function useSnapshot() {
     return () => {
       load.dispose()
       reader.current = null
-      es.close()
+      events.dispose()
+      stream.current = null
       window.clearInterval(tick)
       window.clearTimeout(timer.current)
       pending.current = false
@@ -157,5 +169,5 @@ export function useSnapshot() {
     }
   }, [])
 
-  return { snap, conn, reload: () => reader.current?.request() ?? Promise.resolve() }
+  return { snap, conn, reload: () => { stream.current?.reconnect(); return reader.current?.request() ?? Promise.resolve() } }
 }

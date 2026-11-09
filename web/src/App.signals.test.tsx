@@ -2,16 +2,17 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { afterEach, expect, it, vi } from 'vitest'
 import type { Snapshot } from './types'
 
-const state = vi.hoisted(() => ({ snap: null as Snapshot | null }))
+const state = vi.hoisted(() => ({ snap: null as Snapshot | null, conn: 'live' as 'live' | 'offline' }))
 vi.mock('./api', async (original) => ({
   ...await original<typeof import('./api')>(),
-  useSnapshot: () => ({ snap: state.snap, conn: 'live' }),
+  useSnapshot: () => ({ snap: state.snap, conn: state.conn, reload: async () => {} }),
 }))
 import App from './App'
 
 afterEach(() => vi.unstubAllGlobals())
 
 it('同一工作两种陈旧原因保留，顶部和每日统计都只算一件', () => {
+  state.conn = 'live'
   vi.stubGlobal('window', { location: { search: '?view=town', hash: '', pathname: '/', hostname: '127.0.0.1', host: '127.0.0.1' } })
   vi.stubGlobal('localStorage', { getItem: () => null, setItem: () => {} })
   const now = '2026-10-30T10:00:00Z', old = '2026-10-30T09:20:00Z'
@@ -31,4 +32,25 @@ it('同一工作两种陈旧原因保留，顶部和每日统计都只算一件'
   expect(daily).toContain('很久没回报进展')
   expect(daily).toContain('40 分钟没有任何信号')
   expect(daily).toContain('信息缺口：')
+})
+
+it('首次离线给重试入口；已有快照离线保留内容并显示更新时间', () => {
+  vi.stubGlobal('window', { location: { search: '?view=today', hash: '', pathname: '/', hostname: '127.0.0.1', host: '127.0.0.1' } })
+  vi.stubGlobal('localStorage', { getItem: () => null, setItem: () => {} })
+  state.conn = 'offline'; state.snap = null
+  const failed = renderToStaticMarkup(<App />)
+  expect(failed).toContain('暂时连不上本机服务')
+  expect(failed).toContain('重试</button>')
+  expect(failed).not.toContain('加载中…')
+  state.snap = { cursor: 2, now: '2026-11-09T06:00:00Z', repos: [], sessions: [], work_items: [], runs: [], deps: [], approvals: [] }
+  const retained = renderToStaticMarkup(<App />)
+  expect(retained).toContain('连接已中断')
+  expect(retained).toContain('的记录，正在重连')
+  expect(retained).toContain('每日十分钟')
+  expect(retained).toContain('本机全部项目')
+  expect(retained).not.toContain('aria-label="项目"')
+  expect(retained).not.toContain('aria-label="Agent"')
+  expect(retained).not.toContain('aria-label="搜索"')
+  expect(retained).toContain('全部标为看过')
+  expect(retained).toContain('不会验收或完成任何工作')
 })

@@ -3,7 +3,7 @@ import { api, ApiError } from './api'
 
 const respond = (status: number, body: string, type = 'application/json') =>
   vi.stubGlobal('fetch', vi.fn(async () => new Response(body, { status, headers: { 'Content-Type': type } })))
-afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks() })
+afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); vi.restoreAllMocks() })
 
 async function failure(p: Promise<unknown>): Promise<ApiError> {
   try {
@@ -16,6 +16,19 @@ async function failure(p: Promise<unknown>): Promise<ApiError> {
 }
 
 describe('api error handling', () => {
+  it('times out a stalled snapshot read and can retry without retaining the aborted request', async () => {
+    vi.useFakeTimers()
+    const fetch = vi.fn().mockImplementationOnce((_path, init) => new Promise((_resolve, reject) => {
+      init.signal.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')), { once: true })
+    })).mockResolvedValueOnce(new Response('{"cursor":2}', { status: 200 }))
+    vi.stubGlobal('fetch', fetch)
+    const pending = failure(api.snapshot())
+    await vi.advanceTimersByTimeAsync(10_000)
+    expect((await pending).message).toContain('超时')
+    await expect(api.snapshot()).resolves.toMatchObject({ cursor: 2 })
+    expect(fetch).toHaveBeenCalledTimes(2)
+    expect(vi.getTimerCount()).toBe(0)
+  })
   it('recognises a JSON 401 as unauthorized', async () => {
     respond(401, '{"error":"unauthorized"}\n')
     const e = await failure(api.snapshot())

@@ -49,13 +49,14 @@ export function TodayView({ snap, onSelectItem, onOpenTown, device }: { snap: Sn
         <header className="today-head">
           <div>
             <h1>每日十分钟</h1>
-            <p className="muted">{seen ? `上次看过：${clock(seen, snap.now)} · 之后的新交付标了“新”` : '第一次打开：看完点“都看过了”，下次就能看出哪些是新的'}</p>
+            <p className="muted">本机全部项目 · {seen ? `上次看过：${clock(seen, snap.now)} · 之后的新交付标了“新”` : '看完后标为看过，下次就能看出哪些是新的'}</p>
           </div>
           <div className="today-head-acts">
             <button className="btn" type="button" onClick={onOpenTown}>打开小镇</button>
-            <button className="btn primary" type="button" onClick={markSeen}>都看过了</button>
+            <button className="btn primary" type="button" onClick={markSeen} title="为本机全部项目更新新旧提示，不改变工作状态或验收结果">全部标为看过</button>
           </div>
         </header>
+        <p className="today-seen-note">标为看过只更新“新”提示，不会验收或完成任何工作。</p>
         {device != null && <p className="today-note">这一页只列本机{device ? `（${device}）` : ''}的工作。其他电脑上的，请在那台电脑上打开“每日十分钟”处理。</p>}
         {isRemote() && <p className="today-note">{remoteReadOnlyMessage}</p>}
 
