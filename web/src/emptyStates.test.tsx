@@ -12,6 +12,8 @@ it('新装的电脑：小镇说明数据只在本机，告诉人怎么让它有�
     onSelectItem={() => {}} onSelectSession={() => {}} onSelectRepo={() => {}} onQueue={() => {}} />)
   expect(html).toContain('这台电脑还没有工作记录')
   expect(html).toContain('steward install')
+  expect(html.indexOf('aria-label="开始使用小镇"')).toBeLessThan(html.indexOf('class="town-bar"'))
+  expect(html.indexOf('class="town-bar"')).toBeLessThan(html.indexOf('class="town-diorama"'))
 })
 
 it('一个会话都没有时，项目简报不说“会话已发现”', () => {

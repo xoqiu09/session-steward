@@ -303,6 +303,10 @@ export function TownView({ snap, conn, repoId, provider, sel, onSelectItem, onSe
   const structureBuilding = repoId === 'all' ? undefined : model.buildings.find(b => b.repo?.id === repoId)
   return (
     <TownArtProvider theme={appearance.theme}><div data-town-theme={appearance.theme} className={`town-view${appearance.theme === 'storybook' ? ' is-storybook' : appearance.theme === 'miniature' ? ' is-miniature' : ''}${offline ? ' is-offline' : ''}${kiosk ? ' is-kiosk' : ''}${residentView ? ' is-resident-view' : ''}${extras.parcels ? '' : ' hide-parcels'}`}>
+      {!offline && !replay && model.buildings.length === 0 && <section className="town-get-started" aria-label="开始使用小镇">
+        <h2>这台电脑还没有工作记录</h2>
+        <SetupChecklist coverage={coverage} hasSessions={(shown.sessions ?? []).length > 0} fallback="数据只存在本机的 ~/.steward。先用演示数据看看，或在终端运行 steward install，再让 Claude Code / Codex 干点活，项目和小人就会出现在这里。" />
+      </section>}
       <div className="town-bar">
         {extras.chips && <nav className="town-chips" aria-label="按状态高亮">
           {CHIPS.map(c => (
@@ -350,10 +354,6 @@ export function TownView({ snap, conn, repoId, provider, sel, onSelectItem, onSe
         {replay && <ReplayBar pos={replay} playing={playing} loading={replayLoading} onChange={setReplay} onPlay={setPlaying} onExit={() => { setReplay(null); setPlaying(false) }} />}
         {replay && <div className="town-replay-banner" role="status">回放中：画面是 {replay.day.slice(5).replace('-', '/')} {minuteLabel(replay.minute)} 的样子，只能看；点开的详情是现在的状态</div>}
         {offline && <div className="town-offline" role="status"><strong>状态待更新</strong><span>连接中断，画面停在 {hm(shown.now)}，不代表 Agent 仍在工作。</span></div>}
-        {!offline && model.buildings.length === 0 && <div className="town-empty" role="status">
-          <strong>这台电脑还没有工作记录</strong>
-          <SetupChecklist coverage={coverage} hasSessions={(shown.sessions ?? []).length > 0} fallback="数据只存在本机的 ~/.steward，不会随代码同步到别的电脑。先用演示数据看看，或运行 steward install 后让 Claude Code / Codex 干活，项目和小人就会出现在这里。" />
-        </div>}
         {asWorld
           ? <WorldStage model={model} needsYou={urgent} selected={selected} highlight={highlight} onSelect={onSelect} changed={changed} offline={offline}
               kiosk={kiosk} rotateMs={rotateMs} paused={paused || structure || sel != null || sceneMenuOpen} focusKey={selKey} plan={plan} replaying={!!replay} snapshot={shown}

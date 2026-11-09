@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef } from 'react'
+import { useEffect, useId, useRef, type MouseEvent } from 'react'
 import { TOWN_THEMES, themeName, type TownAppearance, type TownThemeId } from './appearance'
 
 function SceneThumbnail({ theme }: { theme: TownThemeId }) {
@@ -45,8 +45,19 @@ export function TownSceneMenu({ appearance, open, onOpenChange: setOpen }: { app
     return () => { window.removeEventListener('pointerdown', outside, true); window.removeEventListener('keydown', escape, true) }
   }, [open])
   const preview = (id: TownThemeId) => { void appearance.preview(id) }
+  const openCurrent = (event: MouseEvent<HTMLButtonElement>) => {
+    if (open) { close(); return }
+    trigger.current = event.currentTarget
+    baseline.current = appearance.theme
+    firstChoice.current = appearance.theme
+    setOpen(true)
+  }
   return <div className={`town-scene-menu${open ? ' is-open' : ''}`} ref={root}>
     <div className="town-scene-bar">
+      <button type="button" className="town-scene-compact" aria-haspopup="dialog" aria-expanded={open} aria-controls={open ? panel : undefined} onClick={openCurrent}>
+        <SceneThumbnail theme={appearance.theme} /><span><strong>小镇画风</strong><span>{themeName(appearance.theme)}</span></span><b>更换画风 <span aria-hidden="true">⌄</span></b>
+      </button>
+      <div className="town-scene-full">
       <div className="town-scene-label"><strong>小镇画风</strong><span>点选预览，确认后记住</span></div>
       <div className="town-scene-shortcuts" role="group" aria-label="切换小镇画风">
         {TOWN_THEMES.map(t => <button type="button" key={t.id} className={`town-scene-shortcut${appearance.theme === t.id ? ' is-current' : ''}`}
@@ -62,6 +73,7 @@ export function TownSceneMenu({ appearance, open, onOpenChange: setOpen }: { app
           <span className="town-scene-shortcut-copy"><strong>{t.name}</strong><span>{appearance.loading === t.id ? '正在准备…' : appearance.theme === t.id ? open ? '正在预览' : '当前显示' : '点击预览'}</span></span>
           {appearance.theme === t.id && <span className="town-scene-shortcut-check" aria-hidden="true">✓</span>}
         </button>)}
+      </div>
       </div>
     </div>
     {open && <div className="town-scenes-panel" role="dialog" aria-labelledby={heading} id={panel}>

@@ -5,6 +5,15 @@
 .town-view .town-diorama { flex: 1; min-height: 360px; aspect-ratio: auto; max-height: none; }
 /* svg 不参与撑高，按容器剩余空间等比缩放 */
 .town-view .town-diorama > .town-svg { position: absolute; inset: 0; }
+.town-get-started { flex: none; padding: 14px 18px; border: 1px solid var(--town-line, #d9cdb6); border-radius: 12px; background: var(--town-card, #fffaf0); color: var(--town-ink, #4a4033); font-size: 13px; line-height: 1.7; }
+.town-get-started h2 { margin: 0 0 6px; font-size: 15px; line-height: 1.5; }
+.town-get-started .setup-checklist { margin: 0; padding-left: 20px; }
+.town-get-started code { white-space: normal; overflow-wrap: anywhere; }
+@media (max-width: 640px) {
+  .town-view .town-meta { display: none; }
+  .town-view .town-bar { gap: 6px; }
+  .town-get-started { padding: 12px 14px; }
+}
 @media (max-width: 900px) {
   .town-view { height: auto; }
   .town-view .town-diorama { flex: none; min-height: 0; }
