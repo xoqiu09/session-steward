@@ -45,6 +45,8 @@
 /* 图例：放在 .town-diorama 里 */
 .town-view .town-legend {
   position: absolute; left: 14px; bottom: 12px; z-index: 2; display: flex; flex-wrap: wrap; gap: 4px 14px;
+  /* 右下角是 210px 宽的小地图：图例在它左边折行，不伸到它下面被盖住。 */
+  max-width: calc(100% - 252px); box-sizing: border-box;
   margin: 0; padding: 6px 10px; list-style: none; border-radius: 10px;
   font-size: 12px; color: var(--town-muted); background: rgba(255, 250, 240, 0.85);
 }
@@ -57,10 +59,12 @@
 
 /* 断线横幅：放在 .town-diorama 里；场景本身由 TownScene offline 变灰 */
 .town-view .town-offline {
-  position: absolute; z-index: 3; top: 12px; left: 50%; transform: translateX(-50%); max-width: calc(100% - 24px);
-  display: flex; gap: 8px; align-items: center; padding: 8px 14px; border-radius: 10px;
+  position: absolute; z-index: 7; top: 0; left: 0; right: 0; box-sizing: border-box; min-height: 38px;
+  display: flex; gap: 8px; align-items: center; justify-content: center; padding: 8px 14px;
   background: #3a2a1c; color: #fffaf0; font-size: 13px; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2);
 }
+/* 断线提示占满地图顶边一整条，地图和工具栏整体下移：以前它和工具栏叠在同一位置，只露出半句“Agent 仍在工作”。 */
+.town-view.is-offline .town-world { top: 38px; }
 .town-view .town-svg.is-offline { filter: grayscale(0.85) contrast(0.9); }
 .town-view .town-svg.is-offline .town-bob, .town-view .town-svg.is-offline .town-slide,
 .town-view .town-svg.is-offline .town-smoke, .town-view .town-svg.is-offline .town-blink { animation: none !important; }
@@ -96,8 +100,11 @@
   .town-view .town-diorama { aspect-ratio: auto; max-height: none; min-height: 0; }
   .town-view .town-diorama::after { display: none; }
   .town-view .town-svg { height: auto; }
-  .town-view .town-legend { position: static; border-radius: 0; }
-  .town-view .town-offline { position: static; transform: none; max-width: none; border-radius: 0; white-space: normal; }
+  .town-view .town-legend { position: static; border-radius: 0; max-width: none; }
+  /* 分页小镇跟着文档流排，提示放在场景上方；世界地图是绝对定位，提示仍占顶边一条（窄屏可能折两行，多留高度）。 */
+  .town-view .town-offline:not(:has(~ .town-world)) { position: static; white-space: normal; justify-content: flex-start; }
+  .town-view .town-offline:has(~ .town-world) { min-height: 56px; }
+  .town-view.is-offline .town-world { top: 56px; }
 }
 
 /* 小镇世界：可拖动缩放的大地图 */

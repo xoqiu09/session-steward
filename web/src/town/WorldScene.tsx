@@ -11,7 +11,7 @@ import {
   type BuildingShape, type Plot, type Selection,
 } from './TownScene'
 import {
-  CELL_D, CELL_W, FAR_W, INNER_D, INNER_W, areaBox, cellBox, clampCamera, fitCamera, lerpCamera, loadWorldMemo, saveWorldMemo, stableLayout, tourStops, viewBoxOf, zoomAt,
+  CELL_D, CELL_W, FAR_W, INNER_D, INNER_W, areaBox, cellBox, clampCamera, fitCamera, isFar, lerpCamera, loadWorldMemo, saveWorldMemo, overviewCamera, plateScale, stableLayout, tourStops, viewBoxOf, zoomAt,
   type Box, type Camera, type Cell, type District, type Tier, type WorldLayout, type WorldMemo,
 } from './world'
 import type { WorldPlan } from './clusters'
@@ -80,6 +80,8 @@ interface SceneProps {
   world: WorldLayout
   view: Box
   far: boolean
+  /** 地图在屏幕上的宽度（像素）；有它时远景名牌保证最小可读字号。 */
+  pxW?: number | null
   selected: Selection | null
   highlight: Highlight | null
   onSelect: (s: Selection) => void
@@ -123,7 +125,7 @@ function districtPlot(d: District): Plot {
   return { gx: d.ox + 0.8, gy: d.oy + 0.5, w: t.w, d: t.d, facing: 'x', ...buildingColors(d.b.repo?.id) }
 }
 
-export function WorldScene({ model, world, view, far, selected, highlight, onSelect, changed = new Set(), offline = false, needsYou, stalled, onHoverHouse, agents = null, momentGlow, progressSparks, onNavigate, focusArea = null, dispatch = [], onDispatch, residents, sceneRef }: SceneProps) {
+export function WorldScene({ model, world, view, far, pxW = null, selected, highlight, onSelect, changed = new Set(), offline = false, needsYou, stalled, onHoverHouse, agents = null, momentGlow, progressSparks, onNavigate, focusArea = null, dispatch = [], onDispatch, residents, sceneRef }: SceneProps) {
   const { illustrated, miniature } = useTownArt()
   const isSel = (kind: Selection['kind'], key: string) => selected?.kind === kind && selected.key === key
   const dim = (match: boolean) => (highlight && !match ? ' is-dim' : '')
@@ -228,7 +230,7 @@ export function WorldScene({ model, world, view, far, selected, highlight, onSel
   const yardTreeClear = (d: District, gx: number, gy: number, k: number) => (d.cell.cx + d.cell.cy < 0 || (d.cell.cx + d.cell.cy === 0 && d.cell.cx <= 0)) || !treeHidesPlaza(iso(gx, gy), k, illustrated, plazaCore)
   // 远景名牌跟着视野放大，拉得再远也认得出项目名。
   const nowMs = Date.parse(model.now) || Date.now()
-  const plateK = Math.min(2.4, Math.max(0.8, view.w / 2900))
+  const plateK = plateScale(view.w, pxW)
   const mapMode = view.w > MAP_W
   const onMap = far && mapMode
   // 远景名牌：先算内容和位置，再统一避让，相邻项目的名牌不互相压。
@@ -642,7 +644,7 @@ export interface ViewContext { scope: 'here' | 'all'; repoId: number | 'all'; pr
 /** 第一次手动导航或自动跟随之前的完整位置；连续导航沿用它，返回或手动拖动缩放后清空。 */
 interface NavBack { camera: Camera; context?: ViewContext; byAgent: boolean; agentFocus: Agent | null }
 
-export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'onNavigate' | 'focusArea' | 'residents' | 'sceneRef'> & { kiosk?: boolean; rotateMs?: number; paused?: boolean; focusKey?: string; plan?: WorldPlan; replaying?: boolean; snapshot?: Snapshot; startWithResidents?: boolean
+export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'pxW' | 'onNavigate' | 'focusArea' | 'residents' | 'sceneRef'> & { kiosk?: boolean; rotateMs?: number; paused?: boolean; focusKey?: string; plan?: WorldPlan; replaying?: boolean; snapshot?: Snapshot; startWithResidents?: boolean
   /** 画的是本机快照还是全部设备的合并视图；切换时保持镜头，新动态从这一张重新起算。 */
   source?: 'here' | 'all'
   /** 本机设备名：合并视图里认出哪些项目是本机的。 */
@@ -731,6 +733,7 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
   const isRemote = (d: District) => !!d.b.repo && projectIdentity(d.b.repo, selfName).device !== 'self'
   const box = useRef<HTMLDivElement>(null)
   const [aspect, setAspect] = useState(1.6)
+  const [pxW, setPxW] = useState<number | null>(null)
   const [compact, setCompact] = useState(() => typeof window !== 'undefined' && window.innerWidth < 760)
   const [compactTools, setCompactTools] = useState(false)
   const [cam, setCam] = useState<Camera | null>(null)
@@ -771,14 +774,14 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
     const ro = new ResizeObserver(() => {
       const r = el.getBoundingClientRect()
       if (r.width <= 0 || r.height <= 0) return
-      setAspect(r.width / r.height); setCompact(r.width < 760); setCompactTools(r.width < 1000)
+      setAspect(r.width / r.height); setPxW(r.width); setCompact(r.width < 760); setCompactTools(r.width < 1000)
       if (r.width >= 1000) setPopover(p => p === 'tools' ? null : p)
     })
     ro.observe(el)
     return () => ro.disconnect()
   }, [])
 
-  const fitAll = () => fitCamera(world.bounds, aspect, 1.02)
+  const fitAll = () => overviewCamera(world, aspect)
   const fitResidents = () => {
     if (!world.residential) return fitAll()
     const to = fitCamera(cellBox(world.residential.cx * CELL_W, world.residential.cy * CELL_D), aspect, 1.12)
@@ -1083,7 +1086,7 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
   useEffect(() => { if (props.replaying) { releaseResident(); setResidentWatch(null) } }, [props.replaying])
 
   const view = viewBoxOf(camera, aspect)
-  const far = camera.w > FAR_W
+  const far = isFar(camera, pxW)
   const arrivedAt = arrived?.kind === 'project'
     ? (() => { const d = world.districts.find((x) => x.id === arrived.id); return d ? { kind: 'project' as const, d } : null })()
     : arrived ? (() => { const v = world.villages.find((x) => x.key === arrived.key); return v ? { kind: 'area' as const, name: v.name, count: v.cells.length - 1 } : null })() : null
@@ -1125,7 +1128,7 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
         </>
       ) : (
         <>
-      <WorldScene {...props} stalled={stalledByHouse} onHoverHouse={hoverHouse} onSelect={sceneSelect} onNavigate={navigate} focusArea={focusArea} world={world} view={view} far={far} agents={byAgent ? { focus: agentFocus } : null}
+      <WorldScene {...props} stalled={stalledByHouse} onHoverHouse={hoverHouse} onSelect={sceneSelect} onNavigate={navigate} focusArea={focusArea} world={world} view={view} far={far} pxW={pxW} agents={byAgent ? { focus: agentFocus } : null}
         sceneRef={residentSceneRef} residents={props.replaying ? undefined : { store: residentStore, active: !paused && !structure, selected: popover === 'residents' ? residentSelected : null, onSelect: selectResident, onEnter: enterResidentProject }}
         dispatch={source === 'here' ? props.snapshot?.dispatch ?? [] : []} onDispatch={remoteAccess() || props.snapshot?.dispatch_available === false ? undefined : (task) => window.location.assign(dispatchHref(task))}
         momentGlow={!reducedMotion && !props.replaying ? moment?.buildingKey : undefined} progressSparks={reducedMotion ? undefined : sparks} />

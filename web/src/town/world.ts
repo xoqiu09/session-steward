@@ -332,6 +332,32 @@ export function clampCamera(c: Camera, bounds: Box): Camera {
   return { cx, cy, w }
 }
 
+/** 近景招牌字号是 15 个世界单位；屏幕上每单位不足这么多像素时招牌小于约 9px，读不了，改画远景名牌。 */
+export const NEAR_MIN_SCALE = 0.62
+/** 远景名牌标题在屏幕上的最小字号（像素）。名牌标题字号是 22 个世界单位。 */
+export const PLATE_MIN_PX = 14
+
+/** 是否画远景：视野很宽，或地图在屏幕上太小、近景文字读不了。pxW 是地图在屏幕上的宽度，不知道时只看视野。 */
+export function isFar(c: Camera, pxW?: number | null): boolean {
+  return c.w > FAR_W || (!!pxW && pxW / c.w < NEAR_MIN_SCALE)
+}
+
+/** 远景名牌的缩放：原先只跟视野宽度走，窄窗口里名牌会小到看不清；知道屏幕宽度时保证标题不小于 PLATE_MIN_PX。 */
+export function plateScale(viewW: number, pxW?: number | null): number {
+  const base = Math.min(2.4, Math.max(0.8, viewW / 2900))
+  return pxW ? Math.max(base, Math.min(6, (PLATE_MIN_PX * viewW) / (22 * pxW))) : base
+}
+
+/** 小镇本体（广场、全部街区、村口、居民区）的屏幕框，不含外圈树林。“全景”对准它，房子不至于只占地图中间一小块。 */
+export function contentBox(layout: WorldLayout): Box {
+  return areaBox([{ cx: 0, cy: 0 }, ...layout.districts.map((d) => d.cell), ...layout.villages.map((v) => v.square), ...(layout.residential ? [layout.residential] : [])])
+}
+
+/** “全景”和桌面巡游第一站用的镜头：对准小镇本体。本体的框顶上已含房子和招牌的高度，不必再为工具栏另留空。 */
+export function overviewCamera(layout: WorldLayout, aspect: number): Camera {
+  return fitCamera(contentBox(layout), aspect, 1.06)
+}
+
 /** 让一个框完整落在视野里。 */
 export function fitCamera(box: Box, aspect: number, margin = 1.08): Camera {
   const w = Math.max(box.w, box.h * aspect) * margin
@@ -360,7 +386,7 @@ export function lerpCamera(a: Camera, b: Camera, t: number): Camera {
 
 /** 桌面模式巡游：先看全景，再依次飞到需要注意的街区（最多 limit 个），然后回到全景。 */
 export function tourStops(layout: WorldLayout, attention: (d: District) => boolean, aspect: number, limit = 8): Camera[] {
-  const overview = fitCamera(layout.bounds, aspect, 1.02)
+  const overview = overviewCamera(layout, aspect)
   const stops = layout.districts.filter(attention).slice(0, limit).map((d) => fitCamera(cellBox(d.ox, d.oy), aspect, 1.15))
   return [overview, ...stops]
 }

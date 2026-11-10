@@ -130,6 +130,22 @@ function PanelApp() {
     window.addEventListener('keydown', onKey, true)
     return () => window.removeEventListener('keydown', onKey, true)
   }, [kioskDrawerOpen])
+  // 普通模式：右侧打开的工作 / 会话详情也能用 Esc 关。小镇自己的浮层（收菜条、新动态、工具菜单、对话框）在它上面，先关它们；
+  // 详情又在房间上面，所以用捕获阶段拦住，不让同一次 Esc 顺带退出房间。正在输入时不抢键。
+  const sideDetailOpen = !route.kiosk && sel != null
+  useEffect(() => {
+    if (!sideDetailOpen) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || e.defaultPrevented) return
+      const t = e.target as HTMLElement | null
+      if (t?.closest?.('input, textarea, select, [contenteditable="true"]')) return
+      if (document.querySelector('[role="dialog"], .town-harvest-bar, .town-moment-overlay, .town-moment-list, [data-town-popover][aria-expanded="true"], details[open].town-extras, details[open].toolbar-more')) return
+      e.preventDefault(); e.stopImmediatePropagation()
+      setSel(null)
+    }
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
+  }, [sideDetailOpen])
   // 通知深链：快照到达后跳到对应条目（审批落到其工作项或会话），只消费一次
   useEffect(() => {
     if (!snap || !deep) return

@@ -97,3 +97,8 @@
 .town-view .town-extras > summary::-webkit-details-marker { display: none; }
 .town-view .town-extras-menu { position: absolute; right: 0; top: calc(100% + 4px); z-index: 20; display: grid; gap: 6px; min-width: 150px; padding: 10px 12px; border: 1px solid #c9b896; border-radius: 8px; background: #fffaf0; box-shadow: 0 6px 18px rgba(60, 40, 10, .15); }
 .town-view .town-extras-menu label { display: flex; align-items: center; gap: 6px; white-space: nowrap; cursor: pointer; }
+/* 手指点按：翻页箭头和页点原来只有 24×24 / 18×22，太小容易点错。只在触屏上放大，鼠标下保持紧凑。 */
+@media (pointer: coarse) {
+  .town-view .town-page-btn { min-width: 40px; min-height: 40px; }
+  .town-view .town-dot { width: 28px; height: 40px; }
+}
