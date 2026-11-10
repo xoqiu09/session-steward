@@ -1,0 +1,51 @@
+/* 直播展示：竖屏优先（1080×1920），横屏（1920×1080）也能用。所有选择器挂在 .live-view 下。 */
+.live-view {
+  --live-ink: #3a2a1c; --live-muted: #6b5a44; --live-card: #fffaf0f2; --live-line: #e2d5bd; --live-ground: #d7e2bf;
+  position: fixed; inset: 0; overflow: hidden; background: var(--live-ground); color: var(--live-ink);
+  font-family: -apple-system, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  pointer-events: none; user-select: none; cursor: default;
+}
+.live-view .live-card { background: var(--live-card); border: 2px solid var(--live-line); border-radius: 18px; box-shadow: 0 6px 22px #5a432a1f; margin: 0; }
+.live-view .live-line { margin: 0; line-height: 1.35; overflow-wrap: anywhere; }
+.live-view .live-line + .live-line { margin-top: .35em; }
+.live-view .live-line b { color: var(--live-muted); font-weight: 700; }
+.live-view .live-line.is-default { color: var(--live-muted); }
+.live-view .live-count { margin: 0; color: var(--live-muted); line-height: 1.35; }
+.live-view .live-stale { position: absolute; margin: 0; padding: .2em .7em; border-radius: 999px; background: #fffaf0d9; color: #8a7a63; border: 1px solid var(--live-line); }
+.live-view .live-town { position: absolute; }
+.live-view .live-stage { position: absolute; inset: 0; }
+.live-view .live-stage-scene { position: absolute; inset: 0; pointer-events: none; }
+.live-view .live-stage-scene .town-svg.is-world { position: absolute; inset: 0; width: 100%; height: 100%; }
+.live-view .live-loading { position: absolute; inset: 0; display: grid; place-items: center; margin: 0; color: var(--live-muted); }
+.live-view .live-legend { position: absolute; left: 0; right: 0; display: flex; flex-wrap: wrap; justify-content: center; gap: .3em 1.2em; margin: 0; padding: 0; list-style: none; color: var(--live-muted); }
+.live-view .live-legend li { display: flex; align-items: center; gap: .4em; }
+.live-view .live-legend i { width: .8em; height: .8em; border-radius: 3px; display: inline-block; }
+.live-view .live-legend .lg-building { background: #c8674a; }
+.live-view .live-legend .lg-char { background: #334055; border-radius: 50%; }
+.live-view .live-legend .lg-parcel { background: #d6b27a; }
+.live-view .live-bubble {
+  position: absolute; transform: translate(-50%, -100%); max-width: 80%; padding: .45em .9em; border-radius: 16px;
+  background: #fffaf0; border: 2px solid #e3a23d; color: var(--live-ink); font-weight: 700; white-space: nowrap; box-shadow: 0 6px 18px #5a432a2e;
+  animation: live-bubble-in .5s ease-out both;
+}
+.live-view .live-bubble::after { content: ""; position: absolute; left: 50%; bottom: -10px; transform: translateX(-50%); border: 8px solid transparent; border-top-color: #e3a23d; border-bottom: 0; }
+.live-view .live-bubble.is-top { left: 50%; top: 4%; transform: translate(-50%, 0); }
+.live-view .live-bubble.is-top::after { display: none; }
+@keyframes live-bubble-in { from { opacity: 0; translate: 0 8px; } to { opacity: 1; translate: 0 0; } }
+@media (prefers-reduced-motion: reduce) { .live-view .live-bubble { animation: none; } }
+
+/* 竖屏：顶部约 8% 留空；底部约 30% 会被评论区盖住，只放地面，不放信息。中间按内容排：说明卡、数量说明、地图。 */
+.live-view.is-portrait { font-size: clamp(16px, 3.6vw, 44px); display: flex; flex-direction: column; gap: .6em; padding: 8vh 5vw 30vh; box-sizing: border-box; }
+.live-view.is-portrait .live-card { flex: none; padding: .7em .9em; font-size: 1.12em; }
+.live-view.is-portrait .live-count { flex: none; font-size: .78em; text-align: center; }
+.live-view.is-portrait .live-town { position: relative; flex: 1 1 auto; min-height: 20vh; margin: 0 -5vw 1.8em; }
+.live-view.is-portrait .live-legend { bottom: -1.9em; font-size: .62em; }
+.live-view.is-portrait .live-stale { right: 5vw; top: 3vh; font-size: .6em; }
+
+/* 横屏：地图铺满，说明卡放左上角。 */
+.live-view.is-landscape { font-size: clamp(14px, 1.6vw, 34px); }
+.live-view.is-landscape .live-town { inset: 0; }
+.live-view.is-landscape .live-card { position: absolute; z-index: 2; top: 4vh; left: 3vw; max-width: 38vw; padding: .7em 1em; font-size: 1.15em; }
+.live-view.is-landscape .live-count { position: absolute; z-index: 2; left: 3vw; bottom: 4vh; max-width: 60vw; padding: .3em .8em; border-radius: 12px; background: var(--live-card); font-size: .8em; }
+.live-view.is-landscape .live-legend { right: 3vw; left: auto; bottom: 4vh; padding: .3em .8em; border-radius: 12px; background: var(--live-card); font-size: .7em; z-index: 2; }
+.live-view.is-landscape .live-stale { right: 3vw; top: 4vh; font-size: .7em; z-index: 2; }

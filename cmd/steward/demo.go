@@ -97,7 +97,7 @@ func prepareDemo(ctx context.Context, requestedDir, listen string) (_ *demoInsta
 		return nil, err
 	}
 	secrets := map[string]string{}
-	for _, name := range []string{"ingest.token", "panel.token"} {
+	for _, name := range []string{"ingest.token", "panel.token", "live.token"} {
 		var bytes [32]byte
 		if _, err = rand.Read(bytes[:]); err != nil {
 			return nil, err
@@ -132,7 +132,7 @@ func prepareDemo(ctx context.Context, requestedDir, listen string) (_ *demoInsta
 	}
 	instance.server = &server.Server{
 		BuildCommit: BuildCommit, Core: instance.core, IngestToken: secrets["ingest.token"],
-		PanelToken: secrets["panel.token"], Static: static, Listen: listener.Addr().String(),
+		PanelToken: secrets["panel.token"], LiveToken: secrets["live.token"], Static: static, Listen: listener.Addr().String(),
 		DispatchUnavailable: demoNoAgents,
 	}
 	return instance, nil

@@ -32,6 +32,8 @@ import { inactiveRepo } from './town/activity'
 import { panelScope, type PanelView } from './panelScope'
 import { ConnectionState } from './ui/ConnectionState'
 import { ProjectPicker } from './ui/ProjectPicker'
+import { LiveView } from './live/LiveView'
+import { LiveSettings } from './live/LiveSettings'
 
 type Tab = 'queue' | 'items' | 'sessions' | 'launch' | 'review'
 type Sel = { kind: 'item'; id: string } | { kind: 'session'; id: number } | null
@@ -49,6 +51,8 @@ function useCompactPanel() {
 }
 
 export default function App() {
+	// 直播展示只读脱敏接口，不进 PanelApp（不请求面板接口、不连 SSE）。
+	if (parseTownRoute(window.location.search, '').live) return <LiveView />
 	// 原型的 ?view=native 已并入派活台。
 	const view = new URLSearchParams(window.location.search).get('view')
 	return view === 'dispatch' || view === 'native' ? <DispatchDesk /> : <PanelApp />
@@ -100,6 +104,7 @@ function PanelApp() {
   // “发现 N 个可能误登记的目录”只提示一次：关掉后，数量变多时才再出现。只存在这个浏览器里。
   const [suspectSeen, setSuspectSeen] = useState(() => { try { return Number(localStorage.getItem('ss.suspect-dirs.seen') || 0) } catch { return 0 } })
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [liveOpen, setLiveOpen] = useState(false)
   // 每日十分钟已经列出了关注队列的内容：侧栏默认只留详情位置，需要时再展开原来的标签页。
   const [todaySideTabs, setTodaySideTabs] = useState(false)
 
@@ -279,6 +284,7 @@ function PanelApp() {
             <button className={view === 'history' ? 'on' : ''} onClick={() => setView('history')}>历史</button>
           </div>
           {view === 'town' && <a className="btn small" href={kioskHref(window.location.pathname, route.world)} title="全屏小镇，适合挂在副屏或手机上">桌面模式</a>}
+          {view === 'town' && !isRemote() && <button className="btn small live-entry" onClick={() => setLiveOpen(true)} title="直播展示：脱敏的小镇画面，给 OBS 浏览器源用">直播</button>}
           {view === 'canvas' && <button className="btn small" onClick={() => setExpandAll((v) => !v)}>{expandAll ? '默认折叠' : '全部展开'}</button>}
           <span className="toolbar-secondary">{sessionShortcuts}</span>
           <button className="btn small toolbar-settings" onClick={() => setSettingsOpen(true)}>设置</button>
@@ -347,6 +353,7 @@ function PanelApp() {
       </aside>
       {projectManager}{projectMenu}<NoticeBar snap={snap} coverage={coverage} />
       {settings}
+      {liveOpen && !isRemote() && <LiveSettings onClose={() => setLiveOpen(false)} />}
     </div>
   )
 }

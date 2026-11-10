@@ -11,6 +11,8 @@ export interface TownRoute {
   rotateMs: number
   /** 大地图世界：普通小镇默认启用，工作室可通过 ?world=1 显式启用。 */
   world: boolean
+  /** 直播展示（?view=town&live=1）：只读、已脱敏的小镇画面，不走面板。只认查询参数，关闭时不出现这个字段。 */
+  live?: true
 }
 
 export const DEFAULT_ROTATE_S = 20
@@ -31,8 +33,11 @@ export function parseTownRoute(search: string, hash: string): TownRoute {
   const raw = Number(q.get('rotate') ?? h.get('rotate') ?? DEFAULT_ROTATE_S)
   const sec = Number.isFinite(raw) && raw > 0 ? Math.min(MAX_ROTATE_S, Math.max(MIN_ROTATE_S, raw)) : DEFAULT_ROTATE_S
   const world = flag(q, 'world') || flag(h, 'world') || (town && !kiosk && !q.has('world') && !h.has('world'))
-  return { town: town || world, kiosk, rotateMs: sec * 1000, world }
+  return { town: town || world, kiosk, rotateMs: sec * 1000, world, ...(flag(q, 'live') ? { live: true as const } : {}) }
 }
+
+/** 直播展示视图的地址（展示 cookie 只在带 live=1 时能取到首页）。 */
+export const LIVE_VIEW_HREF = '/?view=town&live=1'
 
 /** 从其他页面回到小镇时，恢复完整世界，不继承入口页的工作室模式。 */
 export function worldTownRoute(route: TownRoute): TownRoute {
