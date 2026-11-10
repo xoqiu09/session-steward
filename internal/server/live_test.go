@@ -187,4 +187,16 @@ func TestLiveSnapshotEndpointIsSanitized(t *testing.T) {
 	if snap.Approvals == nil || snap.Repos == nil || snap.Now == "" {
 		t.Fatalf("展示快照应保持兼容结构: %s", w.Body)
 	}
+	var keys map[string]json.RawMessage
+	if err := json.Unmarshal(w.Body.Bytes(), &keys); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := keys["more"]; !ok {
+		t.Fatalf("展示快照应带没画出来的项目数: %s", w.Body)
+	}
+	for _, k := range []string{"features", "managed", "handoffs", "attributions", "session_usage", "merge_jobs"} {
+		if _, ok := keys[k]; ok {
+			t.Fatalf("展示快照不应带 %s: %s", k, w.Body)
+		}
+	}
 }

@@ -102,7 +102,11 @@ interface SceneProps {
   sceneRef?: RefObject<SVGSVGElement | null>
   /** 直播展示：只画房子、作坊、小人和项目名牌；不画告示栏、验收台、退件架、菜地、包裹、路障和各种待办计数。默认照常画。 */
   live?: boolean
+  /** 直播展示的标签位置（由展示布局统一避让）：招牌按建筑键、小人标签按小人键，以及两者的放大倍数。 */
+  liveDress?: LiveDress
 }
+
+export interface LiveDress { signK: number; signs: ReadonlyMap<string, Pt>; pillK: number; pills: ReadonlyMap<string, Pt> }
 
 /** 手动导航的目标：项目按稳定项目键（来源设备 + 原始项目编号），片区按片区键。 */
 export type NavTarget = { kind: 'project'; id: string } | { kind: 'area'; key: string }
@@ -113,19 +117,19 @@ const DESK = { gx: 5.0, gy: 1.2 }
 const DISPATCH = { gx: 0.8, gy: 4.2 }
 
 /** 四档建筑：占地、墙色、高度、窗户层数。占满院子后排，远看也认得出大小差别。 */
-const TIERS: Record<Tier, { shape: BuildingShape; w: number; d: number }> = {
+export const TIERS: Record<Tier, { shape: BuildingShape; w: number; d: number }> = {
   0: { ...DISTRICT_FOOTPRINT[0], shape: { kind: 'cabin', name: '小木屋', h: 48, rise: 38, floors: 1, walls: { top: '#b48a5c', front: '#c99c6a', side: '#ad8152', edge: '#7a5636' } } },
   1: { ...DISTRICT_FOOTPRINT[1], shape: { ...HOUSE_SHAPE, h: 72, rise: 44, floors: 2 } },
   2: { ...DISTRICT_FOOTPRINT[2], shape: { kind: 'workshop', name: '工坊', h: 86, rise: 34, floors: 2, walls: { top: '#e9dcc4', front: '#efe1c8', side: '#dccaa8', edge: '#8f7350' } } },
   3: { ...DISTRICT_FOOTPRINT[3], shape: { kind: 'tower', name: '大楼', h: 196, rise: 30, floors: 5, walls: { top: '#e7e2d6', front: '#f1ece0', side: '#dcd4c3', edge: '#8d8270' } } },
 }
 
-function districtPlot(d: District): Plot {
+export function districtPlot(d: District): Plot {
   const t = TIERS[d.tier]
   return { gx: d.ox + 0.8, gy: d.oy + 0.5, w: t.w, d: t.d, facing: 'x', ...buildingColors(d.b.repo?.id) }
 }
 
-export function WorldScene({ model, world, view, far, selected, highlight, onSelect, changed = new Set(), offline = false, needsYou, stalled, onHoverHouse, agents = null, momentGlow, progressSparks, onNavigate, focusArea = null, dispatch = [], onDispatch, residents, sceneRef, live = false }: SceneProps) {
+export function WorldScene({ model, world, view, far, selected, highlight, onSelect, changed = new Set(), offline = false, needsYou, stalled, onHoverHouse, agents = null, momentGlow, progressSparks, onNavigate, focusArea = null, dispatch = [], onDispatch, residents, sceneRef, live = false, liveDress }: SceneProps) {
   const { illustrated, miniature } = useTownArt()
   const isSel = (kind: Selection['kind'], key: string) => selected?.kind === kind && selected.key === key
   const dim = (match: boolean) => (highlight && !match ? ' is-dim' : '')
@@ -330,7 +334,7 @@ export function WorldScene({ model, world, view, far, selected, highlight, onSel
             <g onPointerEnter={(e) => onHoverHouse?.(d.b.key, { x: e.clientX, y: e.clientY })} onPointerLeave={() => onHoverHouse?.(null)}
               onFocus={(e) => { const r = (e.target as Element).getBoundingClientRect(); onHoverHouse?.(d.b.key, { x: r.right, y: r.top }) }} onBlur={() => onHoverHouse?.(null)}>
               <Building plot={plot} shape={TIERS[d.tier].shape} b={d.b} selected={isSel('building', d.b.key)} dimClass={dim(false)} onSelect={() => onSelect({ kind: 'building', key: d.b.key })}
-                {...(live ? { live, signScale: liveK } : {})} />
+                {...(live ? { live, signScale: liveDress?.signK ?? liveK, signAt: liveDress?.signs.get(d.key) } : {})} />
             </g>
             {onDispatch && (() => {
               // 派活台发起的工作在门口挂个牌子，点了直接到那件任务（最近的一件）。
@@ -420,11 +424,11 @@ export function WorldScene({ model, world, view, far, selected, highlight, onSel
       {/* 近景标签层 */}
       <g className="town-near">
         {seats.map(({ c }) => {
-          const at = charPos.get(c.key)!
+          const at = (live && liveDress?.pills.get(c.key)) || charPos.get(c.key)!
           const { style, st } = charLook(c)
           const label = characterStatusLabel[c.status]
           return (
-            <g key={`${c.key}-pill`} style={{ transform: `translate(${at[0]}px,${at[1]}px) scale(${1.22 * (live ? Math.max(1, liveK * 0.8) : 1)})` }}
+            <g key={`${c.key}-pill`} style={{ transform: `translate(${at[0]}px,${at[1]}px) scale(${1.22 * (live ? liveDress?.pillK ?? Math.max(1, liveK * 0.8) : 1)})` }}
               className={`town-obj town-move${fadeChar(c) || dim(highlight ? charMatches(c, highlight) : true)}`} aria-hidden onClick={() => onSelect({ kind: 'character', key: c.key })}>
               <StatusPill at={[0, 17]} name={live ? liveCharacterName(c) : characterPillName(c, illustrated)} status={live ? liveCharacterStatus(c) : offline && c.status === 'working' ? `断线前·${label}` : label} bg={st.bg} fg={st.fg} edge={style.body} />
             </g>

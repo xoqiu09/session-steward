@@ -82,6 +82,25 @@ func TestLiveSnapshotLeaksNoText(t *testing.T) {
 			t.Fatalf("反射填充没有覆盖 %s", want)
 		}
 	}
+	// 展示快照只带要画的项目：把编号、枚举和时间改成能通过筛选的值，其余文字字段仍是哨兵。
+	at := "2026-11-10T08:00:00Z"
+	snap.Now = at
+	for i := range snap.Repos {
+		snap.Repos[i].ID = int64(10 + i)
+	}
+	for i := range snap.Sessions {
+		repo := int64(10 + i)
+		x := &snap.Sessions[i]
+		x.ID, x.RepoID, x.State, x.DataSource, x.Freshness, x.LastActivityAt = int64(100+i), &repo, "running", "live", "live", at
+	}
+	for i := range snap.WorkItems {
+		repo := int64(10 + i)
+		snap.WorkItems[i].RepoID, snap.WorkItems[i].Status, snap.WorkItems[i].UpdatedAt = &repo, "in_progress", at
+	}
+	for i := range snap.Runs {
+		snap.Runs[i].ID, snap.Runs[i].SessionID, snap.Runs[i].EndedAt = int64(200+i), int64(100+i), ""
+	}
+	snap.Runs[1].WorkItemID = snap.WorkItems[1].ID
 	out := LiveSnapshot(&snap, []byte("k"))
 	b, err := json.Marshal(out)
 	if err != nil {
@@ -95,14 +114,19 @@ func TestLiveSnapshotLeaksNoText(t *testing.T) {
 		end := min(len(text), i+80)
 		t.Fatalf("展示快照泄露了文字字段：%s", text[i:end])
 	}
-	// 结构仍在：数量、关联保持，项目换成通用名，审批清空。
-	if len(out.Repos) != 2 || len(out.Sessions) != 2 || len(out.WorkItems) != 2 || len(out.Runs) != 2 || len(out.Deps) != 2 {
-		t.Fatalf("展示快照丢了结构: %+v", out)
+	// 结构仍在：数量、关联保持，项目换成通用名，审批和依赖为空。
+	if len(out.Repos) != 2 || len(out.Sessions) != 2 || len(out.WorkItems) != 2 || len(out.Runs) != 2 {
+		t.Fatalf("展示快照丢了结构: %s", b)
 	}
-	if out.Approvals == nil || len(out.Approvals) != 0 || out.Features != nil || out.Managed != nil || out.Handoffs != nil || out.SessionUsage != nil {
-		t.Fatal("展示快照不应带审批、功能、托管、交接、用量")
+	if out.Approvals == nil || len(out.Approvals) != 0 || out.Deps == nil || len(out.Deps) != 0 {
+		t.Fatal("展示快照的审批和依赖应为空数组")
 	}
-	if out.Sessions[0].WorkItemID != out.WorkItems[0].ID || out.Runs[0].WorkItemID != out.WorkItems[0].ID || out.Deps[0].Upstream != out.WorkItems[0].ID {
+	for _, key := range []string{`"features"`, `"managed"`, `"handoffs"`, `"session_usage"`, `"attributions"`, `"structures"`, `"title"`, `"cwd"`, `"brief"`} {
+		if strings.Contains(text, key) {
+			t.Fatalf("展示快照不应带 %s", key)
+		}
+	}
+	if out.Sessions[0].WorkItemID != out.WorkItems[0].ID || out.Runs[0].WorkItemID != out.WorkItems[0].ID {
 		t.Fatal("工作项编号重映射后引用不一致")
 	}
 	if out.Sessions[0].Provider != "other" {

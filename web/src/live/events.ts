@@ -1,7 +1,7 @@
 // 进度气泡：比较相邻两次（已脱敏的）快照，生成固定句式的事件。
-// 句式全部是常量，绝不拼接来自数据的文字；项目名按项目编号的名次现算（“项目 A”）。
+// 句式全部是常量，绝不拼接来自数据的文字；项目名只用通用格式（“项目 A”），不是这个格式时按编号名次现算。
 import type { Snapshot } from '../types'
-import { liveProjectNames } from './scrub'
+import { liveRepoNames } from './scrub'
 
 export type LiveEventKind = 'started' | 'run_done' | 'delivered' | 'accepted'
 
@@ -27,7 +27,7 @@ const working = (s: { state: string; freshness: string }) => s.state === 'runnin
 /** 快照差异 → 事件。prev 为空（首次加载）时不出事件。 */
 export function diffLiveEvents(prev: Snapshot | null, next: Snapshot): LiveEvent[] {
   if (!prev) return []
-  const names = liveProjectNames((next.repos ?? []).map((r) => r.id))
+  const names = liveRepoNames(next.repos ?? [])
   const label = (repoId: number | null | undefined) => (repoId != null && names.has(repoId) ? names.get(repoId)! : '小镇')
   const make = (kind: LiveEventKind, key: string, repoId: number | null | undefined): LiveEvent =>
     ({ key: `${kind}:${key}`, kind, repoId: repoId != null && names.has(repoId) ? repoId : null, text: `${label(repoId)} · ${LIVE_PHRASES[kind]}` })
