@@ -6,7 +6,7 @@ import { IsoBox, IsoTile, iso, type Pt } from './iso'
 import { attentionManaged } from '../workManagement'
 import { characterStatusLabel, type BuildingView, type Highlight, type ParcelView, type TownModel } from './townModel'
 import {
-  Building, HOUSE_SHAPE, Character, DecisionBoard, boardHeight, DispatchTable, FailRack, Parcel, ReviewDesk, StatusPill, Tag, Tree,
+  Building, HOUSE_SHAPE, Character, liveCharacterName, liveCharacterStatus, DecisionBoard, boardHeight, DispatchTable, FailRack, Parcel, ReviewDesk, StatusPill, Tag, Tree,
   activate, buildingColors, charLook, characterPillName, charMatches, onReviewDesk, parcelMatches, parcelTitle,
   type BuildingShape, type Plot, type Selection,
 } from './TownScene'
@@ -100,6 +100,8 @@ interface SceneProps {
   focusArea?: string | null
   residents?: { store: ResidentStore; active: boolean; selected: ResidentId | null; onSelect: (id: ResidentId) => void; onEnter?: (projectId: string) => void }
   sceneRef?: RefObject<SVGSVGElement | null>
+  /** 直播展示：只画房子、作坊、小人和项目名牌；不画告示栏、验收台、退件架、菜地、包裹、路障和各种待办计数。默认照常画。 */
+  live?: boolean
 }
 
 /** 手动导航的目标：项目按稳定项目键（来源设备 + 原始项目编号），片区按片区键。 */
@@ -123,7 +125,7 @@ function districtPlot(d: District): Plot {
   return { gx: d.ox + 0.8, gy: d.oy + 0.5, w: t.w, d: t.d, facing: 'x', ...buildingColors(d.b.repo?.id) }
 }
 
-export function WorldScene({ model, world, view, far, selected, highlight, onSelect, changed = new Set(), offline = false, needsYou, stalled, onHoverHouse, agents = null, momentGlow, progressSparks, onNavigate, focusArea = null, dispatch = [], onDispatch, residents, sceneRef }: SceneProps) {
+export function WorldScene({ model, world, view, far, selected, highlight, onSelect, changed = new Set(), offline = false, needsYou, stalled, onHoverHouse, agents = null, momentGlow, progressSparks, onNavigate, focusArea = null, dispatch = [], onDispatch, residents, sceneRef, live = false }: SceneProps) {
   const { illustrated, miniature } = useTownArt()
   const isSel = (kind: Selection['kind'], key: string) => selected?.kind === kind && selected.key === key
   const dim = (match: boolean) => (highlight && !match ? ' is-dim' : '')
@@ -229,6 +231,8 @@ export function WorldScene({ model, world, view, far, selected, highlight, onSel
   // 远景名牌跟着视野放大，拉得再远也认得出项目名。
   const nowMs = Date.parse(model.now) || Date.now()
   const plateK = Math.min(2.4, Math.max(0.8, view.w / 2900))
+  // 直播展示：招牌和小人标签按视野放大，镜头再远名字也读得清（约为画面短边的 2.6%）。
+  const liveK = live ? Math.max(1, (0.026 * Math.min(view.w, view.h)) / 14) : 1
   const mapMode = view.w > MAP_W
   const onMap = far && mapMode
   // 远景名牌：先算内容和位置，再统一避让，相邻项目的名牌不互相压。
@@ -294,15 +298,15 @@ export function WorldScene({ model, world, view, far, selected, highlight, onSel
           <g key="__plaza">
             {illustrated ? <StoryClearing gx={P.ox+.4} gy={P.oy+.4} w={INNER_W-.4} d={INNER_D-.4} fill="#e9dcc2" opacity={.7} /> : <IsoTile gx={P.ox + 0.4} gy={P.oy + 0.4} w={INNER_W - 0.4} d={INNER_D - 0.4} fill="#e9dcc2" stroke="#cdbb98" />}
             {/* 告示栏立在广场左前方、卡片多了会长高，验收台和退件架放到右边，不被它挡住 */}
-            <ReviewDesk at={{ gx: P.ox + DESK.gx, gy: P.oy + DESK.gy }} count={reviewTotal} selected={isSel('review-desk', 'review-desk')} dimDesk={dim(highlight === 'review')} onSelect={onSelect} />
+            {!live && <ReviewDesk at={{ gx: P.ox + DESK.gx, gy: P.oy + DESK.gy }} count={reviewTotal} selected={isSel('review-desk', 'review-desk')} dimDesk={dim(highlight === 'review')} onSelect={onSelect} />}
             {/* 验收台上的箱子只是示意，数量看招牌 */}
-            {Array.from({ length: Math.min(5, reviewTotal) }, (_, i) => (
+            {!live && Array.from({ length: Math.min(5, reviewTotal) }, (_, i) => (
               <g key={`rd${i}`} className="town-near town-crate" aria-hidden><TownCrate at={iso(P.ox + DESK.gx + 0.8 + (i % 3) * 0.9, P.oy + DESK.gy + 0.55, 16 + Math.floor(i / 3) * 11)} fill="#d6b27a" tape="#5b6cd8" /></g>
             ))}
-            <FailRack at={{ gx: P.ox + 7.4, gy: P.oy + 5.2 }} count={failedTotal} />
+            {!live && <FailRack at={{ gx: P.ox + 7.4, gy: P.oy + 5.2 }} count={failedTotal} />}
             {onDispatch && <DispatchTable at={{ gx: P.ox + DISPATCH.gx, gy: P.oy + DISPATCH.gy }} count={dispatch.filter((m) => m.status !== 'desktop').length} onOpen={() => onDispatch()} />}
-            <DecisionBoard place={{ x: boardAt[0], y: boardAt[1], anchor: 'bottom', scale: 1 }} model={boardModel} isSel={(k) => isSel('approval', k)} dimClass={dim(highlight === 'waiting')} onSelect={onSelect} />
-            {model.pendingApprovals.length > BOARD_MAX && <Tag at={[boardAt[0], boardAt[1] + 16]} text={`另有 ${model.pendingApprovals.length - BOARD_MAX} 条在关注队列`} bg="#fffaf0" fg="#6b5a44" small />}
+            {!live && <DecisionBoard place={{ x: boardAt[0], y: boardAt[1], anchor: 'bottom', scale: 1 }} model={boardModel} isSel={(k) => isSel('approval', k)} dimClass={dim(highlight === 'waiting')} onSelect={onSelect} />}
+            {!live && model.pendingApprovals.length > BOARD_MAX && <Tag at={[boardAt[0], boardAt[1] + 16]} text={`另有 ${model.pendingApprovals.length - BOARD_MAX} 条在关注队列`} bg="#fffaf0" fg="#6b5a44" small />}
             <g data-resident-ground="0,0" />
           </g>
         )
@@ -325,7 +329,8 @@ export function WorldScene({ model, world, view, far, selected, highlight, onSel
             {d.kind === 'wild' && <Fence gx={d.ox + 4.6} gy={d.oy + INNER_D - 0.5} len={4.0} />}
             <g onPointerEnter={(e) => onHoverHouse?.(d.b.key, { x: e.clientX, y: e.clientY })} onPointerLeave={() => onHoverHouse?.(null)}
               onFocus={(e) => { const r = (e.target as Element).getBoundingClientRect(); onHoverHouse?.(d.b.key, { x: r.right, y: r.top }) }} onBlur={() => onHoverHouse?.(null)}>
-              <Building plot={plot} shape={TIERS[d.tier].shape} b={d.b} selected={isSel('building', d.b.key)} dimClass={dim(false)} onSelect={() => onSelect({ kind: 'building', key: d.b.key })} />
+              <Building plot={plot} shape={TIERS[d.tier].shape} b={d.b} selected={isSel('building', d.b.key)} dimClass={dim(false)} onSelect={() => onSelect({ kind: 'building', key: d.b.key })}
+                {...(live ? { live, signScale: liveK } : {})} />
             </g>
             {onDispatch && (() => {
               // 派活台发起的工作在门口挂个牌子，点了直接到那件任务（最近的一件）。
@@ -337,11 +342,11 @@ export function WorldScene({ model, world, view, far, selected, highlight, onSel
               </g>
             })()}
             {/* 门口的菜地：一棵菜一个工作项，熟了 = 待你验收 */}
-            <Field gx={d.ox + 5.5} gy={d.oy + 4.9} b={d.b} pending={model.pendingApprovals} now={nowMs}
-              selectedKey={selected?.kind === 'item' ? selected.key : null} dimClass={dim(highlight === 'review')} onSelect={onSelect} />
+            {!live && <Field gx={d.ox + 5.5} gy={d.oy + 4.9} b={d.b} pending={model.pendingApprovals} now={nowMs}
+              selectedKey={selected?.kind === 'item' ? selected.key : null} dimClass={dim(highlight === 'review')} onSelect={onSelect} />}
             {momentGlow === d.key && <ellipse className="town-moment-ring" cx={iso(d.ox + 7, d.oy + 6.4)[0]} cy={iso(d.ox + 7, d.oy + 6.4)[1]} rx="112" ry="49" fill="none" stroke="#e07b39" strokeWidth="5" aria-hidden />}
             {progressSparks?.has(d.key) && <text className="town-progress-spark" x={iso(d.ox + 7, d.oy + 6.4, 55)[0]} y={iso(d.ox + 7, d.oy + 6.4, 55)[1]} textAnchor="middle" fontSize="32" fill="#9a540d" aria-hidden>✦</text>}
-            {failed > 0 && (
+            {!live && failed > 0 && (
               <g className={`town-failbox${dim(highlight === 'failed')}`}>
                 <IsoBox gx={d.ox + 2.35} gy={d.oy + 7.45} w={1.0} d={0.7} h={9} top="#7a3a32" left="#a5483e" right="#8a3c33" />
                 <Tag at={iso(d.ox + 2.85, d.oy + 7.8, 40)} text={`失败 ${failed}`} bg="#d2483d" fg="#fff" small />
@@ -357,7 +362,7 @@ export function WorldScene({ model, world, view, far, selected, highlight, onSel
                 <Tag at={iso(d.ox + 1.3, d.oy + 5.9, 46)} text={`停着 ${list.length}`} bg="#7a4fd0" fg="#fff" small />
               </g>
             })()}
-            {statusAt.get(d.key)!.blocked > 0 && (
+            {!live && statusAt.get(d.key)!.blocked > 0 && (
               <g className={`town-obj${dim(false)}`} {...activate(() => onSelect({ kind: 'building', key: d.b.key }))} aria-label={`${d.b.name}：受阻 ${statusAt.get(d.key)!.blocked} 项`}>
                 <Roadblock gx={d.ox + 3.0} gy={d.oy + 6.6} />
                 <Tag at={iso(d.ox + 3.4, d.oy + 6.6, 46)} text={`受阻 ${statusAt.get(d.key)!.blocked}`} bg="#d2483d" fg="#fff" small />
@@ -373,17 +378,17 @@ export function WorldScene({ model, world, view, far, selected, highlight, onSel
                 </g>
               )
             })()}
-            {slotsOf.get(d.key)!.map(({ p, at, stale, moving }) => (
+            {!live && slotsOf.get(d.key)!.map(({ p, at, stale, moving }) => (
               <Parcel key={p.key} at={at} p={p} stale={stale} moving={moving} selected={isSel('parcel', p.key)}
                 dimClass={dim(highlight ? parcelMatches(p, highlight, stale) : true) + flash(p.key)} onSelect={() => onSelect({ kind: 'parcel', key: p.key })}
                 label={<title>{parcelTitle(p, 40)}</title>} />
             ))}
             {seatsOf.get(d.key)!.map(({ key: k, c, gx, gy }) => (
-              <Character key={k} at={iso(gx, gy)} c={c} selected={isSel('character', c.key)}
+              <Character key={k} at={iso(gx, gy)} c={c} selected={isSel('character', c.key)} live={live}
                 dimClass={(fadeChar(c) || dim(highlight ? charMatches(c, highlight) : true)) + flash(c.key)} onSelect={() => onSelect({ kind: 'character', key: c.key })} />
             ))}
             {/* 小推车画在小人上面，不被挡住 */}
-            {(() => {
+            {!live && (() => {
               const sheds = shedsOf.get(d.key)!
               const relays = model.relays.filter((r) => r.repoId === d.b.repo?.id)
               const at = (a: Agent) => sheds.find((x) => x.spot.agent === a)?.spot
@@ -400,7 +405,7 @@ export function WorldScene({ model, world, view, far, selected, highlight, onSel
         )
       })}
 
-      {model.deps.map((dep) => {
+      {!live && model.deps.map((dep) => {
         const a = charPos.get(itemOwner.get(dep.upstream) ?? ''), z = charPos.get(itemOwner.get(dep.downstream) ?? '')
         if (!a || !z) return null
         const mid: Pt = [(a[0] + z[0]) / 2, Math.max(a[1], z[1]) + 30]
@@ -419,16 +424,16 @@ export function WorldScene({ model, world, view, far, selected, highlight, onSel
           const { style, st } = charLook(c)
           const label = characterStatusLabel[c.status]
           return (
-            <g key={`${c.key}-pill`} style={{ transform: `translate(${at[0]}px,${at[1]}px) scale(1.22)` }}
+            <g key={`${c.key}-pill`} style={{ transform: `translate(${at[0]}px,${at[1]}px) scale(${1.22 * (live ? Math.max(1, liveK * 0.8) : 1)})` }}
               className={`town-obj town-move${fadeChar(c) || dim(highlight ? charMatches(c, highlight) : true)}`} aria-hidden onClick={() => onSelect({ kind: 'character', key: c.key })}>
-              <StatusPill at={[0, 17]} name={characterPillName(c, illustrated)} status={offline && c.status === 'working' ? `断线前·${label}` : label} bg={st.bg} fg={st.fg} edge={style.body} />
+              <StatusPill at={[0, 17]} name={live ? liveCharacterName(c) : characterPillName(c, illustrated)} status={live ? liveCharacterStatus(c) : offline && c.status === 'working' ? `断线前·${label}` : label} bg={st.bg} fg={st.fg} edge={style.body} />
             </g>
           )
         })}
       </g>
 
       {/* 远景名牌：拉远时代替招牌、小人和包裹。四种状态始终用同样的色点和顺序。 */}
-      <g className="town-far">
+      {!live && <g className="town-far">
         {villagePlates.map(({ v, members, ag, tone, k, at, sub, chips, note }) => {
           if (v.key === focusArea) return null
           return (
@@ -447,7 +452,7 @@ export function WorldScene({ model, world, view, far, selected, highlight, onSel
         ))}
         {/* 广场名牌最后画：全镇合计，不被村庄名牌盖住 */}
         <FarPlate k={plazaPlate.k} at={plazaPlate.at} title={plazaPlate.title} tone="plaza" chips={plazaPlate.chips} note={plazaPlate.note} />
-      </g>
+      </g>}
       {residents && <ResidentWorldVisitors store={residents.store} world={world} svgRef={sceneRef} far={far} selected={residents.selected}
         onSelect={residents.onSelect} onEnter={(id) => residents.onEnter?.(id)} />}
     </svg>

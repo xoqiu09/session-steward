@@ -291,6 +291,10 @@ func serve() error {
 	}
 	s := &server.Server{BuildCommit: BuildCommit, ReportingHints: cfg.ReportingHints, Core: c, IngestToken: ingest, PanelToken: panel, PermWait: time.Duration(cfg.PermissionWaitSec) * time.Second, Static: static}
 	s.Dispatch, s.DispatchUnavailable = orchestrationDesk, dispatchReason
+	// 直播展示令牌与面板令牌分开；只能读脱敏后的小镇画面，删掉文件即吊销旧地址。
+	if s.LiveToken, err = config.Secret("live.token"); err != nil {
+		return err
+	}
 	orchestrationContext, stopOrchestration := context.WithCancel(ctx)
 	orchestrationDone := make(chan struct{})
 	go func() { defer close(orchestrationDone); c.OrchestrationRun(orchestrationContext) }()

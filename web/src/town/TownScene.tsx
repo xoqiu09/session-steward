@@ -131,7 +131,12 @@ export function yard(p: Plot, u: number, v: number): [number, number] {
   return p.facing === 'x' ? [p.gx + u, p.gy + p.d + v] : [p.gx + p.w + v, p.gy + u]
 }
 
+/** 直播展示页把整个场景设为静止：activate 不再给出点击、键盘和按钮角色。整页只有展示视图，所以按页面设置。 */
+let sceneStill = false
+export function setSceneStill(on: boolean) { sceneStill = on }
+
 export function activate(fn: () => void) {
+  if (sceneStill) return {}
   return {
     onClick: fn,
     onKeyDown: (e: KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fn() } },
@@ -357,7 +362,9 @@ export const HOUSE_SHAPE: BuildingShape = {
   walls: { top: '#efe3cc', front: '#f6ecda', side: '#e4d4b8', edge: '#9b7b55' },
 }
 
-export function Building({ plot: p, b, selected, dimClass, onSelect, signScale = 1, shape = HOUSE_SHAPE }: { plot: Plot; b: BuildingView; selected: boolean; dimClass: string; onSelect: () => void; signScale?: number; shape?: BuildingShape }) {
+export function Building({ plot: p, b, selected, dimClass, onSelect, signScale = 1, shape = HOUSE_SHAPE, live = false }: { plot: Plot; b: BuildingView; selected: boolean; dimClass: string; onSelect: () => void; signScale?: number; shape?: BuildingShape
+  /** 直播展示：招牌只写项目名和“N 位在工作”，不写任务、未完成和已完成计数。 */
+  live?: boolean }) {
   const { theme, illustrated, miniature } = useTownArt()
 
   const H = shape.h
@@ -365,7 +372,8 @@ export function Building({ plot: p, b, selected, dimClass, onSelect, signScale =
   const done = b.items.filter((w) => w.status === 'done').length
   const hidden = Math.max(0, b.characters.length - MAX_SEATS)
   const sign = clip(b.name, SIGN_MAX)
-  const tasks = buildingTasks(b.items)
+  const tasks = live ? { lines: [] as ReturnType<typeof buildingTasks>['lines'], more: 0 } : buildingTasks(b.items)
+  const working = b.characters.filter((c) => c.status === 'working').length
   const signW = measure(sign, 14) + 26
   const storyWidth = (p.w + p.d) * 30 + 10
   const houseFoot = iso(p.gx + p.w / 2, p.gy + p.d - .3)
@@ -386,7 +394,7 @@ export function Building({ plot: p, b, selected, dimClass, onSelect, signScale =
   const long = p.facing === 'x' ? p.w : p.d
   return (
     <g className={`town-obj town-building${selected ? ' is-selected' : ''}${dimClass}`} data-repo-id={b.repo?.id} data-building-kind={shape.kind} data-building-art={illustrated ? theme : 'original'}
-      aria-label={`项目建筑 ${b.name}：${b.characters.length} 个会话，${active} 个未完成任务${hidden ? `，另有 ${hidden} 个会话不在画面中` : ''}`} {...activate(onSelect)}>
+      aria-label={live ? `项目建筑 ${b.name}` : `项目建筑 ${b.name}：${b.characters.length} 个会话，${active} 个未完成任务${hidden ? `，另有 ${hidden} 个会话不在画面中` : ''}`} {...activate(onSelect)}>
       {illustrated ? <>
         <rect className="town-story-house-hit" {...artBox} />
         <StoryProp kind={artKind} at={artAnchor} width={artWidth} />
@@ -435,9 +443,10 @@ export function Building({ plot: p, b, selected, dimClass, onSelect, signScale =
         <line x1="0" y1="10" x2="0" y2="26" stroke="#7a5a3a" strokeWidth="1.5" />
         <rect x={-signW / 2} y={-14} width={signW} height={26} rx="6" fill="#fffaf0" stroke={selected ? '#2d6cdf' : p.accent} strokeWidth={selected ? 3 : 2} />
         <text y="4" textAnchor="middle" fontSize="14" fontWeight="700" fill="#3a2a1c">{sign}</text>
-        <text y="-22" textAnchor="middle" fontSize="10.5" fill="#6b5a44" className="town-sub">
+        {live ? working > 0 && <text y="-22" textAnchor="middle" fontSize="12" fontWeight="700" fill="#9a540d" className="town-sub">{working} 位在工作</text>
+          : <text y="-22" textAnchor="middle" fontSize="10.5" fill="#6b5a44" className="town-sub">
           {shape.kind === 'house' ? '' : `${shape.name} · `}{b.characters.length} 个会话 · {active} 个未完成{done ? ` · 已完成 ${done}` : ''}
-        </text>
+        </text>}
         {tasks.lines.map((t, i) => (
           <text key={t.id} y={-38 - (tasks.lines.length - 1 - i) * 14} textAnchor="middle" fontSize="10.5" fill="#3a2a1c" className="town-task">
             <tspan fontWeight="700" fill={t.status === 'review' ? '#2f3a8f' : t.status === 'blocked' ? '#8f2a22' : '#6b5a44'}>{itemStatusLabel[t.status]}</tspan> {clip(t.title, TASK_MAX)}
@@ -445,7 +454,7 @@ export function Building({ plot: p, b, selected, dimClass, onSelect, signScale =
         ))}
         {tasks.more > 0 && <text y={-38 - tasks.lines.length * 14} textAnchor="middle" fontSize="10" fill="#7a6a55">等 {tasks.more} 项</text>}
       </g>
-      {hidden > 0 && <Tag at={[corner[0], corner[1] - 22]} text={`另有 ${hidden} 位`} bg="#fffaf0" fg="#6b5a44" small border={p.accent} />}
+      {!live && hidden > 0 && <Tag at={[corner[0], corner[1] - 22]} text={`另有 ${hidden} 位`} bg="#fffaf0" fg="#6b5a44" small border={p.accent} />}
     </g>
   )
 }
@@ -505,7 +514,16 @@ export function characterPillName(c: CharacterView, companions = false) {
   return girl ? `${girl.name} #${shownNo(c.session.id)}` : c.name
 }
 
-export function Character({ at, c, selected, dimClass, onSelect, now }: { at: Pt; c: CharacterView; selected: boolean; dimClass: string; onSelect: () => void; now?: string }) {
+/** 直播展示里的小人名字：只写 Agent 名，不带编号。 */
+export function liveCharacterName(c: CharacterView) {
+  return c.session.provider === 'claude' ? 'Claude' : c.session.provider === 'codex' ? 'Codex' : 'AI 助手'
+}
+/** 直播展示里的状态只分两种说法。 */
+export const liveCharacterStatus = (c: CharacterView) => (c.status === 'working' ? '工作中' : '休息')
+
+export function Character({ at, c, selected, dimClass, onSelect, now, live = false }: { at: Pt; c: CharacterView; selected: boolean; dimClass: string; onSelect: () => void; now?: string
+  /** 直播展示：不写编号、任务和信号，状态只说“工作中 / 休息”。 */
+  live?: boolean }) {
   const { illustrated } = useTownArt()
   const s = c.session
   const { isCat, style } = charLook(c)
@@ -516,8 +534,8 @@ export function Character({ at, c, selected, dimClass, onSelect, now }: { at: Pt
   return (
     <g style={{ transform: `translate(${at[0]}px,${at[1]}px) scale(1.22)` }}
       className={`town-obj town-move town-char is-${c.status}${selected ? ' is-selected' : ''}${dimClass}`}
-      aria-label={`${characterDisplayName(c, illustrated)}，${characterStatusLabel[c.status]}${c.item ? `，任务 ${c.item.title}` : ''}`} {...activate(onSelect)}>
-      <title>{`${characterDisplayName(c, illustrated)} · ${recentSignal(s.signal, now ?? new Date().toISOString())}`}</title>
+      aria-label={live ? `${liveCharacterName(c)}，${liveCharacterStatus(c)}` : `${characterDisplayName(c, illustrated)}，${characterStatusLabel[c.status]}${c.item ? `，任务 ${c.item.title}` : ''}`} {...activate(onSelect)}>
+      {!live && <title>{`${characterDisplayName(c, illustrated)} · ${recentSignal(s.signal, now ?? new Date().toISOString())}`}</title>}
       {/* 闲着的会话在院子里来回溜达；干活的手边冒火花 */}
       <g className={c.status === 'idle' ? 'town-stroll' : undefined} style={c.status === 'idle' ? { animationDelay: `${-(s.id % 7) * 1.3}s` } : undefined}>
       <rect x={girl ? -29 : -17} y={girl ? -66 : -58} width={girl ? 58 : 34} height={girl ? 72 : 64} fill="transparent" />
@@ -528,14 +546,14 @@ export function Character({ at, c, selected, dimClass, onSelect, now }: { at: Pt
       <g className={c.status === 'working' ? 'town-bob' : undefined}>
         {girl ? <g data-work-companion={girl.id}>
           <g transform="scale(.76)"><ResidentSprite id={girl.id} pose={pose} /></g>
-          <circle cx="18" cy="-5" r="7" fill="#fffaf0" stroke={style.body} strokeWidth="1.2" />
-          <text x="18" y="-2" textAnchor="middle" fontSize="8" fontWeight="700" fill="#574736">{shownNo(s.id)}</text>
+          {!live && <circle cx="18" cy="-5" r="7" fill="#fffaf0" stroke={style.body} strokeWidth="1.2" />}
+          {!live && <text x="18" y="-2" textAnchor="middle" fontSize="8" fontWeight="700" fill="#574736">{shownNo(s.id)}</text>}
         </g> : <>
         <rect x="-6" y="-11" width="4.5" height="11" rx="2" fill="#3d3a4a" />
         <rect x="1.5" y="-11" width="4.5" height="11" rx="2" fill="#3d3a4a" />
         <rect x="-10" y="-30" width="20" height="21" rx="7" fill={style.body} />
         <rect x="-6.5" y="-26" width="13" height="10" rx="2" fill="#fffaf0" />
-        <text y="-18.3" textAnchor="middle" fontSize="7.5" fontWeight="700" fill="#3a2a1c">{shownNo(s.id)}</text>
+        {!live && <text y="-18.3" textAnchor="middle" fontSize="7.5" fontWeight="700" fill="#3a2a1c">{shownNo(s.id)}</text>}
         <circle cy="-41" r="11" fill={skin} stroke="rgba(80,50,30,.25)" />
         {isCat ? (
           <g>

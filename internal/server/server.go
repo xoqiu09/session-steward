@@ -29,6 +29,8 @@ type Server struct {
 	PermWait       time.Duration
 	Static         fs.FS // 前端构建产物，可为 nil
 	Listen         string
+	// LiveToken：直播展示令牌，与面板令牌分开；只能读脱敏后的小镇画面。为空时不开放展示。
+	LiveToken string
 	// 远程访问（默认关闭）：允许的反向代理 HTTPS 主机名，以及远程设备 token。
 	RemoteHosts []string
 	RemoteToken string
@@ -264,6 +266,7 @@ func (s *Server) Handler() http.Handler {
 	s.projectStructureRoutes(mux)
 	s.dispatchRoutes(mux)
 	s.orchestrationRoutes(mux)
+	s.liveRoutes(mux)
 	mux.HandleFunc("GET /login", s.handleLogin)
 
 	if s.Static != nil {
@@ -280,7 +283,7 @@ func (s *Server) Handler() http.Handler {
 				fail(w, r, http.StatusNotFound, "not found")
 				return
 			}
-			if !s.panelAuthed(r) {
+			if !s.panelAuthed(r) && !s.liveIndex(r) {
 				fail(w, r, http.StatusUnauthorized, "请通过 steward open 打开面板（需要登录链接）")
 				return
 			}
