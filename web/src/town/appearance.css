@@ -1,21 +1,13 @@
 /* 收起时低于详情抽屉（30/31）和其他全局弹层；只有展开预览面板时才盖在地图工具上。 */
-.town-scene-menu { position: relative; z-index: 20; flex: 1 0 100%; min-width: 0; width: 100%; box-sizing: border-box; padding: 10px 12px; border: 1px solid var(--town-line, #d9cdb6); border-radius: 14px; background: var(--town-card, #fffaf0); font: inherit; color: var(--town-ink, #4a4033); }
+/* 2026-11-10 Owner 决定：画风入口收成一行里的一个按钮，把高度让给地图；三种画风在点开的面板里选。 */
+.town-scene-menu { position: relative; z-index: 20; flex: 0 1 auto; min-width: 0; box-sizing: border-box; padding: 2px 10px 2px 4px; border: 1px solid var(--town-line, #d9cdb6); border-radius: 10px; background: var(--town-card, #fffaf0); font: inherit; color: var(--town-ink, #4a4033); }
 .town-scene-menu.is-open { z-index: 80; }
-.town-scene-bar { container-type: inline-size; container-name: scene-entry; }
-.town-scene-full { display: flex; align-items: center; gap: 18px; }
-.town-scene-compact { display: none; }
-.town-scene-label { display: flex; flex-direction: column; gap: 4px; flex-shrink: 0; }
-.town-scene-label strong { font-size: 14px; font-weight: 650; }
-.town-scene-label > span { font-size: 11px; line-height: 1.5; color: #657062; }
-.town-scene-shortcuts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; flex: 1; min-width: 0; max-width: 650px; }
-.town-scene-shortcut { position: relative; display: flex; align-items: center; gap: 9px; min-width: 0; min-height: 58px; padding: 6px 24px 6px 7px; border: 1px solid #d6ddcf; border-radius: 10px; background: #fffef9; color: #405347; font: inherit; text-align: left; cursor: pointer; transition: border-color .15s, background .15s; }
-.town-scene-shortcut:hover { border-color: #739981; background: #f5f8ee; }
-.town-scene-shortcut.is-current { border-color: #568c75; background: #edf5e9; box-shadow: inset 0 0 0 1px #568c75; }
-.town-scene-shortcut > .town-scene-thumbnail { width: 64px; flex-shrink: 0; border-radius: 6px; }
-.town-scene-shortcut-copy { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-.town-scene-shortcut-copy strong { font-size: 13px; font-weight: 650; white-space: nowrap; }
-.town-scene-shortcut-copy > span { font-size: 10px; line-height: 1.5; color: #647366; }
-.town-scene-shortcut-check { position: absolute; right: 8px; top: 8px; color: #365f49; font-size: 12px; font-weight: 700; }
+.town-scene-compact { display: flex; align-items: center; gap: 8px; min-height: 30px; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.town-scene-compact > .town-scene-thumbnail { width: 40px; flex: none; border-radius: 5px; }
+.town-scene-compact > span { display: flex; align-items: baseline; gap: 6px; white-space: nowrap; }
+.town-scene-compact strong { font-size: 12px; }
+.town-scene-compact > span > span { font-size: 12px; color: #647366; }
+.town-scene-compact > b { display: flex; align-items: center; gap: 5px; margin-left: 4px; font-size: 12px; font-weight: 600; white-space: nowrap; color: #365f49; }
 .town-scenes-panel { position: absolute; top: calc(100% + 10px); left: 0; width: 550px; max-width: calc(100vw - 32px); padding: 22px; box-sizing: border-box; background: #fcfcf6; border: 1px solid #d4ded2; border-radius: 20px; box-shadow: 0 18px 60px #1e44312b, 0 2px 8px #1e44310d; color: #304e43; text-align: left; cursor: default; }
 .town-scenes-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .town-scenes-eyebrow { display: block; font-size: 10px; font-weight: 550; letter-spacing: .06em; color: #718878; margin-bottom: 6px; }
@@ -57,15 +49,8 @@
 .town-view.is-miniature .town-resident-figure > ellipse:first-child { fill: #486e4e32; }
 .town-view.is-miniature .town-miniature-prop { filter: drop-shadow(0 2px 1px #50734616); }
 @media (max-width: 760px) {
-  .town-scene-menu { padding: 10px; }
-  .town-scene-full { flex-direction: column; align-items: stretch; gap: 9px; }
-  .town-scene-label { flex-direction: row; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 10px; }
-  .town-scene-shortcuts { max-width: none; gap: 6px; }
-  .town-scene-shortcut { flex-direction: column; gap: 5px; min-height: 98px; padding: 6px 3px; text-align: center; }
-  .town-scene-shortcut > .town-scene-thumbnail { width: 56px; }
-  .town-scene-shortcut-copy { gap: 2px; }
-  .town-scene-shortcut-copy strong { font-size: 12px; }
-  .town-scene-shortcut-check { right: 5px; top: 5px; }
+  .town-scene-menu { padding: 6px 10px 6px 6px; }
+  .town-scene-compact { min-height: 44px; }
   .town-scenes-panel { position: fixed; top: 72px; left: 12px; right: 12px; width: auto; max-width: none; max-height: calc(100dvh - 88px); overflow-y: auto; padding: 18px; border-radius: 18px; }
   .town-scenes-heading h2 { font-size: 19px; }
   .town-scenes-options { grid-template-columns: 1fr; gap: 8px; }
@@ -80,23 +65,4 @@
   .town-scenes-footer button { min-height: 42px; }
   .town-scene-apply { flex: 1; }
 }
-@container scene-entry (max-width: 760px) {
-  .town-scene-full { gap: 12px; }
-  .town-scene-label > span { display: none; }
-  .town-scene-shortcuts { max-width: none; }
-  .town-scene-shortcut { flex-direction: column; gap: 4px; min-height: 82px; padding: 6px 8px; text-align: center; }
-  .town-scene-shortcut > .town-scene-thumbnail { width: 54px; }
-  .town-scene-shortcut-copy { gap: 1px; }
-  .town-scene-shortcut-copy strong { font-size: 12px; }
-  .town-scene-shortcut-copy > span { font-size: 10px; }
-}
-@container scene-entry (max-width: 520px) {
-  .town-scene-full { display: none; }
-  .town-scene-compact { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 44px; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
-  .town-scene-compact > .town-scene-thumbnail { width: 48px; flex: none; border-radius: 6px; }
-  .town-scene-compact > span { display: flex; flex-direction: column; gap: 1px; }
-  .town-scene-compact strong { font-size: 12px; }
-  .town-scene-compact > span > span { font-size: 11px; color: #647366; }
-  .town-scene-compact > b { display: flex; align-items: center; gap: 7px; margin-left: auto; font-size: 12px; font-weight: 600; white-space: nowrap; color: #365f49; }
-}
-@media (prefers-reduced-motion: reduce) { .town-scene-card, .town-scene-shortcut { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .town-scene-card { transition: none; } }

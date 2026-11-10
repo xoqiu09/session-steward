@@ -88,9 +88,10 @@ export function readResidentTrip(raw: unknown): ResidentTrip | undefined {
     ...(r.returnTarget === 'tea' ? { returnTarget: 'tea' as const } : {}) }
 }
 
-/** 来访只在工作台前留出的过道活动，工作台、会话与功能数据保持原样。 */
-export function interiorVisitorPoint(trip: ResidentTrip, id: ResidentId): GardenPoint {
-  const points = [{ x: 1.2, y: 10.8 }, { x: 6.5, y: 10.8 }, { x: 12.8, y: 10.8 }, { x: 14.9, y: 9.9 }, { x: 6.5, y: 10.8 }]
+/** 来访只在工作台前留出的过道活动，工作台、会话与功能数据保持原样。房间缩小时过道跟着前墙走。 */
+export function interiorVisitorPoint(trip: ResidentTrip, id: ResidentId, room: { w: number; d: number } = { w: 16, d: 12 }): GardenPoint {
+  const front = room.d - 1.2, mid = room.w * 6.5 / 16
+  const points = [{ x: 1.2, y: front }, { x: mid, y: front }, { x: room.w - 3.2, y: front }, { x: room.w - 1.1, y: front - 0.9 }, { x: mid, y: front }]
   const time = trip.insideMs / 6500 + RESIDENT_IDS.indexOf(id) * 0.35, step = Math.floor(time) % points.length
   const a = points[step], b = points[(step + 1) % points.length], t = Math.min(1, (time % 1) * 1.5)
   return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t }

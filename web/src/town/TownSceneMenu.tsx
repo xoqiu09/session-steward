@@ -57,24 +57,6 @@ export function TownSceneMenu({ appearance, open, onOpenChange: setOpen }: { app
       <button type="button" className="town-scene-compact" aria-haspopup="dialog" aria-expanded={open} aria-controls={open ? panel : undefined} onClick={openCurrent}>
         <SceneThumbnail theme={appearance.theme} /><span><strong>小镇画风</strong><span>{themeName(appearance.theme)}</span></span><b>更换画风 <span aria-hidden="true">⌄</span></b>
       </button>
-      <div className="town-scene-full">
-      <div className="town-scene-label"><strong>小镇画风</strong><span>点选预览，确认后记住</span></div>
-      <div className="town-scene-shortcuts" role="group" aria-label="切换小镇画风">
-        {TOWN_THEMES.map(t => <button type="button" key={t.id} className={`town-scene-shortcut${appearance.theme === t.id ? ' is-current' : ''}`}
-          aria-label={`预览${t.name}`} aria-pressed={appearance.theme === t.id} aria-haspopup="dialog" aria-expanded={open} aria-controls={open ? panel : undefined}
-          onClick={event => {
-            trigger.current = event.currentTarget
-            if (!open) baseline.current = appearance.theme
-            firstChoice.current = t.id
-            setOpen(true)
-            preview(t.id)
-          }}>
-          <SceneThumbnail theme={t.id} />
-          <span className="town-scene-shortcut-copy"><strong>{t.name}</strong><span>{appearance.loading === t.id ? '正在准备…' : appearance.theme === t.id ? open ? '正在预览' : '当前显示' : '点击预览'}</span></span>
-          {appearance.theme === t.id && <span className="town-scene-shortcut-check" aria-hidden="true">✓</span>}
-        </button>)}
-      </div>
-      </div>
     </div>
     {open && <div className="town-scenes-panel" role="dialog" aria-labelledby={heading} id={panel}>
       <div className="town-scenes-heading"><div><span className="town-scenes-eyebrow">给小镇换个风景</span><h2 id={heading}>选一个喜欢的场景</h2></div><button type="button" className="town-scenes-close" aria-label="关闭场景菜单，取消预览" onClick={close}>×</button></div>
