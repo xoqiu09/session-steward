@@ -1,4 +1,5 @@
-import { useLayoutEffect, useMemo, useState, type RefObject } from 'react'
+import { useContext, useLayoutEffect, useMemo, useState, type RefObject } from 'react'
+import { RoomSizeContext } from './interiorRoom'
 import { createPortal } from 'react-dom'
 import { iso } from './iso'
 import { type ResidentStore } from './residentLife'
@@ -52,10 +53,10 @@ export function ResidentWorldVisitors({ store, world, svgRef, far, selected, onS
 }
 
 export function ResidentRoomVisitors({ store, projectId }: { store: ResidentStore; projectId: string }) {
-  const life = useResidentLife(store)
+  const life = useResidentLife(store), room = useContext(RoomSizeContext)
   if (!life.enabled) return null
   return <g aria-label="在屋内串门的居民" pointerEvents="none">{RESIDENT_IDS.filter((id) => life.actors[id].trip?.phase === 'inside' && life.actors[id].trip?.projectId === projectId).map((id) => {
-    const actor = life.actors[id], p = interiorVisitorPoint(actor.trip!, id), at = iso(p.x, p.y)
+    const actor = life.actors[id], p = interiorVisitorPoint(actor.trip!, id, room), at = iso(p.x, p.y)
     return <g key={id} data-resident-id={id} transform={`translate(${at[0]},${at[1]}) scale(.8)`} className={`town-resident-figure${life.paused ? '' : ' is-walking'}`} role="img" aria-label={`来访居民 ${residentSpec(id).name} 在屋内参观`}>
       <ellipse rx="17" ry="5" fill="rgba(70,55,35,.16)" />
       <ResidentSprite id={id} pose={actor.pose} />

@@ -1,6 +1,6 @@
 // 项目室内：走进一栋建筑，看这个项目里的事。工作台 = 工作项，会话小人站在自己的工作台前，
 // 待验收的箱子放在台上，墙上白板是这个项目里等你决定的事。只读：点任何东西都打开 SS 原有详情。
-import { IsoBox, IsoTile, iso, pts, type Pt } from './iso'
+import { HW, IsoBox, IsoTile, iso, pts, type Pt } from './iso'
 import type { RoomFocus } from './roomRequest'
 import { characterStatusLabel, clip, itemStatusLabel, type BuildingView, type Highlight, type TownModel } from './townModel'
 import {
@@ -16,14 +16,16 @@ import './houseCard.css'
 import type { ReactNode } from 'react'
 import { StoryDeskDetail, StoryRoomDecor, StoryTree } from './storybook'
 import { useTownArt } from './appearance'
+import { FULL_ROOM, RoomSizeContext, type RoomSize } from './interiorRoom'
 
-const ROOM_W = 16
-const ROOM_D = 12
+const ROOM_W = FULL_ROOM.w
 const WALL_H = 120
 const COLS = 3
 const ROWS = 3
 const BENCH_W = 3.0
 const BENCH_D = 1.1
+/** 名牌为举牌的人让位时沿屏幕水平方向移动的格数（每格 2×HW 像素）。 */
+const LABEL_SHIFT = 1.4
 const ORDER: Record<WorkItem['status'], number> = { review: 0, blocked: 1, in_progress: 2, todo: 3, done: 4, abandoned: 5 }
 const BENCH_TOP: Record<WorkItem['status'], string> = {
   review: '#c9d0f5', blocked: '#f2c4bd', in_progress: '#f6dfa6', todo: '#e6dccb', done: '#cfe3c9', abandoned: '#ddd',
@@ -89,8 +91,34 @@ export function zoneBenchSpot(z: Zone, n: number, i: number): { gx: number; gy: 
   return { gx: left + col * (BENCH_W + 1.0), gy: 2.4 + row * 3.6 }
 }
 
+/** 后墙要并排放下项目名横幅（中心 3.8 格）和白板（离右墙 3.2 格、半宽约 3.1 格）。 */
+function wallWidth(name: string): number {
+  const bannerHalf = (Math.min(name.length, 22) * 9 + 30) / 2 / HW
+  return 3.8 + bannerHalf + 0.4 + 3.1 + 3.2
+}
+
+/**
+ * 房间按摆上台的工作项伸缩：一排台子的房间浅，台子少的房间窄，三排或三列时仍是原来的 16×12。
+ * 分区（两个以上 Agent）时宽度按区数固定，只按排数调深浅。
+ */
+export function roomSize(b: BuildingView, zones: Zone[] | null = agentZones(b)): RoomSize {
+  if (zones) {
+    const cols = zones.length === 2 ? 2 : 1
+    const rows = Math.max(1, ...zones.map((z) => Math.ceil(z.items.length / cols)))
+    return { w: FULL_ROOM.w, d: rows === 1 ? 7.6 : FULL_ROOM.d }
+  }
+  const n = benchItems(b).shown.length
+  const rows = Math.max(1, Math.ceil(n / COLS)), cols = Math.max(1, Math.min(COLS, n))
+  const d = rows === 1 ? 7.2 : rows === 2 ? 9.6 : FULL_ROOM.d
+  if (cols === COLS) return { w: FULL_ROOM.w, d }
+  // 台子右边再留出站人和门口休息区的位置；也不能窄到后墙放不下横幅和白板。
+  const content = benchSpot(cols - 1).gx + BENCH_W + 2.6
+  return { w: Math.min(FULL_ROOM.w, Math.max(content, wallWidth(b.name), 11)), d }
+}
+
 /** SVG 只负责房间，功能列表由旁边的 HTML 面板排版。 */
-export function interiorViewBox(): string {
+export function interiorViewBox(room: RoomSize = FULL_ROOM): string {
+  const ROOM_W = room.w, ROOM_D = room.d
   const a = iso(0, 0, WALL_H + 40), r = iso(ROOM_W, 0), b = iso(ROOM_W, ROOM_D), l = iso(0, ROOM_D)
   const x0 = l[0] - 30, x1 = r[0] + 30, y0 = a[1] - 20, y1 = b[1] + 60
   return `${x0} ${y0} ${x1 - x0} ${y1 - y0}`
@@ -124,6 +152,8 @@ export function InteriorScene({ b, model, selected, highlight, onSelect, changed
     ? zones.flatMap((z) => z.items.map((w, i) => ({ w, s: zoneBenchSpot(z, zones.length, i) })))
     : single!.shown.map((w, i) => ({ w, s: benchSpot(i) }))
   const shown = placed.map((x) => x.w)
+  const room = roomSize(b, zones)
+  const ROOM_W = room.w, ROOM_D = room.d
   const more = zones ? zones.reduce((n, z) => n + z.more, 0) : single!.more
   const spotOf = new Map(placed.map((x) => [x.w.id, x.s]))
   const approvals = model.pendingApprovals.filter((a) => (b.repo && a.repo_id === b.repo.id) || b.characters.some((c) => c.session.id === a.session_id))
@@ -153,8 +183,9 @@ export function InteriorScene({ b, model, selected, highlight, onSelect, changed
   const wallRight = (gy0: number, gy1: number, z0: number, z1: number) => pts([iso(0, gy0, z0), iso(0, gy1, z0), iso(0, gy1, z1), iso(0, gy0, z1)])
   const board = iso(ROOM_W - 3.2, 0, 96)
 
-  const room = (
-    <svg className={`town-svg is-interior${offline ? ' is-offline' : ''}`} viewBox={interiorViewBox()} role="group" aria-label={`${b.name} 室内`}>
+  const scene = (
+    <RoomSizeContext.Provider value={room}>
+    <svg className={`town-svg is-interior${offline ? ' is-offline' : ''}`} viewBox={interiorViewBox(room)} role="group" aria-label={`${b.name} 室内`}>
       <defs>
         <pattern id="interior-planks" width="60" height="30" patternUnits="userSpaceOnUse">
           <path d="M0 15 L30 0 M30 30 L60 15" stroke={illustrated ? '#b69166' : '#c8a77a'} strokeWidth={illustrated ? '.75' : '1'} opacity={illustrated ? '.65' : '1'} />
@@ -169,7 +200,7 @@ export function InteriorScene({ b, model, selected, highlight, onSelect, changed
       <polygon points={wallLeft(0, ROOM_W, 0, 16)} fill={colors.accent} opacity="0.35" />
       <polygon points={wallRight(0, ROOM_D, 0, 16)} fill={colors.accent} opacity="0.3" />
       {/* 窗户：右墙两扇，能看到外面的树 */}
-      {[2.2, 6.4].map((gy) => (
+      {[2.2, 6.4].filter((gy) => gy + 2.4 <= ROOM_D - 0.6).map((gy) => (
         <g key={gy} aria-hidden>
           <polygon points={wallRight(gy, gy + 2.4, 50, 96)} fill="#cfe6f2" stroke="#8a6a3a" strokeWidth="3" />
           {illustrated ? <StoryTree at={iso(0,gy+1.2,52)} width={36} /> : <Pine at={iso(0, gy + 1.2, 52)} k={0.55} />}
@@ -177,7 +208,7 @@ export function InteriorScene({ b, model, selected, highlight, onSelect, changed
       ))}
       {illustrated && <>
         <polygon points={pts([iso(.5,2.2),iso(5,3),iso(5,6),iso(.5,4.6)])} fill="#fff0b8" opacity=".2" pointerEvents="none" />
-        <StoryRoomDecor occupied={placed.map(({s}) => ({ ...s, w: BENCH_W, d: BENCH_D + 1.3 }))} />
+        <StoryRoomDecor room={room} occupied={placed.map(({s}) => ({ ...s, w: BENCH_W, d: BENCH_D + 1.3 }))} />
       </>}
       {/* 项目名横幅 */}
       <g transform={`translate(${iso(3.8, 0, 104)[0]},${iso(3.8, 0, 104)[1]})`}>
@@ -217,7 +248,7 @@ export function InteriorScene({ b, model, selected, highlight, onSelect, changed
         return (
           <g key={z.agent} aria-label={`${a.label} 区`}>
             <IsoTile gx={z.gx0 + 0.25} gy={1.5} w={z.gx1 - z.gx0 - 0.5} d={ROOM_D - 2.0} fill={a.color} opacity={0.16} />
-            {i > 0 && <IsoBox gx={z.gx0 - 0.08} gy={1.4} w={0.16} d={7.2} h={26} top="#c9a87a" left="#b98a52" right="#9c7140" />}
+            {i > 0 && <IsoBox gx={z.gx0 - 0.08} gy={1.4} w={0.16} d={Math.min(7.2, ROOM_D - 3.2)} h={26} top="#c9a87a" left="#b98a52" right="#9c7140" />}
             <g transform={`translate(${plate[0]},${plate[1]})`}>
               <rect x={-46} y={-14} width={92} height={24} rx={7} fill="#fffaf0" stroke={a.color} strokeWidth={2.5} />
               <circle cx={-32} cy={-2} r={5} fill={a.color} />
@@ -254,7 +285,9 @@ export function InteriorScene({ b, model, selected, highlight, onSelect, changed
 
       {/* 工作台名牌：放在上层，避免被后面的台子挡住 */}
       {placed.map(({ w, s }) => {
-        const label = iso(s.gx + BENCH_W / 2, s.gy + BENCH_D / 2, 44)
+        // 台前有人举着“等你决定”牌时，名牌往右平移，不被牌子盖住。
+        const sign = b.characters.some((c) => c.item?.id === w.id && c.status === 'waiting') ? LABEL_SHIFT : 0
+        const label = iso(s.gx + BENCH_W / 2 + sign, s.gy + BENCH_D / 2 - sign, 44)
         return (
           <g key={`lb-${w.id}`} className={`town-obj${dim(highlight === 'review' ? w.status === 'review' : highlight === 'failed' ? false : !highlight)}`} transform={`translate(${label[0]},${label[1]})`}
             {...activate(() => onSelect({ kind: 'item', key: w.id }))} aria-hidden>
@@ -284,11 +317,12 @@ export function InteriorScene({ b, model, selected, highlight, onSelect, changed
       {zones && relay && <Cart relay={relay} from={aisle(relay.from)} to={aisle(relay.to)} count={model.relays.filter((r) => r.repoId === b.repo?.id && r.from === relay.from && r.to === relay.to).length} onSelect={onSelect} />}
       {b.characters.length === 0 && <Tag at={[iso(ROOM_W - 2.5, ROOM_D - 1.5)[0], iso(ROOM_W - 2.5, ROOM_D - 1.5)[1] - 10] as Pt} text="现在没有会话在这里" bg="#fffaf0" fg="#6b5a44" small />}
     </svg>
+    </RoomSizeContext.Provider>
   )
-  if (features === undefined) return room
+  if (features === undefined) return scene
   return <div className="town-interior-layout">
     <div className="town-interior-grid">
-      <div className="town-interior-room">{room}</div>
+      <div className="town-interior-room">{scene}</div>
       <TownFeaturePanel key={`${b.key}-${focus?.nonce ?? 0}`} b={b} features={features} structure={structure} writeable={writeable} focus={focus?.focus} onOpenItem={id => onSelect({ kind: 'item', key: id })} />
     </div>
   </div>

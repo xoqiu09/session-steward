@@ -146,13 +146,16 @@ export function StoryGardenDetails() {
 }
 
 export interface StoryFootprint { gx: number; gy: number; w: number; d: number }
-export function storyLounge(occupied: readonly StoryFootprint[]): StoryFootprint | null {
-  const corners = [{ gx: .7, gy: 6.1, w: 3.2, d: 3.2 }, { gx: 12, gy: 6.1, w: 3.2, d: 3.2 }]
+/** 茶歇角放在房间前排左右两角之一，房间缩小时跟着前墙走；放不下就不放。 */
+export function storyLounge(occupied: readonly StoryFootprint[], room: { w: number; d: number } = { w: 16, d: 12 }): StoryFootprint | null {
+  const gy = room.d - 5.9
+  if (gy < 1.2) return null
+  const corners = [{ gx: .7, gy, w: 3.2, d: 3.2 }, { gx: room.w - 4, gy, w: 3.2, d: 3.2 }]
   return corners.find(c => occupied.every(o => c.gx+c.w+.25 <= o.gx || o.gx+o.w+.25 <= c.gx || c.gy+c.d+.25 <= o.gy || o.gy+o.d+.25 <= c.gy)) ?? null
 }
 
-export function StoryRoomDecor({ occupied }: { occupied: readonly StoryFootprint[] }) {
-  const lounge = storyLounge(occupied)
+export function StoryRoomDecor({ occupied, room = { w: 16, d: 12 } }: { occupied: readonly StoryFootprint[]; room?: { w: number; d: number } }) {
+  const lounge = storyLounge(occupied, room)
   const corner = lounge && ((x: number, y: number) => iso(lounge.gx+x,lounge.gy+y))
   return <g aria-hidden="true" pointerEvents="none" className="town-story-room-decor">
     {corner && <>
@@ -160,9 +163,10 @@ export function StoryRoomDecor({ occupied }: { occupied: readonly StoryFootprint
       <polygon points={pts([corner(.2,.2),corner(3,.2),corner(3,3),corner(.2,3)])} fill="none" stroke="#e8dfc3" strokeWidth="1.5" strokeDasharray="3 3" />
       <StoryProp kind="tea" at={corner(1.3,1.4)} width={108} />
     </>}
-    <StoryProp kind="bookcase" at={iso(6.5,.65)} width={95} />
+    {/* 窄房间里白板会挂到书柜正上方，书柜让位。 */}
+    {room.w >= 14.5 && <StoryProp kind="bookcase" at={iso(6.5,.65)} width={95} />}
     <StoryProp kind="hydrangea" at={iso(.7,.8)} width={63} />
-    <StoryProp kind="hydrangea" at={iso(14.8,.8)} width={54} />
+    <StoryProp kind="hydrangea" at={iso(room.w-1.2,.8)} width={54} />
   </g>
 }
 
