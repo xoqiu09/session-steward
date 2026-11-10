@@ -2,14 +2,14 @@
 // 失败时保留上一份画面并标记“状态待更新”。不看 document.visibilityState：OBS 浏览器源里页面要一直更新。
 import type { LiveNote } from '../api'
 import type { Snapshot } from '../types'
-import { liveScrub } from './scrub'
+import { liveScrub, type LiveSnapshot } from './scrub'
 
 export const SNAPSHOT_MS = 5_000
 export const NOTE_MS = 10_000
 const TIMEOUT_MS = 8_000
 
 export interface LiveFeedState {
-  snap: Snapshot | null
+  snap: LiveSnapshot | null
   note: LiveNote | null
   /** 最近一次拉取失败：画面停在上一份。 */
   stale: boolean
@@ -26,7 +26,7 @@ async function getJSON<T>(path: string): Promise<T> {
 }
 
 export const liveFetch = {
-  snapshot: () => getJSON<Snapshot>('/api/live/snapshot'),
+  snapshot: () => getJSON<LiveSnapshot>('/api/live/snapshot'),
   note: () => getJSON<LiveNote>('/api/live/note'),
 }
 

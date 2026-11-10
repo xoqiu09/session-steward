@@ -14,6 +14,23 @@ export function liveProjectNames(ids: readonly number[]): Map<number, string> {
   return out
 }
 
+/** 服务端给的通用名（“项目 A”“项目 27”）：只认这个格式。 */
+const GENERIC_NAME = /^项目 (?:[A-Z]|[1-9]\d{0,5})$/
+
+/**
+ * 展示用的项目名。服务端按全部项目编号的名次起名、再只发要画的项目，所以名字要沿用服务端给的；
+ * 名字不是通用格式（例如误传进完整快照）时，按这份快照里的编号名次现起一个。
+ */
+export function liveRepoNames(repos: readonly Pick<Repo, 'id' | 'name'>[]): Map<number, string> {
+  const fallback = liveProjectNames(repos.map((r) => r.id))
+  const out = new Map<number, string>()
+  for (const r of repos) if (!out.has(r.id)) out.set(r.id, typeof r.name === 'string' && GENERIC_NAME.test(r.name) ? r.name : fallback.get(r.id)!)
+  return out
+}
+
+/** 展示快照：多一个“没画出来的项目数”。 */
+export type LiveSnapshot = Snapshot & { more?: number }
+
 const oneOf = <T extends string>(v: unknown, allowed: readonly T[], fallback: T | '' = ''): T | '' => (allowed as readonly unknown[]).includes(v) ? v as T : fallback
 const time = (v: unknown): string => (typeof v === 'string' && v && !Number.isNaN(Date.parse(v)) ? v : '')
 const provider = (p: unknown): string => (p === 'claude' || p === 'codex' || p === 'gemini' || p === 'cursor' || p === 'opencode' ? p : p ? 'other' : '')
@@ -32,8 +49,8 @@ function itemId(id: unknown): string {
 const OUTCOMES = ['delivered', 'failed', 'error', 'interrupted', 'cancelled', 'abandoned', 'acknowledged', 'unsent', 'uncertain', 'handed_off', 'attribution_reverted', 'historical', 'ended', 'ended_with_question', 'stopped', 'held'] as const
 
 /** 白名单重建：只保留画面需要的编号、关联、状态和时间。 */
-export function liveScrub(s: Snapshot): Snapshot {
-  const names = liveProjectNames((s.repos ?? []).map((r) => r.id))
+export function liveScrub(s: LiveSnapshot): LiveSnapshot {
+  const names = liveRepoNames(s.repos ?? [])
   const repos: Repo[] = (s.repos ?? []).map((r) => ({
     id: r.id, name: names.get(r.id)!, common_dir: '', is_git: !!r.is_git, target_ref: '',
     ...(oneOf(r.activity, ['active', 'quiet', 'dormant'] as const) ? { activity: r.activity } : {}),
@@ -64,5 +81,6 @@ export function liveScrub(s: Snapshot): Snapshot {
     started_at: time(r.started_at), ended_at: time(r.ended_at),
     outcome: typeof r.outcome === 'string' && r.outcome.startsWith('failed') ? 'failed' : oneOf(r.outcome, OUTCOMES),
   }))
-  return { cursor: s.cursor, now: time(s.now) || new Date().toISOString(), repos, sessions, work_items: items, deps, runs, approvals: [] }
+  const more = typeof s.more === 'number' && Number.isInteger(s.more) && s.more > 0 ? s.more : 0
+  return { cursor: s.cursor, now: time(s.now) || new Date().toISOString(), repos, sessions, work_items: items, deps, runs, approvals: [], more }
 }

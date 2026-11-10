@@ -2,7 +2,6 @@
 // 不走 PanelApp：不请求面板接口、不连 SSE、不写浏览器存储。
 import { useEffect, useMemo, useState } from 'react'
 import type { LiveNote } from '../api'
-import type { Snapshot } from '../types'
 import { buildTown } from '../town/townModel'
 import { townSlice } from '../town/TownView'
 import { hideInactive } from '../town/activity'
@@ -11,7 +10,7 @@ import { setSceneStill } from '../town/TownScene'
 import { LiveStage } from './LiveStage'
 import { createLiveFeed, type LiveFeedState } from './feed'
 import { diffLiveEvents, emptyBubbles, nextBubbleAt, pushBubbles, stepBubbles, type BubbleState, type LiveEvent } from './events'
-import { liveScrub } from './scrub'
+import { liveScrub, type LiveSnapshot } from './scrub'
 import './live.css'
 
 /** 三项说明都为空时显示的默认说明。 */
@@ -34,8 +33,16 @@ export function countLine(working: number): string {
   return `每栋房子是一个项目，小人是正在干活的 AI 助手 · 现在 ${working} 位在工作`
 }
 
+/** 没画出来的项目：只说数量。 */
+export function moreLine(more: number): string {
+  return more > 0 ? `另有 ${more} 个项目在休息` : ''
+}
+
+/** 横屏时说明卡和图例浮在地图上：房子排在中间，不放到被盖住的上下两条里。 */
+const LANDSCAPE_RESERVE = { top: 0.2, bottom: 0.1 }
+
 /** 纯展示：给定数据画一帧。会再脱敏一次快照，不渲染任何可交互元素。 */
-export function LiveScreen({ snap, note, stale, bubble, layout }: { snap: Snapshot | null; note: LiveNote | null; stale: boolean; bubble: LiveEvent | null; layout: LiveLayout }) {
+export function LiveScreen({ snap, note, stale, bubble, layout }: { snap: LiveSnapshot | null; note: LiveNote | null; stale: boolean; bubble: LiveEvent | null; layout: LiveLayout }) {
   setSceneStill(true)
   const safe = useMemo(() => (snap ? liveScrub(snap) : null), [snap])
   const model = useMemo(() => (safe ? buildTown(townSlice(hideInactive(safe, 'all').snap, 'all', 'all'), safe.now) : null), [safe])
@@ -51,11 +58,12 @@ export function LiveScreen({ snap, note, stale, bubble, layout }: { snap: Snapsh
         <p className="live-count">{countLine(model?.counts.working ?? 0)}</p>
         {stale && <p className="live-stale" role="status">状态待更新</p>}
         <div className={`town-view live-town${theme === 'storybook' ? ' is-storybook' : theme === 'miniature' ? ' is-miniature' : ''}`}>
-          {safe && model ? <LiveStage model={model} snap={safe} bubble={bubble} initialAspect={layout === 'portrait' ? 1.25 : 1.78} />
+          {safe && model ? <LiveStage model={model} snap={safe} bubble={bubble} initialAspect={layout === 'portrait' ? 1.25 : 1.78} reserve={layout === 'landscape' ? LANDSCAPE_RESERVE : undefined} />
             : <p className="live-loading">小镇加载中…</p>}
           <ul className="live-legend" aria-label="图例">
             <li><i className="lg-building" />建筑 = 项目</li>
             <li><i className="lg-char" />小人 = 一位 AI 助手</li>
+            {moreLine(safe?.more ?? 0) && <li className="live-more">{moreLine(safe?.more ?? 0)}</li>}
           </ul>
         </div>
       </div>

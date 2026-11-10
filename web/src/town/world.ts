@@ -160,7 +160,8 @@ export function worldLayout(buildings: readonly BuildingView[], needsYou: (b: Bu
   return finish(districts, villages, [])
 }
 
-function finish(districts: District[], villages: VillageArea[], emptyVillages: WorldLayout['emptyVillages'], residential?: Cell): WorldLayout {
+/** 由已经排好的街区拼出完整世界（范围、边缘空地）。直播展示的紧凑排布也用它。 */
+export function finish(districts: District[], villages: VillageArea[], emptyVillages: WorldLayout['emptyVillages'], residential?: Cell): WorldLayout {
   const all = [{ cx: 0, cy: 0 }, ...districts.map((d) => d.cell), ...villages.map((v) => v.square), ...(residential ? [residential] : [])]
   // 外面再留一圈空地（树林），世界不是刚好卡在最后一栋房子边上。
   const gx0 = (Math.min(...all.map((c) => c.cx)) - 0.35) * CELL_W, gy0 = (Math.min(...all.map((c) => c.cy)) - 0.35) * CELL_D
