@@ -17,7 +17,8 @@
 .companion-info small{display:block;margin-top:.8em;line-height:1.6;color:#c4d0bc;font-size:.78em}
 .companion-invitation{background:#f4eedeea;color:#344f43;border-color:#f8eed5cc}
 .companion-invitation .companion-card-label{color:#4d6853}.companion-invitation small{color:#687b61}
-.companion-resident{position:absolute;left:24%;bottom:4%;width:36%;z-index:2;display:flex;flex-direction:column;align-items:center;transform-origin:bottom center}
+.companion-resident{position:absolute;left:24%;bottom:4%;width:36%;z-index:2;display:flex;flex-direction:column;align-items:center;transform-origin:bottom center;animation:companion-arrive .45s ease-out both}
+@keyframes companion-arrive{from{opacity:0;translate:0 5px}to{opacity:1;translate:0 0}}
 .companion-speech{position:relative;box-sizing:border-box;margin:0 0 1.5vw;width:max-content;max-width:145%;padding:.65em .9em;border:1px solid #c5b48d;border-radius:.8em;background:#fffcee;color:#4c5646;font-size:clamp(11px,2.3vw,26px);line-height:1.65;text-align:center;box-shadow:0 8px 22px #142b3f2b;overflow-wrap:anywhere}
 .companion-speech::after{content:"";position:absolute;left:50%;bottom:-.45em;width:.7em;height:.7em;background:#fffcee;border-right:1px solid #c5b48d;border-bottom:1px solid #c5b48d;transform:rotate(45deg)}
 .companion-pet{position:relative;display:grid;place-items:center;width:100%;aspect-ratio:.92}

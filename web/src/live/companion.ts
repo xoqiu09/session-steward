@@ -1,4 +1,5 @@
 import type { LiveCompanionAction, LivePresentation } from '../api'
+import { validLiveResident } from './liveResidents'
 
 export const COMPANION_ACTION_MS = 8_000
 export function livePresentation(value: unknown): LivePresentation { return value === 'town' ? 'town' : 'companion' }
@@ -12,7 +13,8 @@ export function publicCompanionAction(value: unknown): LiveCompanionAction | und
   if (!value || typeof value !== 'object') return undefined
   const a = value as Partial<LiveCompanionAction>
   if (typeof a.id !== 'string' || !/^[a-f0-9]{32}$/.test(a.id) || !['pat', 'walk', 'home'].includes(a.kind ?? '') || typeof a.at !== 'string' || !Number.isFinite(Date.parse(a.at))) return undefined
-  return { id: a.id, kind: a.kind!, at: a.at }
+  if (a.resident !== undefined && !validLiveResident(a.resident)) return undefined
+  return { id: a.id, kind: a.kind!, at: a.at, ...(validLiveResident(a.resident) ? { resident: a.resident } : {}) }
 }
 
 /** An old gesture cannot replay when OBS refreshes or the owner saves the title. */

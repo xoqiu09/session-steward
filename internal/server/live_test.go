@@ -92,6 +92,7 @@ func TestLiveCookieOnlyReadsLiveAPI(t *testing.T) {
 		{"GET", "/api/snapshot"}, {"GET", "/api/stream"}, {"GET", "/api/hooks/status"}, {"GET", "/api/history"}, {"GET", "/api/version"},
 		{"GET", "/api/live/link"}, {"PUT", "/api/live/note"}, {"PATCH", "/api/work-items/A-1"}, {"GET", "/api/projects"},
 		{"POST", "/api/live/companion"},
+		{"PUT", "/api/live/residents"},
 	} {
 		if w := liveDo(h, q.method, local, q.path, liveCookie, "liv", `{"doing":"x"}`, true); w.Code != http.StatusUnauthorized {
 			t.Fatalf("展示 cookie 不应访问 %s %s: %d", q.method, q.path, w.Code)
@@ -153,6 +154,28 @@ func TestLivePreviewCanOnlyEmbedTheReadOnlyLocalRoute(t *testing.T) {
 	w = liveDo(h, "GET", rh, "/?view=town&live=1", remoteCookie, "rem", "", false)
 	if w.Header().Get("X-Frame-Options") != "DENY" {
 		t.Fatal("remote framing allowed")
+	}
+}
+
+func TestLiveResidentControlNeedsLocalOwner(t *testing.T) {
+	h := liveServer(t, "liv")
+	body := `{"resident":"claude","mode":"auto","interval_seconds":120,"anchor":"ignored"}`
+	for _, q := range []struct {
+		host, cookie, token string
+		steward             bool
+		status              int
+	}{
+		{local, "", "", true, 401}, {local, liveCookie, "liv", true, 401}, {local, cookieName, "pan", false, 403}, {rh, remoteCookie, "rem", true, 403}, {local, cookieName, "pan", true, 200},
+	} {
+		w := liveDo(h, "PUT", q.host, "/api/live/residents", q.cookie, q.token, body, q.steward)
+		if w.Code != q.status {
+			t.Fatalf("resident auth: %+v got %d %s", q, w.Code, w.Body)
+		}
+	}
+	w := liveDo(h, "GET", local, "/api/live/note", liveCookie, "liv", "", false)
+	var n core.LiveNote
+	if err := json.Unmarshal(w.Body.Bytes(), &n); err != nil || n.Residents == nil || n.Residents.Resident != "claude" || n.Residents.Anchor == "ignored" {
+		t.Fatalf("display control: %s %v", w.Body, err)
 	}
 }
 

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { isRemote, remoteReadOnlyMessage } from './access'
+import type { ResidentId } from './town/residents'
 import type { AISummary, AttributionDecision, BriefEdit, DayDetail, Handoff, HistoryResp, HubStatus, ManagedSession, MergeJob, MergeSyncStatus, ProjectInfo, ProjectStructure, ProjectStructureDocument, Review, Worktree, SessionUsageDetail, Snapshot } from './types'
 import { snapshotRefresher } from './snapshotRefresh'
 import { publishNativeSnapshot } from './nativeBridge'
@@ -49,8 +50,9 @@ async function call<T>(method: string, path: string, body?: unknown, signal?: Ab
 export type LiveStyle = 'cozy-night' | 'storybook-day' | 'ai-studio'
 export type LivePresentation = 'companion' | 'town'
 export type LiveGesture = 'pat' | 'walk' | 'home'
-export interface LiveCompanionAction { id: string; kind: LiveGesture; at: string }
-export interface LiveNote { doing: string; thinking: string; contact: string; style?: LiveStyle; presentation?: LivePresentation; companion?: LiveCompanionAction; updated_at: string }
+export interface LiveCompanionAction { id: string; kind: LiveGesture; at: string; resident?: ResidentId }
+export interface LiveResidents { resident: ResidentId; mode: 'auto' | 'fixed'; interval_seconds: 60 | 120 | 300; anchor: string }
+export interface LiveNote { doing: string; thinking: string; contact: string; style?: LiveStyle; presentation?: LivePresentation; companion?: LiveCompanionAction; resident_control?: LiveResidents; updated_at: string }
 
 export interface HookCoverage { provider: string; version: string; installed: string[]; missing: string[]; skipped: string[]; reason?: string; read_error?: boolean; untrusted?: number }
 
@@ -117,6 +119,7 @@ export const api = {
   liveNote: () => call<LiveNote>('GET', '/api/live/note'),
   saveLiveNote: (note: Pick<LiveNote, 'doing' | 'thinking' | 'contact' | 'style' | 'presentation'>) => call<LiveNote>('PUT', '/api/live/note', note),
   liveCompanion: (kind: LiveGesture) => call<LiveCompanionAction>('POST', '/api/live/companion', { kind }),
+  setLiveResidents: (input: Omit<LiveResidents, 'anchor'>) => call<LiveResidents>('PUT', '/api/live/residents', input),
   liveLink: () => call<{ url: string; view: string }>('GET', '/api/live/link'),
   handoff: (item: string, b: { to_agent: string; note?: string; source_sha?: string }) => call<{ handoff: Handoff; managed: ManagedSession }>('POST', `/api/work-items/${encodeURIComponent(item)}/handoff`, b),
 }

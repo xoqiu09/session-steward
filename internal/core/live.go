@@ -31,9 +31,10 @@ const liveCompanionKey = "live:companion"
 
 // LiveCompanionAction is an owner-triggered visual gesture, never an Agent command.
 type LiveCompanionAction struct {
-	ID   string `json:"id"`
-	Kind string `json:"kind"`
-	At   string `json:"at"`
+	ID       string `json:"id"`
+	Kind     string `json:"kind"`
+	At       string `json:"at"`
+	Resident string `json:"resident,omitempty"`
 }
 
 // LiveNote 是展示画面上方的说明卡，由用户在本机面板填写。
@@ -44,6 +45,7 @@ type LiveNote struct {
 	Style        string               `json:"style,omitempty"`
 	Presentation string               `json:"presentation,omitempty"`
 	Companion    *LiveCompanionAction `json:"companion,omitempty"`
+	Residents    *LiveResidents       `json:"resident_control,omitempty"`
 	UpdatedAt    string               `json:"updated_at"`
 }
 
@@ -59,12 +61,16 @@ func (c *Core) LiveNote(ctx context.Context) (LiveNote, error) {
 	}
 	// Gestures live under a separate key: saving a note cannot replay/overwrite one.
 	n.Companion = nil
+	n.Residents, err = c.liveResidents(ctx)
+	if err != nil {
+		return n, err
+	}
 	action, err := c.St.Meta(ctx, liveCompanionKey)
 	if err != nil {
 		return n, err
 	}
 	var a LiveCompanionAction
-	if json.Unmarshal([]byte(action), &a) == nil && oneOf(a.Kind, "pat", "walk", "home") != "" && len(a.ID) == 32 && liveTime(a.At) != "" {
+	if json.Unmarshal([]byte(action), &a) == nil && oneOf(a.Kind, "pat", "walk", "home") != "" && len(a.ID) == 32 && liveTime(a.At) != "" && (a.Resident == "" || validLiveResident(a.Resident)) {
 		if _, err := hex.DecodeString(a.ID); err == nil {
 			n.Companion = &a
 		}
@@ -80,9 +86,14 @@ func (c *Core) SetLiveCompanion(ctx context.Context, kind string) (LiveCompanion
 	if _, err := rand.Read(id[:]); err != nil {
 		return LiveCompanionAction{}, err
 	}
-	a := LiveCompanionAction{ID: hex.EncodeToString(id[:]), Kind: kind, At: c.St.NowTS()}
+	control, err := c.liveResidents(ctx)
+	if err != nil {
+		return LiveCompanionAction{}, err
+	}
+	at := c.St.NowTS()
+	a := LiveCompanionAction{ID: hex.EncodeToString(id[:]), Kind: kind, At: at, Resident: currentLiveResident(control, liveAt(at))}
 	b, _ := json.Marshal(a)
-	err := c.St.SetMeta(ctx, liveCompanionKey, string(b))
+	err = c.St.SetMeta(ctx, liveCompanionKey, string(b))
 	return a, err
 }
 

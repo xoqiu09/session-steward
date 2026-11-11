@@ -34,7 +34,7 @@ describe('直播说明的安全编辑与恢复', () => {
     const gesture = vi.spyOn(api, 'liveCompanion').mockImplementationOnce(() => new Promise((_, reject) => { fail = reject })).mockResolvedValue({ id: 'a'.repeat(32), kind: 'pat', at: '2026-11-11T20:00:00Z' })
     render(); await flush()
     nodes(render()).find(node => node.type === 'input' && node.props.placeholder === '例如：给小镇加直播画面')!.props.onChange({ target: { value: '尚未保存的公开主题' } })
-    const send = button(render(), '摸摸团子').props.onClick
+    const send = button(render(), '摸摸').props.onClick
     send(); send()
     expect(gesture).toHaveBeenCalledOnce()
     expect(button(render(), '去散步').props.disabled).toBe(true)
@@ -42,7 +42,7 @@ describe('直播说明的安全编辑与恢复', () => {
     expect(renderToStaticMarkup(render())).toContain('动作没有发送成功')
     expect(renderToStaticMarkup(render())).toContain('尚未保存的公开主题')
     expect(renderToStaticMarkup(render())).toContain('尚未接入直播间弹幕')
-    button(render(), '摸摸团子').props.onClick(); await flush()
+    button(render(), '摸摸').props.onClick(); await flush()
     expect(gesture).toHaveBeenCalledTimes(2)
     expect(gesture).toHaveBeenLastCalledWith('pat')
     expect(save).not.toHaveBeenCalled()
