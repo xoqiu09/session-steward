@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react'
 import { STRUCTURE_BASIS, STRUCTURE_OBJECTS, STRUCTURE_PAGES, type StructurePage } from './structureContent'
 import './townStructure.css'
 import { ProjectRoomDialog, type ProjectRoomContext } from './ProjectRoomDialog'
+import { hasNativeModal } from '../ui/modalLayers'
 
 function Arrow({ branch = false }: { branch?: boolean }) {
   return <svg className={branch ? 'structure-branch-arrow' : 'structure-arrow'} width="28" height="28" viewBox="0 0 28 28" aria-hidden="true">
@@ -46,6 +47,7 @@ function SSStructureSample({ onClose }: { onClose: () => void }) {
   useEffect(() => { close.current?.focus({ preventScroll: true }) }, [])
   useEffect(() => {
     const onKey = (e: globalThis.KeyboardEvent) => {
+      if (hasNativeModal()) return
       if (e.key === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); onClose(); return }
       if (e.key !== 'Tab') return
       const items = [...(panel.current?.querySelectorAll<HTMLElement>('button:not([disabled]):not([tabindex="-1"]), summary') ?? [])]

@@ -1,5 +1,5 @@
 /* 正常面板里的“直播”小对话框。 */
-.live-settings-scrim { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; background: #1d16101f; }
+.live-settings::backdrop { background: #1d16105c; }
 .live-settings { width: min(460px, calc(100vw - 32px)); max-height: calc(100vh - 32px); overflow: auto; box-sizing: border-box; padding: 18px 20px; border-radius: 12px; background: #fff; border: 1px solid #e3ddd2; box-shadow: 0 12px 36px #3a2a1c2e; }
 .live-settings h2 { margin: 0 0 6px; font-size: 17px; }
 .live-settings > p.muted { margin: 0 0 12px; font-size: 12.5px; line-height: 1.5; }
@@ -8,6 +8,14 @@
 .live-settings-field input[aria-invalid="true"] { border-color: #d2483d; }
 .live-settings-field small { grid-column: 2; font-size: 11.5px; }
 .live-settings-field small.is-error { color: #c0392b; }
-.live-settings-status { margin: 4px 0 8px; font-size: 12.5px; }
+.live-settings-dirty { margin: 4px 0 12px; color: #76531b; font-size: 12.5px; line-height: 1.6; }
+.live-close-confirm { margin-top: 16px; padding: 14px; border: 1px solid #e8d5aa; border-radius: 10px; background: #fff8e8; color: #76531b; }
+.live-close-confirm p { margin: 7px 0 12px; line-height: 1.6; font-size: 13px; }
+.live-close-confirm > div { display: flex; flex-wrap: wrap; gap: 8px; }
 .live-settings-link { width: 100%; box-sizing: border-box; margin-bottom: 8px; padding: 6px 8px; font: 12px ui-monospace, monospace; border: 1px solid #d8d1c4; border-radius: 6px; }
 .live-settings-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+
+.live-settings{width:min(680px,calc(100vw - 32px))}.live-style-picker{margin:14px 0 20px;padding:0;border:0}.live-style-picker legend{margin-bottom:10px;font-size:13px;font-weight:650}.live-style-options{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.live-style-option{display:flex;flex-direction:column;gap:7px;min-width:0;padding:8px;border:1px solid #d8d1c4;border-radius:10px;background:#fffdf8;color:#483f32;text-align:left;cursor:pointer;font:inherit}.live-style-option:hover{border-color:#8b9b7c}.live-style-option.is-selected{outline:2px solid #597863;outline-offset:1px;background:#f5f8f0}.live-style-option:focus-visible{outline:3px solid #2d6cdf;outline-offset:3px}.live-style-option b{font-size:13px}.live-style-option small{font-size:11px;line-height:1.6;color:#6d7369}
+.live-style-swatch{display:flex;align-items:flex-end;justify-content:center;gap:7px;box-sizing:border-box;width:100%;height:76px;padding:20px;border-radius:5px;background:#172638}.live-style-swatch i{display:block;width:25px;height:22px;background:#f2d1a0;border-top:10px solid #bd9a74;border-radius:4px 4px 2px 2px;box-shadow:0 8px 16px #f0c88222}.live-style-swatch i:nth-child(2){height:29px}.live-style-swatch[data-live-style="storybook-day"]{background:#e6ebd5}.live-style-swatch[data-live-style="storybook-day"] i{background:#fff2d8;border-top-color:#849572;box-shadow:none;border-radius:7px}.live-style-swatch[data-live-style="ai-studio"]{background:#101e27}.live-style-swatch[data-live-style="ai-studio"] i{background:#2e515d;border:1px solid #89e1d2;border-top-width:6px;border-radius:0;box-shadow:0 0 14px #89e1d222}
+@media(max-width:520px){.live-style-options{grid-template-columns:1fr}.live-style-option{display:grid;grid-template-columns:80px 1fr;align-items:center;gap:3px 10px;min-height:76px}.live-style-swatch{grid-row:span 2;height:64px;padding:14px 6px;gap:5px}.live-style-swatch i{width:16px}.live-style-option small{grid-column:2}}

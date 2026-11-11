@@ -1,0 +1,49 @@
+.work-item-list { width: 100%; max-width: 100%; height: 100%; min-width: 0; overflow: auto; padding: 16px; color: var(--text); }
+.work-item-list-toolbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 16px; margin-bottom: 12px; }
+.work-item-list-count { margin: 0; color: var(--muted); font-size: 13px; }
+.work-item-list-count strong { color: var(--text); font-size: 18px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.work-item-list-sort { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; color: var(--muted); font-size: 12px; }
+.work-item-list-sort select { min-height: 44px; max-width: 100%; padding: 8px 12px; border: 1px solid var(--control-line, var(--muted)); border-radius: 8px; color: var(--text); background: var(--panel); }
+.work-item-list-desktop { min-width: 0; }
+.work-item-table { width: 100%; table-layout: fixed; color: var(--text); background: var(--panel); }
+.work-item-table .work-col-id { width: 12%; }
+.work-item-table .work-col-title { width: 29%; }
+.work-item-table .work-col-project { width: 20%; }
+.work-item-table .work-col-status { width: 16%; }
+.work-item-table .work-col-agent { width: 11%; }
+.work-item-table .work-col-deps { width: 12%; }
+.work-item-table th, .work-item-table td { padding: 8px 10px; overflow-wrap: anywhere; }
+.work-item-table th { font-size: 12px; }
+.work-item-table tbody tr { cursor: default; }
+.work-item-table tbody tr:hover { background: var(--surface-subtle, var(--bg)); }
+.work-item-table .work-item-status-cell { padding-inline: 6px; }
+.work-item-table .pill { max-width: 100%; white-space: normal; }
+.work-item-dependency { color: var(--muted); }
+.work-item-open { display: block; min-height: 44px; width: 100%; min-width: 0; padding: 8px 0; border: 0; background: transparent; color: var(--codex); font: inherit; font-weight: 600; text-align: left; white-space: normal; overflow-wrap: anywhere; cursor: pointer; line-height: 1.6; }
+.work-item-open:hover { text-decoration: underline; text-underline-offset: 3px; }
+.work-item-list-mobile { display: none; list-style: none; padding: 0; margin: 0; }
+.work-item-card { min-width: 0; padding: 14px 16px 0; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); color: var(--text); }
+.work-item-card-heading { display: flex; align-items: flex-start; gap: 10px; min-width: 0; }
+.work-item-card-heading h2 { flex: 1; min-width: 0; margin: 0; font-size: 16px; line-height: 1.6; }
+.work-item-card-heading > .pill { flex-shrink: 0; margin-top: 10px; }
+.work-item-card-project { margin: 3px 0 10px; color: var(--text); font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; }
+.work-item-card-project > span { color: var(--muted); margin-right: 5px; font-size: 12px; }
+.work-item-card-more { border-top: 1px solid var(--line); }
+.work-item-card-more > summary { min-height: 44px; padding: 12px 0; color: var(--muted); font-size: 12px; line-height: 20px; cursor: pointer; }
+.work-item-card-more dl { display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 8px 12px; margin: 0; padding: 2px 0 14px; font-size: 13px; line-height: 1.6; }
+.work-item-card-more dt { color: var(--muted); }
+.work-item-card-more dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.work-item-list-empty { padding: 40px 20px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); text-align: center; }
+.work-item-list-empty h2 { margin: 0 0 10px; color: var(--text); font-size: 17px; line-height: 1.5; }
+.work-item-list-empty p { max-width: 420px; margin: 0 auto; color: var(--muted); font-size: 13px; line-height: 1.7; }
+.work-item-list-empty-actions { display: flex; justify-content: center; flex-wrap: wrap; gap: 8px; margin-top: 20px; }
+.work-item-list-empty-actions .btn { min-height: 44px; }
+
+/* display:none removes the inactive rendering from both the tab order and AX tree. */
+@media (max-width: 700px) {
+  .work-item-list { height: auto; overflow: visible; }
+  .work-item-list-desktop { display: none; }
+  .work-item-list-mobile { display: grid; gap: 12px; }
+  .work-item-list-empty { padding: 32px 18px; }
+  .work-item-list-empty-actions { flex-direction: column; }
+}

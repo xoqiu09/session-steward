@@ -766,10 +766,15 @@ func (s *Server) handleUnbind(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Outcome string `json:"outcome"`
+		Outcome            string `json:"outcome"`
+		ExpectedRunID      int64  `json:"expected_run_id"`
+		ExpectedWorkItemID string `json:"expected_work_item_id"`
 	}
-	readJSON(r, &body)
-	if err := s.Core.Unbind(r.Context(), id, body.Outcome); err != nil {
+	if err := readJSON(r, &body); err != nil {
+		writeErr(w, err)
+		return
+	}
+	if err := s.Core.Unbind(r.Context(), id, body.Outcome, core.UnbindTarget{RunID: body.ExpectedRunID, WorkItemID: body.ExpectedWorkItemID}); err != nil {
 		writeErr(w, err)
 		return
 	}

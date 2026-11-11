@@ -67,6 +67,10 @@ export function DispatchDesk() {
   const [creating, setCreating] = useState(false)
   const [managing, setManaging] = useState(false)
   const deskRef = useRef<DispatchDeskState | null>(null)
+  const actionBusy = useRef(false)
+  const selectionVersion = useRef(0)
+  const selectedRef = useRef(selected)
+  selectedRef.current = selected
 
   const refresh = useCallback(async () => {
     try {
@@ -101,6 +105,8 @@ export function DispatchDesk() {
   }, [selected])
 
   const pick = (id: string) => {
+    selectionVersion.current++
+    selectedRef.current = id
     setSelected(id); setCreating(false); setError('')
     history.replaceState(null, '', `${window.location.pathname}?view=dispatch${id ? `&task=${encodeURIComponent(id)}` : ''}`)
   }
@@ -108,14 +114,17 @@ export function DispatchDesk() {
   const epoch = () => deskRef.current?.epoch ?? 0
 
   async function act(path: string, body: object): Promise<DispatchTask | null> {
+    if (actionBusy.current) return null
+    actionBusy.current = true
+    const selectedAtStart = selectedRef.current
     setBusy(true); setError('')
     try {
       const t = await req<DispatchTask>(path, { client, epoch: epoch(), ...body })
-      setDetail(t)
+      if (selectedRef.current === selectedAtStart) setDetail(t)
       void refresh()
       return t
     } catch (e) { setError((e as Error).message); void refresh(); return null }
-    finally { setBusy(false) }
+    finally { actionBusy.current = false; setBusy(false) }
   }
   async function takeOver() {
     setBusy(true); setError('')
@@ -159,13 +168,13 @@ export function DispatchDesk() {
         <section className="dd-projects">
           <div className="dd-list-head"><h3>可派活的项目</h3><button className="btn small" onClick={() => setManaging((v) => !v)}>{managing ? '完成' : '管理'}</button></div>
           {desk.projects.length === 0 && <p className="muted">还没有。先加一个项目，才能在它里面派活。</p>}
-          {!managing && <p className="muted">{desk.projects.map((p) => p.name).join('、')}</p>}
+          {!managing && <ul>{desk.projects.map((p) => <li key={p.repo_id}><strong>{p.name}</strong><br /><small className="dd-mono" style={{ overflowWrap: 'anywhere' }}>{p.common_dir || '仓库位置暂不可用'}</small></li>)}</ul>}
           {managing && <ProjectManager desk={desk} onChange={(d) => { deskRef.current = d; setDesk(d) }} onError={setError} />}
         </section>
       </aside>
       <section className="dd-main">
         {creating || !task
-          ? <NewTask desk={desk} disabled={busy || !owns} onCreate={async (b) => { const t = await act('/api/dispatch/tasks', b); if (t) pick(t.id); return !!t }} />
+          ? <NewTask desk={desk} disabled={busy || !owns} onCreate={async (b) => { const version = selectionVersion.current; const t = await act('/api/dispatch/tasks', b); if (t && selectionVersion.current === version) pick(t.id); return !!t }} />
           : <TaskPanel t={task} desk={desk} busy={busy} owns={owns} act={act} />}
       </section>
     </div>
@@ -176,40 +185,57 @@ function DeskHeader() {
   return <header className="dd-header"><a href="/?view=town&world=1">← 小镇</a><span>只在这台电脑上可用</span></header>
 }
 
-function NewTask({ desk, disabled, onCreate }: { desk: DispatchDeskState; disabled: boolean; onCreate: (b: object) => Promise<boolean> }) {
+export function NewTask({ desk, disabled, onCreate }: { desk: DispatchDeskState; disabled: boolean; onCreate: (b: object) => Promise<boolean> }) {
   const [repo, setRepo] = useState(0)
   const [title, setTitle] = useState('')
   const [prompt, setPrompt] = useState('')
   const [op, setOp] = useState(newKey)
-  const repoId = repo || desk.projects[0]?.repo_id || 0
+  const sending = useRef(false)
+  const project = desk.projects.find(project => project.repo_id === repo)
+  const repoId = project?.repo_id ?? 0
   return <form className="dd-card" onSubmit={async (e) => {
     e.preventDefault()
+    if (disabled || sending.current || !repoId || !project?.common_dir || !title.trim() || !prompt.trim()) return
+    sending.current = true
     // 同一次提交用同一个 operation：网络重试不会建两件任务。
-    if (await onCreate({ operation: op, repo_id: repoId, title, prompt })) { setTitle(''); setPrompt(''); setOp(newKey()) }
+    try { if (await onCreate({ operation: op, repo_id: repoId, title, prompt })) { setTitle(''); setPrompt(''); setOp(newKey()) } }
+    finally { sending.current = false }
   }}>
     <h2>交代新任务</h2>
     {desk.projects.length === 0 ? <p>先在左边“可派活的项目”里加一个项目。</p> : <>
-      <label>在哪个项目<select value={repoId} onChange={(e) => setRepo(Number(e.target.value))}>{desk.projects.map((p) => <option key={p.repo_id} value={p.repo_id}>{p.name}</option>)}</select></label>
-      <label>这件事叫什么<input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={200} required placeholder="例如：修好设置页的保存按钮" /></label>
-      <label>希望 Codex 做什么<textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} maxLength={16000} required rows={6} placeholder="说清目标和边界。每件任务会新开一个分支和工作目录，不动你正在用的目录。" /></label>
-      <div className="dd-actions"><button className="btn primary" disabled={disabled || !repoId}>在 {desk.host} 执行</button></div>
+      <label>在哪个项目<select value={repoId || ''} disabled={disabled} required onChange={(e) => { setRepo(Number(e.target.value)); setOp(newKey()) }}><option value="">请选择本次工作的项目…</option>{desk.projects.map((p) => <option key={p.repo_id} value={p.repo_id}>{p.name} · {p.common_dir || '仓库位置暂不可用'}</option>)}</select></label>
+      {repo !== 0 && !repoId && <p role="status">原项目已不在可派活范围，请重新选择。任务草稿仍保留。</p>}
+      {project && <p className="muted">本次目标：<strong>{project.name}</strong><br />仓库位置：<span className="dd-mono" style={{ overflowWrap: 'anywhere' }}>{project.common_dir || '暂时无法读取，请刷新后再执行。'}</span><br />会在这个仓库新建分支和工作目录。</p>}
+      <label>这件事叫什么<input value={title} disabled={disabled} onChange={(e) => { setTitle(e.target.value); setOp(newKey()) }} maxLength={200} required placeholder="例如：修好设置页的保存按钮" /></label>
+      <label>希望 Codex 做什么<textarea value={prompt} disabled={disabled} onChange={(e) => { setPrompt(e.target.value); setOp(newKey()) }} maxLength={16000} required rows={6} placeholder="说清目标和边界。每件任务会新开一个分支和工作目录，不动你正在用的目录。" /></label>
+      <div className="dd-actions"><button className="btn primary" disabled={disabled || !repoId || !project?.common_dir}>在 {desk.host} 执行</button></div>
     </>}
   </form>
 }
 
-function TaskPanel({ t, desk, busy, owns, act }: { t: DispatchTask; desk: DispatchDeskState; busy: boolean; owns: boolean; act: (path: string, body: object) => Promise<DispatchTask | null> }) {
-  const [prompt, setPrompt] = useState('')
-  const [op, setOp] = useState(newKey)
+export function TaskPanel({ t, desk, busy, owns, act }: { t: DispatchTask; desk: DispatchDeskState; busy: boolean; owns: boolean; act: (path: string, body: object) => Promise<DispatchTask | null> }) {
+  const [drafts, setDrafts] = useState<Record<string, { prompt: string; op: string }>>({})
+  const pending = useRef(new Set<string>())
+  const draft = drafts[t.id] ?? { prompt: '', op: '' }
   const base = `/api/dispatch/tasks/${encodeURIComponent(t.id)}`
   const off = busy || !owns
   return <>
     <TaskSummary t={t} host={desk.host} />
     {t.pending.map((p) => <ApprovalCard key={p.id} p={p} disabled={off} onDecide={(decision) => void act(`${base}/decide`, { approval: p.id, fingerprint: p.fingerprint, decision })} />)}
-    {!t.desktop_handoff && <form className="dd-card" onSubmit={async (e) => { e.preventDefault(); if (await act(`${base}/start`, { operation: op, prompt })) { setPrompt(''); setOp(newKey()) } }}>
+    {!t.desktop_handoff && <form className="dd-card" onSubmit={async (e) => {
+      e.preventDefault()
+      const id = t.id
+      if (off || !canStart(t) || !draft.prompt.trim() || pending.current.has(id)) return
+      pending.current.add(id)
+      try {
+        const result = await act(`${base}/start`, { operation: draft.op, prompt: draft.prompt })
+        if (result?.id === id) setDrafts(previous => previous[id]?.op === draft.op ? { ...previous, [id]: { prompt: '', op: newKey() } } : previous)
+      } finally { pending.current.delete(id) }
+    }}>
       <h3>交代下一步</h3>
-      <label className="dd-hidden-label">下一步做什么<textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} maxLength={16000} required rows={4} placeholder="在同一条 Codex 会话里接着做。" /></label>
+      <label className="dd-hidden-label">下一步做什么<textarea value={draft.prompt} disabled={off} onChange={(e) => { const prompt = e.target.value; setDrafts(previous => ({ ...previous, [t.id]: { prompt, op: newKey() } })) }} maxLength={16000} required rows={4} placeholder="在同一条 Codex 会话里接着做。" /></label>
       <div className="dd-actions">
-        <button className="btn primary" disabled={off || !canStart(t)}>在 {desk.host} 执行</button>
+        <button className="btn primary" disabled={off || !canStart(t) || !draft.prompt.trim()}>在 {desk.host} 执行</button>
         <button type="button" className="btn" disabled={off || !t.turn_id} onClick={() => void act(`${base}/interrupt`, {})}>停止本轮</button>
         {canResume(t) && <button type="button" className="btn" disabled={off} onClick={() => void act(`${base}/resume`, {})}>恢复同一条会话</button>}
       </div>
@@ -237,21 +263,28 @@ function TaskPanel({ t, desk, busy, owns, act }: { t: DispatchTask; desk: Dispat
   </>
 }
 
-function ProjectManager({ desk, onChange, onError }: { desk: DispatchDeskState; onChange: (d: DispatchDeskState) => void; onError: (m: string) => void }) {
-  const [all, setAll] = useState<{ id: number; name: string; is_git: boolean; archived_at: string }[]>([])
+export function ProjectManager({ desk, onChange, onError }: { desk: DispatchDeskState; onChange: (d: DispatchDeskState) => void; onError: (m: string) => void }) {
+  const [all, setAll] = useState<{ id: number; name: string; common_dir: string; is_git: boolean; archived_at: string; trashed_at?: string }[]>([])
   const [pick, setPick] = useState(0)
+  const [busy, setBusy] = useState(false)
+  const sending = useRef(false)
   useEffect(() => { req<typeof all>('/api/projects').then(setAll).catch((e) => onError((e as Error).message)) }, [onError])
   const added = new Set(desk.projects.map((p) => p.repo_id))
-  const candidates = all.filter((p) => p.is_git && !p.archived_at && !added.has(p.id))
+  const candidates = all.filter((p) => p.is_git && !p.archived_at && !p.trashed_at && !added.has(p.id))
+  const chosen = candidates.find(p => p.id === pick)
   const set = async (repo_id: number, allowed: boolean) => {
-    try { onChange(await req<DispatchDeskState>('/api/dispatch/projects', { repo_id, allowed })) } catch (e) { onError((e as Error).message) }
+    if (sending.current || (allowed && (!chosen?.common_dir || chosen.id !== repo_id))) return
+    sending.current = true; setBusy(true)
+    try { onChange(await req<DispatchDeskState>('/api/dispatch/projects', { repo_id, allowed })); setPick(0) } catch (e) { onError((e as Error).message) }
+    finally { sending.current = false; setBusy(false) }
   }
   return <div className="dd-manage">
-    <ul>{desk.projects.map((p) => <li key={p.repo_id}><span>{p.name}</span><button className="btn small" onClick={() => void set(p.repo_id, false)}>移除</button></li>)}</ul>
+    <ul>{desk.projects.map((p) => <li key={p.repo_id}><span><strong>{p.name}</strong><br /><small className="dd-mono" style={{ overflowWrap: 'anywhere' }}>{p.common_dir || '仓库位置暂不可用'}</small></span><button className="btn small" disabled={busy} aria-label={`移除 ${p.name} · ${p.common_dir || '仓库位置暂不可用'}`} onClick={() => void set(p.repo_id, false)}>移除</button></li>)}</ul>
     {candidates.length > 0 && <div className="dd-add">
-      <select aria-label="选择要加入的项目" value={pick || candidates[0].id} onChange={(e) => setPick(Number(e.target.value))}>{candidates.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
-      <button className="btn small" onClick={() => void set(pick || candidates[0].id, true)}>加入</button>
+      <select aria-label="选择要加入的项目" disabled={busy} value={chosen?.id ?? ''} onChange={(e) => setPick(Number(e.target.value))}><option value="">请选择要加入的仓库…</option>{candidates.map((p) => <option key={p.id} value={p.id}>{p.name} · {p.common_dir || '仓库位置暂不可用'}</option>)}</select>
+      <button className="btn small" disabled={busy || !chosen?.common_dir} onClick={() => { if (chosen) void set(chosen.id, true) }}>加入</button>
     </div>}
+    {chosen && <p className="muted" style={{ overflowWrap: 'anywhere' }}>将加入：{chosen.name}<br />仓库位置：<span className="dd-mono">{chosen.common_dir || '暂时无法读取，请刷新后重试。'}</span></p>}
     <p className="muted">只有这里加入的项目能派活。移除不影响已经开始的任务。</p>
   </div>
 }

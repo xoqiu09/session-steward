@@ -5,12 +5,13 @@ import type { LiveNote } from '../api'
 import { buildTown } from '../town/townModel'
 import { townSlice } from '../town/TownView'
 import { hideInactive } from '../town/activity'
-import { TownArtProvider, requestedTheme } from '../town/appearance'
+import { TownArtProvider, requestedTheme, sceneArt } from '../town/appearance'
 import { setSceneStill } from '../town/TownScene'
 import { LiveStage } from './LiveStage'
 import { createLiveFeed, type LiveFeedState } from './feed'
 import { diffLiveEvents, emptyBubbles, nextBubbleAt, pushBubbles, stepBubbles, type BubbleState, type LiveEvent } from './events'
 import { liveScrub, type LiveSnapshot } from './scrub'
+import { liveStyle, liveStyleArt, requestedLiveStyle } from './styles'
 import './live.css'
 
 /** 三项说明都为空时显示的默认说明。 */
@@ -47,15 +48,23 @@ export function LiveScreen({ snap, note, stale, bubble, layout }: { snap: LiveSn
   const safe = useMemo(() => (snap ? liveScrub(snap) : null), [snap])
   const model = useMemo(() => (safe ? buildTown(townSlice(hideInactive(safe, 'all').snap, 'all', 'all'), safe.now) : null), [safe])
   const lines = noteLines(note)
-  const theme = requestedTheme(typeof window === 'undefined' ? '' : window.location?.search ?? '') ?? 'original'
+  const search = typeof window === 'undefined' ? '' : window.location?.search ?? ''
+  const style = requestedLiveStyle(search) ?? liveStyle(note?.style)
+  const theme = sceneArt(requestedTheme(search) ?? liveStyleArt(style))
+  const working = model?.counts.working ?? 0
   return (
     <TownArtProvider theme={theme}>
-      <div className={`live-view is-${layout}`} data-town-theme={theme}>
+      <div className={`live-view is-${layout}`} data-town-theme={theme} data-live-style={style} lang="zh-CN">
+        <div className="live-atmosphere" aria-hidden="true"><i /><i /><i /><i /><i /><i /></div>
+        <header className="live-heading">
+          <div className="live-heading-title"><p className="live-eyebrow"><i />AI WORK IN PROGRESS</p><h1>工作小镇</h1></div>
+          <div className="live-presence" aria-label={`现在 ${working} 位在工作`}><strong>{working.toString().padStart(2, '0')}</strong><span>位助手<br />正在工作</span></div>
+        </header>
         <section className="live-card" aria-label="直播说明">
           {lines.length ? lines.map((l) => <p key={l.label} className="live-line"><b>{l.label}：</b>{l.text}</p>)
             : <p className="live-line is-default">{LIVE_DEFAULT_NOTE}</p>}
         </section>
-        <p className="live-count">{countLine(model?.counts.working ?? 0)}</p>
+        <p className="live-count">{countLine(working)}</p>
         {stale && <p className="live-stale" role="status">状态待更新</p>}
         <div className={`town-view live-town${theme === 'storybook' ? ' is-storybook' : theme === 'miniature' ? ' is-miniature' : ''}`}>
           {safe && model ? <LiveStage model={model} snap={safe} bubble={bubble} initialAspect={layout === 'portrait' ? 1.25 : 1.78} reserve={layout === 'landscape' ? LANDSCAPE_RESERVE : undefined} />

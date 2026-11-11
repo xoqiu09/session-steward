@@ -15,6 +15,7 @@
 .pm-tools input { flex: 1; min-width: 0; padding: 10px 12px; border: 1px solid #d8d6ce; border-radius: 8px; background: white; }
 .pm-tools > span { white-space: nowrap; }
 .pm-explanation { color: #62635f; line-height: 1.7; margin: 12px 0; }
+.pm-load-detail { display: block; margin-top: 4px; font-size: 12px; overflow-wrap: anywhere; }
 .pm-list { max-height: min(42vh, 440px); overflow: auto; border: 1px solid #dddcd6; border-radius: 10px; background: #fff; }
 .pm-select-all { display: flex; align-items: center; gap: 12px; padding: 12px 16px; background: #f6f6f2; position: sticky; top: 0; z-index: 1; }
 .pm-project { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 8px 18px; padding: 16px; border-top: 1px solid #eee; }

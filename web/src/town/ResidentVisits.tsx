@@ -28,9 +28,9 @@ export function ResidentWorldVisitors({ store, world, svgRef, far, selected, onS
   })
   if (!life.enabled || !context) return null
   return <>{RESIDENT_IDS.map((id) => {
-    const actor = life.actors[id], trip = actor.trip
-    if (!trip) return null
-    if (trip.phase === 'inside') {
+    const actor = life.actors[id], trip = actor.trip, walk=trip??actor.wander
+    if (!walk) return null
+    if (trip?.phase === 'inside') {
       const door = anchors.doors.get(trip.projectId), destination = context.destinations.find((d) => d.id === trip.projectId)
       if (!door || !destination) return null
       const guests = RESIDENT_IDS.filter((other) => life.actors[other].trip?.phase === 'inside' && life.actors[other].trip?.projectId === trip.projectId)
@@ -43,11 +43,11 @@ export function ResidentWorldVisitors({ store, world, svgRef, far, selected, onS
         {!far && index === 0 && <text y="12" className="town-resident-name" textAnchor="middle">居民来访 {guests.length}</text>}
       </g>, door, `guest-${id}`)
     }
-    const cell = pointCell(trip)
+    const cell = pointCell(walk)
     if (cellKey(cell) === cellKey(context.home)) return null
     const anchor = anchors.ground.get(cellKey(cell))
-    return anchor ? createPortal(<ResidentFigure actor={actor} at={trip} now={life.now} quiet={life.quiet} far={far} selected={selected === id}
-      moving={!life.paused && actor.holdUntil <= life.now} draggable={false} onSelect={() => onSelect(id)} />, anchor, id) : null
+    return anchor ? createPortal(<ResidentFigure actor={actor} at={walk} now={life.now} quiet={life.quiet} far={far} selected={selected === id}
+      moving={!life.paused && walk.path.length > 0 && actor.holdUntil <= life.now} draggable={false} onSelect={() => onSelect(id)} />, anchor, id) : null
   })}</>
 }
 

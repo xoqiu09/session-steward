@@ -402,7 +402,7 @@ export function Building({ plot: p, b, selected, dimClass, onSelect, signScale =
   }
   const long = p.facing === 'x' ? p.w : p.d
   return (
-    <g className={`town-obj town-building${selected ? ' is-selected' : ''}${dimClass}`} data-repo-id={b.repo?.id} data-building-kind={shape.kind} data-building-art={illustrated ? theme : 'original'}
+    <g className={`town-obj town-building${selected ? ' is-selected' : ''}${dimClass}`} data-repo-id={b.repo?.id} data-building-kind={shape.kind} data-building-art={illustrated ? theme : 'original'} data-live-working={live ? working > 0 : undefined}
       aria-label={live ? `项目建筑 ${b.name}` : `项目建筑 ${b.name}：${b.characters.length} 个会话，${active} 个未完成任务${hidden ? `，另有 ${hidden} 个会话不在画面中` : ''}`} {...activate(onSelect)}>
       {illustrated ? <>
         <rect className="town-story-house-hit" {...artBox} />
@@ -541,7 +541,7 @@ export function Character({ at, c, selected, dimClass, onSelect, now, live = fal
   const girl = illustrated ? workCompanion(s.provider) : null
   const pose = c.status === 'working' ? 'activity' : c.status === 'waiting' ? 'greet' : c.status === 'ended' ? 'sleep' : 'idle'
   return (
-    <g style={{ transform: `translate(${at[0]}px,${at[1]}px) scale(1.22)` }}
+    <g style={{ transform: `translate(${at[0]}px,${at[1]}px) scale(${live ? 2 : 1.22})` }}
       className={`town-obj town-move town-char is-${c.status}${selected ? ' is-selected' : ''}${dimClass}`}
       aria-label={live ? `${liveCharacterName(c)}，${liveCharacterStatus(c)}` : `${characterDisplayName(c, illustrated)}，${characterStatusLabel[c.status]}${c.item ? `，任务 ${c.item.title}` : ''}`} {...activate(onSelect)}>
       {!live && <title>{`${characterDisplayName(c, illustrated)} · ${recentSignal(s.signal, now ?? new Date().toISOString())}`}</title>}

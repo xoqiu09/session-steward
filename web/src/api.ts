@@ -4,6 +4,7 @@ import type { AISummary, AttributionDecision, BriefEdit, DayDetail, Handoff, His
 import { snapshotRefresher } from './snapshotRefresh'
 import { publishNativeSnapshot } from './nativeBridge'
 import { snapshotStream } from './snapshotStream'
+import type { UnbindTarget } from './sessionBinding'
 
 export class ApiError extends Error {
   status: number
@@ -45,7 +46,8 @@ async function call<T>(method: string, path: string, body?: unknown, signal?: Ab
 }
 
 /** 直播展示画面上方的说明卡（每项最多 80 个字）。 */
-export interface LiveNote { doing: string; thinking: string; contact: string; updated_at: string }
+export type LiveStyle = 'cozy-night' | 'storybook-day' | 'ai-studio'
+export interface LiveNote { doing: string; thinking: string; contact: string; style?: LiveStyle; updated_at: string }
 
 export interface HookCoverage { provider: string; version: string; installed: string[]; missing: string[]; skipped: string[]; reason?: string; read_error?: boolean; untrusted?: number }
 
@@ -82,7 +84,7 @@ export const api = {
   history: (days = 370) => call<HistoryResp>('GET', `/api/history?days=${days}`),
   historyDay: (date: string) => call<DayDetail>('GET', `/api/history/day?date=${encodeURIComponent(date)}`),
   bind: (sid: number, workItemId: string) => call('POST', `/api/sessions/${sid}/bind`, { work_item_id: workItemId }),
-  unbind: (sid: number, outcome: string) => call('POST', `/api/sessions/${sid}/unbind`, { outcome }),
+  unbind: (sid: number, outcome: string, target: UnbindTarget) => call('POST', `/api/sessions/${sid}/unbind`, { outcome, ...target }),
   createItem: (b: { id: string; title: string; repo_id?: number; repo_path?: string; branch?: string; acceptance?: string; needs_merge?: boolean; session_id?: number }) =>
     call('POST', '/api/work-items', b),
   patchItem: (id: string, b: Record<string, unknown>) => call('PATCH', `/api/work-items/${encodeURIComponent(id)}`, b),
@@ -110,7 +112,7 @@ export const api = {
   checkedMerge: (id: string) => call<MergeJob>('POST', `/api/approvals/${encodeURIComponent(id)}/checked-merge`),
   handoffPreview: (item: string, b: { to_agent: string; note?: string }) => call<{ package: string; source_branch: string; source_sha: string }>('POST', `/api/work-items/${encodeURIComponent(item)}/handoff/preview`, b),
   liveNote: () => call<LiveNote>('GET', '/api/live/note'),
-  saveLiveNote: (note: Pick<LiveNote, 'doing' | 'thinking' | 'contact'>) => call<LiveNote>('PUT', '/api/live/note', note),
+  saveLiveNote: (note: Pick<LiveNote, 'doing' | 'thinking' | 'contact' | 'style'>) => call<LiveNote>('PUT', '/api/live/note', note),
   liveLink: () => call<{ url: string; view: string }>('GET', '/api/live/link'),
   handoff: (item: string, b: { to_agent: string; note?: string; source_sha?: string }) => call<{ handoff: Handoff; managed: ManagedSession }>('POST', `/api/work-items/${encodeURIComponent(item)}/handoff`, b),
 }

@@ -1,6 +1,6 @@
 // 展示用的小镇舞台：复用世界地图的画法（WorldScene），但房子按展示布局紧凑重排（见 layout.ts），
 // 镜头固定框住这些房子和名牌；不巡游、不跟随、不响应指针；排布顺序只放在内存里，不读写浏览器存储。
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { Snapshot } from '../types'
 import type { BuildingView, TownModel } from '../town/townModel'
 import { WorldScene } from '../town/WorldScene'
@@ -49,6 +49,8 @@ export function LiveStage({ model, snap, bubble, initialAspect = 1.2, reserve = 
   // 排布顺序只记在这一页的内存里：同一批项目刷新后位置不变，有项目进出时其他房子尽量不动。
   const order = useRef<string[]>([])
   const box = useRef<HTMLDivElement>(null)
+  const bubbleBox = useRef<HTMLDivElement>(null)
+  const [bubblePosition, setBubblePosition] = useState<{ left: number; top: number } | null>(null)
   const [aspect, setAspect] = useState(initialAspect)
   useEffect(() => {
     const el = box.current
@@ -72,13 +74,33 @@ export function LiveStage({ model, snap, bubble, initialAspect = 1.2, reserve = 
   const live = useMemo(() => liveWorld(buildings, plan, aspect / free, theme), [buildings, plan, aspect, free, theme])
   const view = liveView(live.frame, aspect, reserve)
   const anchor = bubble ? bubbleAnchor(live.world, view, bubble.repoId) : null
+  useLayoutEffect(() => {
+    const el = box.current, message = bubbleBox.current
+    if (!el || !message || !bubble) { setBubblePosition(null); return }
+    const measure = () => {
+      const w = el.clientWidth, h = el.clientHeight
+      const margin = Math.max(12, w * 0.025)
+      const half = message.offsetWidth / 2
+      const left = Math.max(margin + half, Math.min(w - margin - half, w * (anchor?.left ?? 50) / 100))
+      const top = Math.max(message.offsetHeight + margin, Math.min(h - margin, h * (anchor?.top ?? 18) / 100))
+      setBubblePosition({ left, top })
+    }
+    measure()
+    if (typeof ResizeObserver === 'undefined') return
+    const ro = new ResizeObserver(measure); ro.observe(el); ro.observe(message)
+    return () => ro.disconnect()
+  }, [bubble?.key, anchor?.left, anchor?.top])
   return (
     <div className="live-stage" ref={box}>
       <div className="live-stage-scene" inert aria-hidden="true">
         <WorldScene model={model} world={live.world} view={view} far={false} selected={null} highlight={null} onSelect={noop} needsYou={nobody} live liveDress={live.dress} />
       </div>
+      <div className="live-lights" aria-hidden="true">{live.world.districts.filter(d => d.b.characters.some(c => c.status === 'working')).map(d => {
+        const [x, y] = iso(d.ox + INNER_W / 2, d.oy + INNER_D / 2)
+        return <i key={d.key} style={{ left: `${(x - view.x) / view.w * 100}%`, top: `${(y - view.y) / view.h * 100}%` }} />
+      })}</div>
       {bubble && (
-        <div key={bubble.key} className={`live-bubble${anchor ? '' : ' is-top'}`} role="status" style={anchor ? { left: `${anchor.left}%`, top: `${anchor.top}%` } : undefined}>
+        <div ref={bubbleBox} key={bubble.key} className="live-bubble" role="status" style={bubblePosition ? { left: bubblePosition.left, top: bubblePosition.top } : { left: `${anchor?.left ?? 50}%`, top: `${anchor?.top ?? 18}%` }}>
           {bubble.text}
         </div>
       )}

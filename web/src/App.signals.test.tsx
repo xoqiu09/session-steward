@@ -54,3 +54,15 @@ it('首次离线给重试入口；已有快照离线保留内容并显示更新�
   expect(retained).toContain('全部标为看过')
   expect(retained).toContain('不会验收或完成任何工作')
 })
+
+it('直接打开历史和列表地址时显示相应页面，不退回项目简报', () => {
+  state.conn = 'live'
+  state.snap = { cursor: 3, now: '2026-11-11T06:00:00Z', repos: [], sessions: [], work_items: [], runs: [], deps: [], approvals: [] }
+  vi.stubGlobal('localStorage', { getItem: () => null, setItem: () => {} })
+  for (const view of ['history', 'list']) {
+    vi.stubGlobal('window', { location: { search: `?view=${view}`, hash: '', pathname: '/', hostname: '127.0.0.1', host: '127.0.0.1' } })
+    const html = renderToStaticMarkup(<App />)
+    expect(html).toContain(`<button class="on" aria-current="page">${view === 'history' ? '历史' : '列表'}</button>`)
+    expect(html).not.toContain('<button class="on">项目简报</button>')
+  }
+})

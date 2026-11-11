@@ -1,0 +1,13 @@
+.action-feedback { display: flex; align-items: flex-start; gap: 9px; margin: 12px 0; padding: 12px 14px; border: 1px solid #c7decf; border-radius: var(--radius, 10px); background: #f0f7f2; color: #285738; line-height: 1.65; min-width: 0; overflow-wrap: anywhere; }
+.action-feedback-warning { border-color: #e8d5aa; background: #fff8e8; color: #76531b; }
+.action-feedback-error { border-color: #edc3c3; background: #fff2f1; color: #9c2929; }
+.action-feedback-mark { flex: 0 0 auto; width: 18px; height: 18px; margin-top: 2px; border: 1px solid currentColor; border-radius: 50%; text-align: center; font-size: 12px; font-weight: 650; line-height: 16px; }
+.action-feedback-content { min-width: 0; flex: 1; }
+.action-feedback-content > :first-child { margin-top: 0; }
+.action-feedback-content > :last-child { margin-bottom: 0; }
+.action-feedback-content .btn { margin-top: 7px; }
+.action-feedback-content details { margin-top: 8px; }
+.action-feedback-content summary { cursor: pointer; }
+.action-feedback-content small { display: block; }
+.workflow-fields { display: flex; flex-direction: column; gap: 10px; min-width: 0; margin: 0; padding: 0; border: 0; }
+.workflow-fields:disabled { opacity: .72; }

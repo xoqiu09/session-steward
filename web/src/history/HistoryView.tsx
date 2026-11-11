@@ -1,5 +1,5 @@
 // 历史：一年热力图 + 区间合计 + 近 30 天按 Agent 的柱状图；点某天看那天的小结。只读。
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { api } from '../api'
 import { AgentBadge } from '../bits'
 import { shownNo } from '../hub/ids'
@@ -23,11 +23,28 @@ function tip(d: DayStat | undefined, day: string, tokens: boolean) {
   return `${dayLabel(day)} · ${parts.join(' · ')}`
 }
 
+/** The heatmap is laid out in week columns: horizontal keys move a week, vertical keys a day. */
+export function historyHeatNavigation(weeks: readonly (readonly (string | null)[])[], current: string, key: string): string | null {
+  if (!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Home','End'].includes(key)) return null
+  const days=weeks.flat().filter((day):day is string=>day!==null)
+  if (!days.length) return null
+  const index=days.indexOf(current), at=index>=0?index:days.length-1
+  if (key==='Home'||key==='End') {
+    const row=weeks.find(col=>col.includes(days[at]))!.indexOf(days[at])
+    const line=weeks.map(col=>col[row]).filter((day):day is string=>day!==null)
+    return key==='Home'?line[0]:line.at(-1)!
+  }
+  const step=key==='ArrowLeft'?-7:key==='ArrowRight'?7:key==='ArrowUp'?-1:1
+  if(Math.abs(step)===7&&(at+step<0||at+step>=days.length)) return days[at]
+  return days[Math.max(0,Math.min(days.length-1,at+step))]
+}
+
 export function HistoryView({ snap, onSelectSession, onSelectItem, onReplayDay }: { snap: Snapshot; onSelectSession: (id: number) => void; onSelectItem: (id: string) => void; onReplayDay?: (day: string) => void }) {
   const [data, setData] = useState<HistoryResp | null>(null)
   const [error, setError] = useState('')
   const [metric, setMetric] = useState<Metric>('work')
   const [picked, setPicked] = useState<string | null>(null)
+  const heat = useRef<HTMLDivElement>(null), heatHelp = useId()
   useEffect(() => {
     let live = true
     const load = () => api.history().then((h) => {
@@ -48,7 +65,9 @@ export function HistoryView({ snap, onSelectSession, onSelectItem, onReplayDay }
   const level = levels(data.days.map((d) => metricOf(d, metric)))
   const sums = rangeSums(data.days, to)
   const lastActive = [...data.days].reverse().find((d) => d.prompts + d.tools > 0)?.day ?? to
-  const day = picked ?? lastActive
+  const availableDays=weeks.flat().filter((day):day is string=>day!==null)
+  const wanted=picked??lastActive
+  const day = availableDays.includes(wanted)?wanted:to
   const bars = providerBars(data.days, to)
   const barMax = Math.max(1, ...bars.map((b) => b.parts.reduce((n, p) => n + p.value, 0)))
   // 月份标在当月第一周那一列；离上一个标签太近（不到 3 列）就不标，免得挤在一起。
@@ -91,7 +110,7 @@ export function HistoryView({ snap, onSelectSession, onSelectItem, onReplayDay }
         ))}
       </div>
 
-      <div className={`history-heat metric-${metric}`} role="grid" aria-label={`近一年每天的${METRIC_LABEL[metric]}`}>
+      <div ref={heat} className={`history-heat metric-${metric}`} role="grid" aria-label={`近一年每天的${METRIC_LABEL[metric]}`} aria-describedby={heatHelp}>
         <div className="heat-months" aria-hidden>{months.map((m, i) => <span key={i}>{m}</span>)}</div>
         <div className="heat-body">
           <div className="heat-weekdays" aria-hidden><span>一</span><span /><span>三</span><span /><span>五</span><span /><span /></div>
@@ -99,13 +118,23 @@ export function HistoryView({ snap, onSelectSession, onSelectItem, onReplayDay }
             <div key={i} className="heat-col" role="row">
               {col.map((d, j) => d
                 ? <button key={d} type="button" role="gridcell" className={`heat-cell lv-${level(metricOf(byDay.get(d), metric))}${d === day ? ' is-picked' : ''}`}
-                    title={tip(byDay.get(d), d, data.tokens_enabled)} aria-label={tip(byDay.get(d), d, data.tokens_enabled)} onClick={() => setPicked(d)} />
+                    data-history-day={d} tabIndex={d===day?0:-1} aria-selected={d===day}
+                    title={tip(byDay.get(d), d, data.tokens_enabled)} aria-label={tip(byDay.get(d), d, data.tokens_enabled)} onClick={() => setPicked(d)}
+                    onKeyDown={event=> {
+                      if(event.altKey||event.ctrlKey||event.metaKey) return
+                      const next=historyHeatNavigation(weeks,d,event.key)
+                      if(!next) return
+                      event.preventDefault(); setPicked(next)
+                      const target=heat.current?.querySelector<HTMLButtonElement>(`[data-history-day="${next}"]`)
+                      target?.focus({preventScroll:true}); target?.scrollIntoView({block:'nearest',inline:'nearest'})
+                    }} />
                 : <span key={j} className="heat-cell is-empty" />)}
             </div>
           ))}
         </div>
         <div className="heat-legend" aria-hidden>少 {[0, 1, 2, 3, 4].map((l) => <i key={l} className={`heat-cell lv-${l}`} />)} 多</div>
       </div>
+      <p className="hint" id={heatHelp}>方向键选日期：上下逐日，左右逐周；Home / End 到同一星期行的首尾。Tab 离开年历。</p>
 
       {data.tokens_enabled && (
         <section className="history-bars" aria-label="近 30 天每天各 Agent 的 token">
@@ -131,15 +160,24 @@ export function HistoryView({ snap, onSelectSession, onSelectItem, onReplayDay }
   )
 }
 
+export type HistoryDayRead = {day:string;status:'loading'} | {day:string;status:'ready';detail:DayDetail} | {day:string;status:'error';message:string}
+
+/** One date owns the complete loading/error/data result; a discarded request cannot publish into the next date. */
+export function readHistoryDay(day:string,update:(value:HistoryDayRead)=>void) {
+  let current=true
+  update({day,status:'loading'})
+  void api.historyDay(day).then(detail=> { if(current) update({day,status:'ready',detail}) })
+    .catch(error=> { if(current) update({day,status:'error',message:String(error?.message??error)}) })
+  return ()=> { current=false }
+}
+
 function DayPanel({ day, stat, snap, tokens, onSelectSession, onSelectItem, onReplay }: { day: string; stat?: DayStat; snap: Snapshot; tokens: boolean; onSelectSession: (id: number) => void; onSelectItem: (id: string) => void; onReplay?: (day: string) => void }) {
-  const [detail, setDetail] = useState<DayDetail | null>(null)
-  const [error, setError] = useState('')
-  useEffect(() => {
-    let live = true
-    setDetail(null)
-    api.historyDay(day).then((d) => live && setDetail(d)).catch((e) => live && setError(String(e?.message ?? e)))
-    return () => { live = false }
-  }, [day])
+  const [read,setRead]=useState<HistoryDayRead>({day,status:'loading'})
+  const [attempt,setAttempt]=useState(0)
+  useEffect(()=>readHistoryDay(day,setRead),[day,attempt])
+  // The date label changes before effects run; never paint yesterday's detail under today's heading.
+  const current:HistoryDayRead=read.day===day?read:{day,status:'loading'}
+  const detail=current.status==='ready'?current.detail:null
   const repoName = (id: number | null) => (snap.repos ?? []).find((r) => r.id === id)?.name ?? '未关联项目'
   const sessionTitle = (id: number) => (snap.sessions ?? []).find((s) => s.id === id)?.title ?? ''
   const groups = new Map<string, NonNullable<DayDetail>['items']>()
@@ -158,8 +196,8 @@ function DayPanel({ day, stat, snap, tokens, onSelectSession, onSelectItem, onRe
           {tokens && tokenTotal(stat.tokens) ? ` · ${fmtNum(tokenTotal(stat.tokens))} token` : ''}
         </p>
       ) : <p className="muted">这一天没有记录到活动。</p>}
-      {error && <p className="warn-line">读取失败：{error}</p>}
-      {!detail && !error && stat && <p className="muted">正在读取这一天…</p>}
+      {current.status==='error' && <div className="warn-line" role="alert"><p>这一天读取失败：{current.message}</p><button type="button" className="btn small" onClick={()=> { setRead({day,status:'loading'}); setAttempt(n=>n+1) }}>重新读取这一天</button></div>}
+      {current.status==='loading' && <p className="muted" role="status">正在读取这一天…</p>}
       {detail && (
         <div className="history-day-grid">
           <div>

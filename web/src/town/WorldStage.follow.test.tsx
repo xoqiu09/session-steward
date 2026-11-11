@@ -82,7 +82,13 @@ const deliver = () => {
   snap = { ...snap, cursor: snap.cursor + 1, now: new Date().toISOString(), work_items: snap.work_items!.map((w) => w.id === 'DEMO-2' ? { ...w, status: 'review', updated_at: new Date().toISOString() } : w) }
   render()
 }
-const click = (label: string) => { tree.props.onPointerDownCapture(); button(tree, label).props.onClick(); render() }
+const targetButton = (label: string) => {
+  let target = button(tree, label)
+  if (!target) { button(tree, '更多')?.props.onClick(); render(); target = button(tree, label) }
+  if (!target) throw new Error(`地图入口不存在：${label}`)
+  return target
+}
+const click = (label: string) => { tree.props.onPointerDownCapture(); targetButton(label).props.onClick(); render() }
 
 beforeEach(() => {
   vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-29T08:00:00Z'))
@@ -106,8 +112,12 @@ describe('WorldStage 跟随动态', () => {
     expect(requestAnimationFrame).toHaveBeenCalledOnce(); expect(selected).not.toHaveBeenCalled()
     expect(words(tree)).not.toContain('已处理')
   })
-  it('页面开着时，熟了 30 分钟还没收会再弹一次；打开前就超时的只标在收菜旁', () => {
-    render(); expect(notice(tree)).toBeUndefined(); expect(words(tree)).toContain('最久等了')
+  it('页面开着时，熟了 30 分钟还没收会再弹一次；打开前超时的信息仍可从更多查看', () => {
+    render(); expect(notice(tree)).toBeUndefined()
+    // Keyboard activation has no pointerdown: inspect the secondary information
+    // without changing this scenario's original three-second auto-follow clock.
+    button(tree, '更多').props.onClick(); render(); expect(words(tree)).toContain('最久等了')
+    button(tree, '更多').props.onClick(); render()
     deliver(); advance(3000); expect(notice(tree)?.props.moment.itemId).toBe('DEMO-2')
     click('稍后'); advance(31 * 60_000)
     expect(notice(tree)?.props.moment.message).toContain('DEMO-2 熟了 30 分钟，还没收')
@@ -145,7 +155,7 @@ describe('WorldStage 跟随动态', () => {
     for (const mode of ['inside', 'guide', 'harvest']) {
       render()
       if (mode === 'inside') nodes(tree).find((n) => n.type === WorldScene)!.props.onSelect({ kind: 'building', key: 'repo-1' })
-      if (mode === 'guide') button(tree, '怎么看').props.onClick()
+      if (mode === 'guide') targetButton('怎么看').props.onClick()
       if (mode === 'harvest') button(tree, '收菜 1').props.onClick()
       render(); advance(31_000); vi.mocked(requestAnimationFrame).mockClear()
       deliver(); advance(3000)
@@ -220,7 +230,7 @@ describe('WorldStage 跟随动态', () => {
   it('后台期间和重新打开只显示离开提示，前台后不自动飞', () => {
     render(); hidden = true; emitVisibility(); advance(10_000); deliver(); advance(3000)
     hidden = false; emitVisibility(); render()
-    expect(words(tree)).toContain('你离开期间：1 棵菜熟了，0 件要你决定'); expect(notice(tree)).toBeUndefined(); expect(requestAnimationFrame).not.toHaveBeenCalled()
+    expect(words(tree)).toContain('你离开期间：1 棵菜熟了'); expect(words(tree)).not.toContain('0 件要你决定'); expect(notice(tree)).toBeUndefined(); expect(requestAnimationFrame).not.toHaveBeenCalled()
     // 重新打开：已经在“你离开期间”里看过的同一条交付不再出现
     host.reset(); storage.set(LAST_SEEN_KEY, String(Date.parse('2026-10-29T07:00:00Z'))); render(); advance(3000)
     expect(words(tree)).not.toContain('你离开期间'); expect(requestAnimationFrame).not.toHaveBeenCalled()
@@ -230,9 +240,9 @@ describe('WorldStage 跟随动态', () => {
   })
   it('本地存储被拒绝时仍能检测新动态和更新设置', () => {
     vi.stubGlobal('localStorage', { getItem: () => { throw Error('blocked') }, setItem: () => { throw Error('blocked') } })
-    render(); button(tree, '怎么看').props.onClick(); render()
+    render(); targetButton('怎么看').props.onClick(); render()
     nodes(tree).find((n) => n.type === TownGuide)!.props.onFollowChange({ enabled: false, includeMerged: true }); render()
-    button(tree, '怎么看').props.onClick(); render(); deliver(); advance(3000)
+    nodes(tree).find((n) => n.type === TownGuide)!.props.onClose(); render(); deliver(); advance(3000)
     expect(notice(tree)).toBeUndefined(); expect(words(tree)).toContain('1 处有新动态')
   })
   it('读屏 status 区域从首屏就存在，卡片出现才更新文字，卡片本身不另建 live 区域', () => {
@@ -279,17 +289,20 @@ describe('WorldStage 跟随动态', () => {
       work_items: [{ ...snap.work_items![0], updated_at: snap.now }, snap.work_items![1], fakeItem({ id: 'remote:DEMO-3', repo_id: 1_000_000_001, title: '远端第三棵', status: 'review', updated_at: snap.now })],
       approvals: [fakeApproval({ id: 'remote:DEMO-A', kind: 'permission', status: 'pending', repo_id: 1_000_000_001, created_at: snap.now })] }
     render()
-    expect(words(tree)).toContain('你离开期间：1 棵菜熟了，0 件要你决定')
+    expect(words(tree)).toContain('你离开期间：1 棵菜熟了')
+    expect(words(tree)).not.toContain('0 件要你决定')
     expect(words(tree)).toContain('另一台电脑：1 棵菜熟了，1 件要你决定')
     click('带我去看'); expect(notice(tree)?.props.moment.itemId).toBe('DEMO-1'); expect(notice(tree)?.props.moment.local).toBe(true)
     expect(selected).not.toHaveBeenCalled()
   })
-  it('只有远端离开动态时本机计数为零，查看卡片不会出现本机收菜入口', () => {
+  it('只有远端离开动态时明确指向其他设备，查看卡片不会出现本机收菜入口', () => {
     storage.set(LAST_SEEN_KEY, String(Date.parse('2026-10-29T07:00:00Z')))
     snap = { ...snap, repos: [{ ...snap.repos![0], device: '远方演示机' }], work_items: [{ ...snap.work_items![0], updated_at: snap.now }] }
     render()
-    expect(words(tree)).toContain('你离开期间：0 棵菜熟了，0 件要你决定')
-    expect(words(tree)).toContain('另一台电脑：1 棵菜熟了，0 件要你决定')
+    expect(words(tree)).toContain('你离开期间有其他设备的新动态')
+    expect(words(tree)).toContain('另一台电脑：1 棵菜熟了')
+    expect(words(tree)).not.toContain('0 棵菜熟了')
+    expect(words(tree)).not.toContain('0 件要你决定')
     click('带我去看'); expect(notice(tree)?.props.moment.local).toBe(false); expect(button(tree, '收这一棵')).toBeUndefined()
   })
 })

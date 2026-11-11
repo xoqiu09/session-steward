@@ -25,10 +25,11 @@ import { hideInactive } from './activity'
 import { useDismissibleDetails } from '../ui/useDismiss'
 import './town.css'
 import './townView.css'
-import { TownArtProvider, useTownAppearance } from './appearance'
+import { TownArtProvider, useTownAppearance, sceneArt } from './appearance'
 import { TownSceneMenu } from './TownSceneMenu'
 import './storybook.css'
 import './appearance.css'
+import './scenePalettes.css'
 
 type Sel = { kind: 'item'; id: string } | { kind: 'session'; id: number } | null
 
@@ -302,7 +303,7 @@ export function TownView({ snap, conn, repoId, provider, sel, onSelectItem, onSe
   const scopedRepo = repoId === 'all' ? null : (shown.repos ?? []).find((r) => r.id === repoId)?.name ?? `项目 #${repoId}`
   const structureBuilding = repoId === 'all' ? undefined : model.buildings.find(b => b.repo?.id === repoId)
   return (
-    <TownArtProvider theme={appearance.theme}><div data-town-theme={appearance.theme} className={`town-view${appearance.theme === 'storybook' ? ' is-storybook' : appearance.theme === 'miniature' ? ' is-miniature' : ''}${offline ? ' is-offline' : ''}${kiosk ? ' is-kiosk' : ''}${residentView ? ' is-resident-view' : ''}${extras.parcels ? '' : ' hide-parcels'}`}>
+    <TownArtProvider theme={appearance.theme}><div data-town-theme={sceneArt(appearance.theme)} data-town-scene={appearance.theme} className={`town-view${sceneArt(appearance.theme) === 'storybook' ? ' is-storybook' : sceneArt(appearance.theme) === 'miniature' ? ' is-miniature' : ''}${offline ? ' is-offline' : ''}${kiosk ? ' is-kiosk' : ''}${residentView ? ' is-resident-view' : ''}${extras.parcels ? '' : ' hide-parcels'}`}>
       {!offline && !replay && model.buildings.length === 0 && <section className="town-get-started" aria-label="开始使用小镇">
         <h2>这台电脑还没有工作记录</h2>
         <SetupChecklist coverage={coverage} hasSessions={(shown.sessions ?? []).length > 0} fallback="数据只存在本机的 ~/.steward。先用演示数据看看，或在终端运行 steward install，再让 Claude Code / Codex 干点活，项目和小人就会出现在这里。" />

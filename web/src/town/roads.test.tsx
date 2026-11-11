@@ -56,10 +56,10 @@ describe('清晰且连续的小镇路网',()=>{
     }
   })
 
-  it('三种画风共享相同路网，连通村口且不为装饰增加点击目标',()=>{
+  it('六种画风共享相同路网，连通村口且不为装饰增加点击目标',()=>{
     const world=sparseWorld(),model=buildTown(demoSnapshot)
     const surfaces:string[]=[]
-    for(const theme of ['original','storybook','miniature'] as const) {
+    for(const theme of ['original','storybook','miniature','cozy-night','storybook-day','ai-studio'] as const) {
       const html=renderToStaticMarkup(<TownArtProvider theme={theme}><WorldScene model={model} world={world} view={world.bounds} far={false} selected={null} highlight={null} onSelect={()=>{}} needsYou={()=>false}/></TownArtProvider>)
       const painted=html.split('<g class="town-world-roads"')[1].split('</g>')[0]
       expect(painted).toContain('aria-hidden="true" pointer-events="none"')

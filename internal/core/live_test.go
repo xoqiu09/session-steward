@@ -216,3 +216,27 @@ func TestLiveNoteReadWrite(t *testing.T) {
 		t.Fatal("被拒绝的写入不应改变已保存的说明")
 	}
 }
+
+func TestLiveNoteStylePersistsAndRejectsUnknownValues(t *testing.T) {
+	c := newCore(t, nil)
+	ctx := context.Background()
+	for _, style := range []string{"cozy-night", "storybook-day", "ai-studio", "cozy-night"} {
+		want, err := c.SetLiveNote(ctx, LiveNote{Doing: "合成演示", Style: style})
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, err := c.LiveNote(ctx)
+		if err != nil || got != want || got.Style != style {
+			t.Fatalf("style did not survive a read: %+v %v", got, err)
+		}
+	}
+	for _, style := range []string{"unknown", "COZY-NIGHT", "cozy-night ", "<script>"} {
+		if _, err := c.SetLiveNote(ctx, LiveNote{Style: style}); !errors.Is(err, ErrBadRequest) {
+			t.Fatalf("unexpected style accepted: %q %v", style, err)
+		}
+	}
+	got, _ := c.LiveNote(ctx)
+	if got.Style != "cozy-night" || got.Doing != "合成演示" {
+		t.Fatalf("rejected style changed saved settings: %+v", got)
+	}
+}

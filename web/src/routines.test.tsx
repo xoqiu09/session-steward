@@ -43,13 +43,13 @@ describe('quiet successful memory routines and visible exceptions',()=>{
  })
  it('does not show mandatory acceptance buttons for an archived routine',()=>{
   const html=renderToStaticMarkup(<ItemDetail snap={snapshot()} id={item.id} onClose={()=>{}} onSelectSession={()=>{}} />)
-  expect(html).toContain('本轮已自动归档');expect(html).not.toContain('>已处理<');expect(html).not.toContain('>退回修改<')
+  expect(html).toContain('本轮已自动归档');expect(html).not.toContain('>验收并完成<');expect(html).not.toContain('>退回修改<')
  })
  it('keeps ordinary development delivery in manual review',()=>{
   const s=snapshot({...item,id:'DEV-1',title:'Synthetic product delivery',completion_policy:undefined,automatic_history:undefined})
   expect(queueCounts(s).review).toBe(1)
   const html=renderToStaticMarkup(<ItemDetail snap={s} id='DEV-1' onClose={()=>{}} onSelectSession={()=>{}} />)
-  expect(html).toContain('>已处理<')
+  expect(html).toContain('>验收并完成<')
  })
  it('does not turn post-delivery routing into a memory decision, including while a new round is active',()=>{
   const w:WorkItem={...item,automatic_history:false,brief:{...item.brief!,fields:{
@@ -71,7 +71,7 @@ describe('quiet successful memory routines and visible exceptions',()=>{
   expect(html).toContain('记忆与偏好 · 等你确认')
   expect(html).toContain('建议记住：报告优先用中文。')
   expect(html).toContain('原因：之后可以按你的阅读习惯整理。需要保存吗？')
-  expect(html).toContain('我已在原会话处理')
+  expect(html).toContain('已在原会话处理')
   expect(html).not.toContain('memories_v2')
   expect(html).not.toContain(item.title)
   expect(html).not.toContain('已处理')

@@ -32,6 +32,7 @@ type LiveNote struct {
 	Doing     string `json:"doing"`
 	Thinking  string `json:"thinking"`
 	Contact   string `json:"contact"`
+	Style     string `json:"style,omitempty"`
 	UpdatedAt string `json:"updated_at"`
 }
 
@@ -51,6 +52,12 @@ func (c *Core) LiveNote(ctx context.Context) (LiveNote, error) {
 // SetLiveNote 校验并保存展示说明。只写 meta 的一个键，不碰项目和工作项。
 func (c *Core) SetLiveNote(ctx context.Context, in LiveNote) (LiveNote, error) {
 	out := LiveNote{}
+	switch in.Style {
+	case "", "cozy-night", "storybook-day", "ai-studio":
+		out.Style = in.Style
+	default:
+		return LiveNote{}, fmt.Errorf("%w: 请选择已有的直播画面风格", ErrBadRequest)
+	}
 	for _, f := range []struct {
 		name string
 		src  string

@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, type HookCoverage } from './api'
 import { ErrorLine } from './bits'
+import { useNativeDialog } from './ui/useNativeDialog'
 import './projects.css'
 
 /** 只读采集设置。沿用项目管理的原生对话框与排版，不在网页里写客户端配置。 */
 export function HooksSettings({ onClose }: { onClose: () => void }) {
-  const dialog = useRef<HTMLDialogElement>(null)
+  const dialog = useNativeDialog(onClose)
   const [coverage, setCoverage] = useState<HookCoverage[] | null>(null)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
@@ -21,11 +22,10 @@ export function HooksSettings({ onClose }: { onClose: () => void }) {
     } finally { if (generation.current === request) setBusy(false) }
   }, [])
   useEffect(() => {
-    dialog.current?.showModal()
     void load()
     return () => { ++generation.current }
   }, [load])
-  return <dialog className="project-manager hooks-settings" ref={dialog} aria-label="设置" onCancel={onClose} onClose={onClose}>
+  return <dialog className="project-manager hooks-settings" {...dialog} role="dialog" aria-modal="true" aria-label="设置">
     <div className="pm-heading"><div><span className="pm-eyebrow">这台电脑</span><h1>采集设置</h1><p>查看 Claude Code 和 Codex 的事件接入情况。</p></div><button className="btn" onClick={onClose} autoFocus>关闭</button></div>
     <ErrorLine msg={error} />
     <div className="row wrap"><h2>会话事件</h2><button className="btn small" onClick={() => void load()} disabled={busy}>{busy ? '正在检查…' : '刷新'}</button></div>

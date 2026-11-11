@@ -1,29 +1,36 @@
 import { createContext, useContext, useEffect, useState, useSyncExternalStore, type ReactNode } from 'react'
 
 export type TownThemeId = 'original' | 'storybook' | 'miniature'
+export type TownSceneId = TownThemeId | 'cozy-night' | 'storybook-day' | 'ai-studio'
 export const APPEARANCE_KEY = 'ss.town.appearance.v1'
-export const TOWN_THEMES: readonly { id: TownThemeId; name: string; description: string; assets: readonly string[] }[] = [
-  { id: 'miniature', name: '微缩庭园', description: '圆润模型 · 清透绿意', assets: ['/town/miniature/props.png', '/town/miniature/buildings.png'] },
-  { id: 'storybook', name: '柔和手绘', description: '暖色纸感 · 自然花园', assets: ['/town/storybook/props.png', '/town/storybook/nature.png', '/town/storybook/buildings.png'] },
-  { id: 'original', name: '经典小镇', description: '简洁几何 · 熟悉的小镇', assets: [] },
+const MINIATURE_ASSETS = ['/town/miniature/props.png', '/town/miniature/buildings.png']
+const STORYBOOK_ASSETS = ['/town/storybook/props.png', '/town/storybook/nature.png', '/town/storybook/buildings.png']
+export const TOWN_THEMES: readonly { id: TownSceneId; art: TownThemeId; name: string; description: string; assets: readonly string[] }[] = [
+  { id: 'miniature', art: 'miniature', name: '微缩庭园', description: '圆润模型 · 清透绿意', assets: MINIATURE_ASSETS },
+  { id: 'storybook', art: 'storybook', name: '柔和手绘', description: '暖色纸感 · 自然花园', assets: STORYBOOK_ASSETS },
+  { id: 'original', art: 'original', name: '经典小镇', description: '简洁几何 · 熟悉的小镇', assets: [] },
+  { id: 'cozy-night', art: 'miniature', name: '温暖夜景', description: '深蓝夜色 · 小屋暖光', assets: MINIATURE_ASSETS },
+  { id: 'storybook-day', art: 'storybook', name: '清新绘本', description: '奶油纸色 · 花园日常', assets: STORYBOOK_ASSETS },
+  { id: 'ai-studio', art: 'original', name: 'AI 工作室', description: '深色空间 · 青色光路', assets: [] },
 ]
-export const themeName = (id: TownThemeId) => TOWN_THEMES.find(t => t.id === id)!.name
-const isTheme = (id: unknown): id is TownThemeId => TOWN_THEMES.some(t => t.id === id)
+export const themeName = (id: TownSceneId) => TOWN_THEMES.find(t => t.id === id)!.name
+export const sceneArt = (id: TownSceneId): TownThemeId => TOWN_THEMES.find(t => t.id === id)!.art
+const isTheme = (id: unknown): id is TownSceneId => TOWN_THEMES.some(t => t.id === id)
 type AppearanceStorage = Pick<Storage, 'getItem' | 'setItem'>
 
-export function readAppearance(storage?: AppearanceStorage): TownThemeId {
+export function readAppearance(storage?: AppearanceStorage): TownSceneId {
   try {
     const raw = JSON.parse(storage?.getItem(APPEARANCE_KEY) ?? 'null')
     return raw?.version === 1 && isTheme(raw.theme) ? raw.theme : 'original'
   } catch { return 'original' }
 }
 
-export function requestedTheme(search: string): TownThemeId | null {
+export function requestedTheme(search: string): TownSceneId | null {
   const value = new URLSearchParams(search).get('town-art')
   return isTheme(value) ? value : null
 }
 
-export function writeAppearance(theme: TownThemeId, storage?: AppearanceStorage): boolean {
+export function writeAppearance(theme: TownSceneId, storage?: AppearanceStorage): boolean {
   try {
     if (!storage) return false
     storage.setItem(APPEARANCE_KEY, JSON.stringify({ version: 1, theme }))
@@ -32,7 +39,7 @@ export function writeAppearance(theme: TownThemeId, storage?: AppearanceStorage)
 }
 
 const assetLoads = new Map<string, Promise<void>>()
-export function preloadThemeAssets(theme: TownThemeId): Promise<void> {
+export function preloadThemeAssets(theme: TownSceneId): Promise<void> {
   return Promise.all(TOWN_THEMES.find(t => t.id === theme)!.assets.map(src => {
     if (!assetLoads.has(src)) {
       const loading = new Promise<void>((resolve, reject) => {
@@ -49,9 +56,9 @@ export function preloadThemeAssets(theme: TownThemeId): Promise<void> {
 }
 
 export interface AppearanceSnapshot {
-  theme: TownThemeId
-  savedTheme: TownThemeId
-  loading: TownThemeId | null
+  theme: TownSceneId
+  savedTheme: TownSceneId
+  loading: TownSceneId | null
   error: string
   notice: string
 }
@@ -66,7 +73,7 @@ export function createAppearanceStore(storage?: AppearanceStorage, search = '', 
   return {
     getSnapshot: () => state,
     subscribe: (fn: () => void) => { listeners.add(fn); return () => { listeners.delete(fn) } },
-    preview: async (theme: TownThemeId) => {
+    preview: async (theme: TownSceneId) => {
       const ticket = ++request
       publish({ loading: theme, error: '', notice: '' })
       try {
@@ -80,7 +87,7 @@ export function createAppearanceStore(storage?: AppearanceStorage, search = '', 
         return false
       }
     },
-    cancel: (theme: TownThemeId) => { request++; publish({ theme, loading: null, error: '' }) },
+    cancel: (theme: TownSceneId) => { request++; publish({ theme, loading: null, error: '' }) },
     apply: () => {
       if (state.loading || state.error) return false
       const saved = writeAppearance(state.theme, storage)
@@ -116,8 +123,8 @@ export function useTownAppearance() {
 export type TownAppearance = ReturnType<typeof useTownAppearance>
 
 const TownArt = createContext<TownThemeId>('original')
-export function TownArtProvider({ theme, children }: { theme: TownThemeId; children: ReactNode }) {
-  return <TownArt.Provider value={theme}>{children}</TownArt.Provider>
+export function TownArtProvider({ theme, children }: { theme: TownSceneId; children: ReactNode }) {
+  return <TownArt.Provider value={sceneArt(theme)}>{children}</TownArt.Provider>
 }
 export function useTownArt() {
   const theme = useContext(TownArt)

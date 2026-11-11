@@ -1,0 +1,121 @@
+/* Daily town presets reuse the three existing art sets; the normal work UI stays interactive. */
+.town-view[data-town-scene="cozy-night"] {
+  --scene-ground:#233b43; --scene-sky:#142238; --scene-accent:#f0c882;
+  --town-ink:#f6f0e5; --town-muted:#bec9ce; --town-card:#1c2d3d; --town-line:#526471; --town-blue:#aacdf0;
+  background:var(--scene-sky);
+}
+.town-view[data-town-scene="storybook-day"] {
+  --scene-ground:#dce3c8; --scene-sky:#f1eee1; --scene-accent:#68815f;
+  --town-ink:#384f43; --town-muted:#627465; --town-card:#fffcf2; --town-line:#b9c4a7; --town-blue:#4b756b;
+  background:var(--scene-sky);
+}
+.town-view[data-town-scene="ai-studio"] {
+  --scene-ground:#1b3038; --scene-sky:#101820; --scene-accent:#89e1d2;
+  --town-ink:#ecf5f2; --town-muted:#a9c2c2; --town-card:#182c33; --town-line:#4c7175; --town-blue:#89e1d2;
+  background:var(--scene-sky);
+}
+:root:has(.town-view[data-town-scene="cozy-night"]) {
+  --bg:#142238; --panel:#1c2d3d; --line:#425563; --text:#f6f0e5; --muted:#bac8cd;
+  --claude:#edb28b; --codex:#a7c9ec; --run:#8ed5ac; --warn:#f0c882; --danger:#f3a2a2; --review:#c9b6ff;
+  --surface-subtle:#263b4b; --surface-hover:#314b5d; --surface-selected:#2c4756; --control-line:#78929c;
+  --surface-ok:#234237; --surface-warn:#403723; --surface-danger:#442d35; --surface-review:#37344e;
+}
+:root:has(.town-view[data-town-scene="storybook-day"]) {
+  --bg:#f1eee1; --panel:#fffcf2; --line:#d1d6bf; --text:#384f43; --muted:#657469;
+}
+:root:has(.town-view[data-town-scene="ai-studio"]) {
+  --bg:#101820; --panel:#182c33; --line:#35555c; --text:#ecf5f2; --muted:#a5bcbd;
+  --claude:#edb28b; --codex:#89e1d2; --run:#8ed5ac; --warn:#f0c882; --danger:#f3a2a2; --review:#c9b6ff;
+  --surface-subtle:#223b43; --surface-hover:#2d4b53; --surface-selected:#284c53; --control-line:#6e9fa4;
+  --surface-ok:#234237; --surface-warn:#403723; --surface-danger:#442d35; --surface-review:#37344e;
+}
+/* A light semantic ink cannot be put back on the former light pill/card fill.
+ * Theme each foreground/surface pair together, including panels beside the map. */
+:root:has(.town-view[data-town-scene="cozy-night"],.town-view[data-town-scene="ai-studio"]) { color-scheme:dark; }
+/* Keep controls and inspection cards readable in the two dark presets. */
+:root:has(.town-view[data-town-scene="cozy-night"],.town-view[data-town-scene="ai-studio"]) :is(.btn,.seg button,input,select,textarea,.card,.q-card,.cluster,table,.tabs button.on) {
+  background:var(--panel); color:var(--text); border-color:var(--line);
+}
+:root:has(.town-view[data-town-scene="cozy-night"],.town-view[data-town-scene="ai-studio"]) :is(.btn.primary,.seg button.on) {
+  background:var(--codex); color:var(--bg); border-color:var(--codex);
+}
+:root:has(.town-view[data-town-scene="cozy-night"],.town-view[data-town-scene="ai-studio"]) :is(.btn.danger,.err-text) { color:var(--danger); }
+:root:has(.town-view[data-town-scene="cozy-night"],.town-view[data-town-scene="ai-studio"]) :is(.workbench-overview,.project-shortcuts button,.overview-line button,.queue-counts>div,.review-queue,.followup-queue,.project-menu,.town-extras-menu,.live-settings) {
+  background:var(--panel); color:var(--text); border-color:var(--line);
+}
+:root:has(.town-view[data-town-scene="cozy-night"],.town-view[data-town-scene="ai-studio"]) :is(.queue-counts span,.project-shortcuts small,.empty-actions,.queue-total) { color:var(--muted); }
+:root:has(.town-view[data-town-scene="cozy-night"],.town-view[data-town-scene="ai-studio"]) :is(.queue-counts .has-actions strong,.overview-line button) { color:var(--warn); }
+:root:has(.town-view[data-town-scene="cozy-night"],.town-view[data-town-scene="ai-studio"]) .tabs { background:var(--panel); }
+.town-view:is([data-town-scene="cozy-night"],[data-town-scene="ai-studio"]) [role="tab"][aria-selected="true"] { background:var(--scene-accent); color:var(--scene-sky); }
+:root:has(.town-view[data-town-scene="cozy-night"],.town-view[data-town-scene="ai-studio"]) :is(.attribution-entry,.notice-bar .notice,.notice-more,.hub-switch button:not(.on)) { background:var(--panel); color:var(--text); border-color:var(--line); }
+:root:has(.town-view[data-town-scene="cozy-night"],.town-view[data-town-scene="ai-studio"]) :is(.attribution-entry small,.notice-bar .notice p,.notice-bar .notice small) { color:var(--muted); }
+:root:has(.town-view[data-town-scene="cozy-night"],.town-view[data-town-scene="ai-studio"]) .notice-bar .notice.is-warn { border-color:var(--warn); }
+.town-view:is([data-town-scene="cozy-night"],[data-town-scene="ai-studio"]) details>summary { background:var(--town-card); color:var(--town-ink); border-color:var(--town-line); }
+.town-view[data-town-scene]:not([data-town-scene="original"],[data-town-scene="miniature"],[data-town-scene="storybook"]) .town-diorama {
+  background:var(--scene-sky); border-color:var(--town-line); box-shadow:0 8px 26px #0002;
+}
+.town-view[data-town-scene="cozy-night"] .town-diorama {
+  background-image:radial-gradient(#d6d8bd66 1px,transparent 1px); background-size:78px 78px;
+}
+.town-view[data-town-scene="storybook-day"] .town-diorama {
+  background-image:radial-gradient(#73835a12 1px,transparent 1px); background-size:7px 7px;
+}
+.town-view[data-town-scene="ai-studio"] .town-diorama {
+  background-image:linear-gradient(#78c8c70a 1px,transparent 1px),linear-gradient(90deg,#78c8c70a 1px,transparent 1px); background-size:48px 48px;
+}
+.town-view[data-town-scene="cozy-night"] .town-svg.is-world>polygon,
+.town-view[data-town-scene="storybook-day"] .town-svg.is-world>polygon,
+.town-view[data-town-scene="ai-studio"] .town-svg.is-world>polygon { fill:var(--scene-ground); stroke:none; }
+.town-view[data-town-scene="cozy-night"] .town-story-nature { filter:brightness(.65) saturate(.6); }
+.town-view[data-town-scene="cozy-night"] .town-building { filter:drop-shadow(0 0 10px #f5c57228); }
+.town-view[data-town-scene="cozy-night"] .town-world-roads { --road-edge:#49606a; --road-surface:#b9ab7f; opacity:.7; }
+.town-view[data-town-scene="storybook-day"] .town-world-roads { --road-edge:#b6b59b; --road-surface:#e7d9b8; }
+.town-view[data-town-scene="ai-studio"] .town-world-roads { --road-edge:#428e92; --road-surface:#76d3cc; opacity:.7; }
+.town-view[data-town-scene="cozy-night"] .town-sign rect,
+.town-view[data-town-scene="ai-studio"] .town-sign rect { fill:var(--town-card); stroke:var(--town-line); }
+.town-view[data-town-scene="cozy-night"] .town-sign text,
+.town-view[data-town-scene="ai-studio"] .town-sign text { fill:var(--town-ink); stroke:none; }
+.town-view[data-town-scene="cozy-night"] .town-sign .town-sub,
+.town-view[data-town-scene="ai-studio"] .town-sign .town-sub { fill:var(--scene-accent); }
+.town-view[data-town-scene="cozy-night"] :is(.town-world-tools button,.town-legend,.town-minimap,.town-world-hint,.town-away,.town-residents-panel,.town-resident-follow),
+.town-view[data-town-scene="ai-studio"] :is(.town-world-tools button,.town-legend,.town-minimap,.town-world-hint,.town-away,.town-residents-panel,.town-resident-follow) {
+  color:var(--town-ink); background:var(--town-card); border-color:var(--town-line);
+}
+.town-view[data-town-scene="cozy-night"] :is(.town-meta,.town-scene-label>span),
+.town-view[data-town-scene="ai-studio"] :is(.town-meta,.town-scene-label>span) { color:var(--town-muted); }
+.town-view[data-town-scene="cozy-night"] .town-world-tools button.is-on,
+.town-view[data-town-scene="ai-studio"] .town-world-tools button.is-on { background:var(--scene-accent); color:var(--scene-sky); }
+.town-view[data-town-scene="storybook-day"] .town-sign rect { fill:#fffdf2f5; stroke:#748d70; }
+
+/* Shared inspection surfaces stay in the same palette as the active town. */
+:root:has(.town-view[data-town-scene="cozy-night"],.town-view[data-town-scene="ai-studio"]) :is(.attribution-summary,.attribution-batch,.preview,.empty-box,.work-signal,.task-brief,.session-brief,.managed-target,.project-manager,.pm-list,.pm-footer,.pm-select-all,.pm-scopes button,.pm-confirm,.project-picker-dialog) {
+  background:var(--panel); color:var(--text); border-color:var(--line);
+}
+:root:has(.town-view[data-town-scene="cozy-night"],.town-view[data-town-scene="ai-studio"]) :is(.attribution-summary,.project-picker-check) { color:var(--codex); }
+:root:has(.town-view[data-town-scene="cozy-night"],.town-view[data-town-scene="ai-studio"]) :is(.attribution-summary small,.pm-explanation,.pm-project small,.pm-project .pm-path,.pm-eyebrow,.brief-goal,.brief-provenance,.brief-open,.brief-no-blocker,.project-facts,.parallel-explain,.next-kind,.stage-track li,.stage-unknown .stage-caption>strong) { color:var(--muted); }
+:root:has(.town-view[data-town-scene="cozy-night"],.town-view[data-town-scene="ai-studio"]) :is(.pm-scopes button.on,.pm-project.is-selected,.pm-activity .btn.on,.project-picker-option.is-active,.project-picker-option[aria-selected="true"],.project-shortcuts button.on,.session-entry:hover,.sess-row:hover,tbody tr:hover) {
+  background:var(--surface-selected); color:var(--text); border-color:var(--control-line);
+}
+:root:has(.town-view[data-town-scene="cozy-night"],.town-view[data-town-scene="ai-studio"]) :is(.btn:hover:not(:disabled),.btn.primary:hover:not(:disabled),.project-picker-option:hover) {
+  background:var(--surface-hover); color:var(--text); border-color:var(--control-line);
+}
+:root:has(.town-view[data-town-scene="cozy-night"],.town-view[data-town-scene="ai-studio"]) :is(input,select,textarea,.btn,.project-picker-trigger) { border-color:var(--control-line); }
+:root:has(.town-view[data-town-scene="cozy-night"],.town-view[data-town-scene="ai-studio"]) :is(.pill,.pill.muted,.pill.st-done,.pill.st-abandoned,.pill.ss-ended,.pill.fr-history) { background:var(--surface-subtle); color:var(--muted); }
+:root:has(.town-view[data-town-scene="cozy-night"],.town-view[data-town-scene="ai-studio"]) :is(.pill.ok,.pill.st-in_progress,.pill.ss-running,.pill.signal-run,.lifecycle span.on,.next-owner) { background:var(--surface-ok); color:var(--run); }
+:root:has(.town-view[data-town-scene="cozy-night"],.town-view[data-town-scene="ai-studio"]) :is(.pill.warn,.pill.ss-waiting_permission,.pill.fr-stale,.pill.ss-interrupted,.pill.signal-warn,.warn-line,.warn-box,.brief-blocker,.brief-action,.session-brief .session-blocker,.session-brief .session-request,.stage-blocked,.stage-stale,.delivery-review .review-mismatch) { background:var(--surface-warn); color:var(--warn); }
+:root:has(.town-view[data-town-scene="cozy-night"],.town-view[data-town-scene="ai-studio"]) :is(.pill.danger,.pill.st-blocked,.pill.ss-error,.pill.signal-danger,.pm-confirm.is-trash) { background:var(--surface-danger); color:var(--danger); }
+:root:has(.town-view[data-town-scene="cozy-night"],.town-view[data-town-scene="ai-studio"]) :is(.pill.merge,.pill.st-review,.pill.signal-review) { background:var(--surface-review); color:var(--review); }
+:root:has(.town-view[data-town-scene="cozy-night"],.town-view[data-town-scene="ai-studio"]) :is(.agent-claude,.agent-codex,.badge,.managed-tag) { color:var(--bg); }
+:root:has(.town-view[data-town-scene="cozy-night"],.town-view[data-town-scene="ai-studio"]) :is(.pm-notice,.brief-next,.session-next>strong,.session-brief-head>strong,.stage-caption>strong,.stage-track .current) { color:var(--run); }
+:root:has(.town-view[data-town-scene="cozy-night"],.town-view[data-town-scene="ai-studio"]) :is(.pm-confirm .pm-warning,.brief-blocker small,.brief-action span) { color:var(--warn); }
+
+/* Garden controls and room lists used to inherit pale ink on hard-coded paper. */
+.town-view:is([data-town-scene="cozy-night"],[data-town-scene="ai-studio"]) :is(.town-residents-panel button,.town-resident-follow button,.town-resident-trip-controls select,.town-agent-legend,.town-agent-legend button[aria-pressed="true"],.town-feature-category,.town-room-tasks button,.town-room-relations li,.town-structure-editor input,.town-structure-editor textarea,.town-structure-editor select,.town-structure-editor button) {
+  background:var(--town-card); color:var(--town-ink); border-color:var(--control-line);
+}
+.town-view:is([data-town-scene="cozy-night"],[data-town-scene="ai-studio"]) :is(.town-residents-roster button[aria-pressed="true"],.town-house-card-group,.town-residents-panel button:hover:not(:disabled),.town-resident-follow button:hover,.town-world-ui button:hover,.town-feature-category>summary:hover,.town-feature-category[open]>summary,.town-feature-detail>summary:hover) {
+  background:var(--surface-selected); color:var(--town-ink);
+}
+.town-view:is([data-town-scene="cozy-night"],[data-town-scene="ai-studio"]) :is(.town-residents-heading span,.town-residents-intro,.town-residents-roster small,.town-resident-detail p,.town-resident-detail small,.town-resident-friends,.town-resident-journal h3,.town-resident-journal time,.town-residents-credits,.town-resident-follow small,.town-resident-trip-controls>label,.town-feature-chevron,.town-feature-category-no,.town-feature-category-count,.town-feature-category-question,.town-moment-list small,.town-moment-note,.town-projects-hint,.town-projects small,.town-projects-empty,.town-follow-settings p,.town-agent-legend small,.town-world-more-panel .town-basket-wait) { color:var(--town-muted); }
+.town-view:is([data-town-scene="cozy-night"],[data-town-scene="ai-studio"]) :is(.town-projects h3,.town-projects h3 button,.town-follow-settings legend,.town-moment-kind) { color:var(--town-ink); }
+.town-view:is([data-town-scene="cozy-night"],[data-town-scene="ai-studio"]) :is(.town-house-features-blocker,.town-house-features-status.is-warn,.town-basket-wait.is-overdue) { color:var(--danger); }

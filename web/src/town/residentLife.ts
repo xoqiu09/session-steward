@@ -1,5 +1,6 @@
 import { GARDEN_SPOTS, RESIDENT_IDS, gardenDrop, gardenRoute, homePoint, pointDistance, residentConversation, residentSpec, visitingPoint, type GardenPoint, type GardenSpot, type ResidentId } from './residents'
 import { cellOrigin, readResidentTrip, returnResidentTrip, startResidentTrip, tickResidentTrip, type ResidentTrip, type ResidentWorld } from './residentTrips'
+import { nextResidentWander, readResidentWander, returnResidentWander, tickResidentWander, wanderPause, type ResidentWander } from './residentWander'
 
 export const RESIDENT_STORAGE_KEY = 'ss.town.residents.v1'
 type Pose = 'idle' | 'pat' | 'sleep' | 'activity' | 'greet'
@@ -8,6 +9,7 @@ export interface ResidentActor extends GardenPoint {
   pose: Pose; facing: 1 | -1; nextAt: number; holdUntil: number; visits: number; pats: number
   bubble?: { text: string; from: number; until: number }
   trip?: ResidentTrip
+  wander?: ResidentWander
 }
 export interface Friendship { points: number; lastAt: number }
 export interface ResidentLife {
@@ -49,7 +51,8 @@ export function loadResidentLife(raw: string | null, now: number): ResidentLife 
       const home = a.mode === 'home', target = home ? 'home' : isSpot(a.target) ? a.target : residentSpec(id).favorite
       const route = home && pointDistance(a, homePoint(id)) > 0.05 ? gardenRoute(a, 'home', homePoint(id)) : []
       life.actors[id] = { ...life.actors[id], x: a.x, y: a.y, target, mode: home ? 'home' : 'roam', pats: count(a.pats), visits: count(a.visits),
-        pose: route.length ? 'idle' : home ? 'sleep' : 'activity', route, trip: readResidentTrip(a.trip), nextAt: now + 9000 }
+        pose: route.length ? 'idle' : home ? 'sleep' : 'activity', route, trip: readResidentTrip(a.trip), wander: readResidentWander(a.wander), nextAt: now + 4000 + RESIDENT_IDS.indexOf(id) * 1300 }
+      if (life.actors[id].trip) life.actors[id].wander = undefined
     }
     for (const [key, value] of Object.entries(saved.friendship ?? {})) {
       const ids = key.split('+'), v = value as Friendship
@@ -64,7 +67,7 @@ export function loadResidentLife(raw: string | null, now: number): ResidentLife 
 
 export function serializeResidentLife(life: ResidentLife): string {
   return JSON.stringify({ version: 1, enabled: life.enabled, quiet: life.quiet, paused: life.paused, autoVisit: life.autoVisit, visitCursor: life.visitCursor,
-    actors: Object.fromEntries(RESIDENT_IDS.map((id) => { const a = life.actors[id]; return [id, { x: a.x, y: a.y, target: a.target, mode: a.mode, visits: a.visits, pats: a.pats, trip: a.trip }] })),
+    actors: Object.fromEntries(RESIDENT_IDS.map((id) => { const a = life.actors[id]; return [id, { x: a.x, y: a.y, target: a.target, mode: a.mode, visits: a.visits, pats: a.pats, trip: a.trip, wander: a.wander }] })),
     friendship: life.friendship, journal: life.journal })
 }
 
@@ -89,8 +92,8 @@ export function tickResidentLife(before: ResidentLife, now: number, world?: Resi
         a = { ...a, ...homePoint(id), trip: undefined, route: [], pose: 'idle', nextAt: now + 15_000 }
       } else {
         let trip = { ...a.trip, projectName: destination?.name ?? a.trip.projectName }
-        if (!destination && trip.phase !== 'returning') trip = returnResidentTrip(trip, id, false)
-        const next = tickResidentTrip(trip, id, dt)
+        if (!destination && trip.phase !== 'returning') trip = returnResidentTrip(trip, id, false, world)
+        const next = tickResidentTrip(trip, id, dt, world)
         if (next.trip) {
           a.trip = next.trip; a.pose = next.trip.phase === 'inside' ? 'activity' : 'idle'
           if (next.entered) addJournal(life, `${residentSpec(id).name} 到「${trip.projectName}」屋里串门了。`)
@@ -101,6 +104,24 @@ export function tickResidentLife(before: ResidentLife, now: number, world?: Resi
         }
       }
       life.actors[id] = a; continue
+    }
+    if (a.wander && world?.roads) {
+      if (pointDistance(a.wander.origin,cellOrigin(world.home))>.1) {
+        a = {...a,...homePoint(id),wander:undefined,route:[],pose:'activity',nextAt:now+9000}
+      } else if (a.wander.path.length) {
+        const next=tickResidentWander(a.wander,dt)
+        a.wander=next.walk; a.pose='idle'; if (next.facing) a.facing=next.facing
+        if (!next.walk.path.length) {
+          if (next.walk.returnTarget) {
+            const target=next.walk.returnTarget, at={x:next.walk.x-next.walk.origin.x,y:next.walk.y-next.walk.origin.y}
+            a={...a,...at,wander:undefined,target,mode:target==='home'?'home':'roam',pose:target==='home'?'sleep':'activity',nextAt:now+15_000}
+          } else { a.pose='activity'; a.visits++; a.nextAt=now+wanderPause(next.walk.seed) }
+        }
+      } else if (a.nextAt<=now) {
+        a.wander=nextResidentWander(id,a,world,now,a.wander,RESIDENT_IDS.filter(other=>other!==id).map(other=>life.actors[other].wander?.path.at(-1)).filter((p):p is GardenPoint=>!!p))??a.wander
+        a.pose=a.wander.path.length?'idle':'activity'
+      }
+      life.actors[id]=a; continue
     }
     if (a.route.length) {
       let left = dt * 0.68
@@ -116,6 +137,8 @@ export function tickResidentLife(before: ResidentLife, now: number, world?: Resi
         if (a.mode === 'home') addJournal(life, `${residentSpec(id).name} 回小屋休息了。`)
       }
     } else if (a.mode === 'roam' && a.nextAt <= now) {
+      const wander=world?.roads?nextResidentWander(id,a,world,now):undefined
+      if (wander) { life.actors[id]={...a,wander,route:[],pose:'idle',bubble:undefined}; continue }
       const favorites: GardenSpot[] = [residentSpec(id).favorite, 'square', 'tea', 'flowers', residentSpec(id).favorite, 'market']
       const start = (a.visits + RESIDENT_IDS.indexOf(id) * 2) % favorites.length
       const target = Array.from({ length: favorites.length }, (_, i) => favorites[(start + i) % favorites.length]).find((spot) => spot !== a.target) ?? 'square'
@@ -132,7 +155,7 @@ export function tickResidentLife(before: ResidentLife, now: number, world?: Resi
       (Math.abs(a.cell.cx - world.home.cx) + Math.abs(a.cell.cy - world.home.cy)) - (Math.abs(b.cell.cx - world.home.cx) + Math.abs(b.cell.cy - world.home.cy)) || a.id.localeCompare(b.id)).slice(0, 12)
     if (eligible && destinations.length) {
       const destination = destinations[life.visitCursor % destinations.length], a = life.actors[eligible]
-      life.actors[eligible] = { ...a, route: [], pose: 'idle', bubble: undefined, trip: startResidentTrip(eligible, a, world, destination) }
+      life.actors[eligible] = { ...a, route: [], pose: 'idle', bubble: undefined, wander: undefined, trip: startResidentTrip(eligible, a, world, destination, a.wander) }
       life.visitCursor++; addJournal(life, `${residentSpec(eligible).name} 出门去「${destination.name}」串门。`)
     }
     life.nextVisitAt = now + 120_000
@@ -141,7 +164,7 @@ export function tickResidentLife(before: ResidentLife, now: number, world?: Resi
   if (!life.paused && !life.quiet && now >= life.nextChat) {
     outer: for (let i = 0; i < RESIDENT_IDS.length; i++) for (let j = i + 1; j < RESIDENT_IDS.length; j++) {
       const a = life.actors[RESIDENT_IDS[i]], b = life.actors[RESIDENT_IDS[j]], key = pairKey(a.id, b.id)
-      if (a.trip || b.trip || a.mode === 'home' || b.mode === 'home' || a.holdUntil > now || b.holdUntil > now || pointDistance(a, b) > 1.55 || now - (life.friendship[key]?.lastAt ?? -Infinity) < 180_000) continue
+      if (a.trip || b.trip || !!a.wander!==!!b.wander || a.mode === 'home' || b.mode === 'home' || a.holdUntil > now || b.holdUntil > now || pointDistance(a.wander??a, b.wander??b) > 1.55 || now - (life.friendship[key]?.lastAt ?? -Infinity) < 180_000) continue
       const lines = residentConversation(a.id, b.id)
       life.actors[a.id] = { ...a, pose: 'greet', holdUntil: now + 8500, bubble: { text: lines[0], from: now, until: now + 5200 } }
       life.actors[b.id] = { ...b, pose: 'greet', holdUntil: now + 8500, bubble: { text: lines[1], from: now + 2800, until: now + 8500 } }
@@ -174,7 +197,7 @@ export function createResidentStore(storage = browserStorage(), now = Date.now()
     visit: (id: ResidentId, projectId: string, at = Date.now()) => {
       const destination = world?.destinations.find((d) => d.id === projectId), a = life.actors[id]
       if (!life.enabled || !world || !destination || a.trip) return false
-      const next = { ...life, now: at, nextVisitAt: at + 120_000, actors: { ...life.actors, [id]: { ...a, mode: 'roam', route: [], pose: 'idle', bubble: undefined, holdUntil: 0, trip: startResidentTrip(id, a, world, destination) } } } as ResidentLife
+      const next = { ...life, now: at, nextVisitAt: at + 120_000, actors: { ...life.actors, [id]: { ...a, mode: 'roam', route: [], pose: 'idle', bubble: undefined, holdUntil: 0, wander: undefined, trip: startResidentTrip(id, a, world, destination, a.wander) } } } as ResidentLife
       addJournal(next, `${residentSpec(id).name} 出门去「${destination.name}」串门。`); publish(next, true); return true
     },
     pat: (id: ResidentId, at = Date.now()) => {
@@ -184,7 +207,13 @@ export function createResidentStore(storage = browserStorage(), now = Date.now()
     go: (id: ResidentId, home: boolean, at = Date.now()) => {
       if (life.actors[id].trip) {
         const a = life.actors[id]
-        publish({ ...life, now: at, actors: { ...life.actors, [id]: { ...a, pose: 'idle', bubble: undefined, holdUntil: 0, trip: returnResidentTrip(a.trip!, id, home) } } }, true)
+        publish({ ...life, now: at, actors: { ...life.actors, [id]: { ...a, pose: 'idle', bubble: undefined, holdUntil: 0, trip: returnResidentTrip(a.trip!, id, home, world) } } }, true)
+        return
+      }
+      if (life.actors[id].wander && world?.roads) {
+        const actor=life.actors[id]
+        const wander=home?returnResidentWander(actor.wander!,id,world):nextResidentWander(id,actor,world,at,actor.wander)
+        publish({...life,now:at,actors:{...life.actors,[id]:{...actor,wander,pose:'idle',bubble:undefined,holdUntil:0,nextAt:at}}},true)
         return
       }
       const a = travel(life.actors[id], home ? 'home' : residentSpec(id).favorite, at, home ? 'home' : 'roam')
@@ -194,13 +223,14 @@ export function createResidentStore(storage = browserStorage(), now = Date.now()
     gather: (at = Date.now()) => {
       const actors = { ...life.actors }
       RESIDENT_IDS.forEach((id, i) => {
-        if (actors[id].trip) { actors[id] = { ...actors[id], trip: { ...returnResidentTrip(actors[id].trip!, id, false), returnTarget: 'tea' } }; return }
+        if (actors[id].trip) { actors[id] = { ...actors[id], trip: { ...returnResidentTrip(actors[id].trip!, id, false, world), returnTarget: 'tea' } }; return }
+        if (actors[id].wander && world?.roads) { actors[id]={...actors[id],wander:returnResidentWander(actors[id].wander!,id,world,'tea'),holdUntil:0,bubble:undefined}; return }
         const angle = i / 7 * Math.PI * 2; actors[id] = travel(actors[id], 'tea', at, 'roam', { x: 2.4 + Math.cos(angle) * 1.9, y: 6.4 + Math.sin(angle) * 1.65 })
       })
       const next = { ...life, now: at, actors, nextChat: at + 3000 }; addJournal(next, '你叫大家来树下喝下午茶。'); publish(next, true)
     },
     drop: (id: ResidentId, point: GardenPoint, at = Date.now()) => {
-      if (life.actors[id].trip) return
+      if (life.actors[id].trip || life.actors[id].wander) return
       const p = gardenDrop(point), a = { ...life.actors[id], ...p, route: [], mode: 'roam' as const, pose: 'idle' as const, bubble: undefined, holdUntil: 0, nextAt: at + 20_000 }
       publish({ ...life, now: at, actors: { ...life.actors, [id]: a } }, true)
     },
@@ -210,6 +240,7 @@ export type ResidentStore = ReturnType<typeof createResidentStore>
 export function residentStatus(actor: ResidentActor): string {
   if (actor.pose === 'pat') return '被摸头，心情很好'
   if (actor.trip) return actor.trip.phase === 'inside' ? `在「${actor.trip.projectName}」屋里串门` : actor.trip.phase === 'returning' ? `从「${actor.trip.projectName}」回家` : `去「${actor.trip.projectName}」串门`
+  if (actor.wander) return actor.wander.returnTarget ? actor.wander.returnTarget==='home'?'沿小路回家':'沿小路去喝茶' : actor.wander.path.length?'在小镇随意散步':'在路边歇一会儿'
   if (actor.route.length) return actor.mode === 'home' ? '正在回家' : `走去${GARDEN_SPOTS[actor.target].name}`
   if (actor.mode === 'home') return '在小屋休息'
   return actor.target === residentSpec(actor.id).favorite ? residentSpec(actor.id).activity : `在${GARDEN_SPOTS[actor.target].name}坐坐`

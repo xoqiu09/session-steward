@@ -9,6 +9,7 @@ import { parseTownRoute } from '../town/route'
 import { demoSnapshot, fakeItem, fakeRun, fakeSession } from '../town/fixtures'
 import type { LiveNote } from '../api'
 import type { Snapshot } from '../types'
+import { LIVE_STYLES, liveStyle, requestedLiveStyle } from './styles'
 
 // 未脱敏的合成快照：故意带上项目路径、会话标题、分支、工具预览等文字，验证展示视图自己的第二道防线。
 const raw: Snapshot = {
@@ -35,6 +36,21 @@ describe('直播展示视图', () => {
   })
   afterEach(() => { vi.unstubAllGlobals() })
 
+  it('三种风格都保持只读、脱敏和无浏览器存储；只允许已知预览值', () => {
+    for (const style of LIVE_STYLES) {
+      const html = screen(raw, note({ style: style.id }))
+      expect(html).toContain(`data-live-style="${style.id}"`)
+      expect(html).toContain(`data-town-theme="${style.art}"`)
+      for (const secret of SECRETS) expect(html).not.toContain(secret)
+      for (const tag of ['<button', '<a ', '<input', '<select', 'tabindex']) expect(html).not.toContain(tag)
+      expect(requestedLiveStyle(`?live-style=${style.id}`)).toBe(style.id)
+    }
+    for (const bad of ['unknown', '<script>', '__proto__', undefined]) expect(liveStyle(bad)).toBe('cozy-night')
+    expect(requestedLiveStyle('?live-style=unknown')).toBeNull()
+    expect(storage.getItem).not.toHaveBeenCalled()
+    expect(storage.setItem).not.toHaveBeenCalled()
+  })
+
   it('即使传进未脱敏的快照，页面也不出现项目名、路径、会话标题和工作项标题', () => {
     for (const layout of ['portrait', 'landscape'] as const) {
       const html = screen(raw, note({ doing: '写合成测试' }), layout)
@@ -48,7 +64,9 @@ describe('直播展示视图', () => {
     const html = screen(raw, note({ doing: '合成', thinking: '合成', contact: '合成' }), 'portrait',
       { key: 'k', kind: 'started', repoId: 1, text: `项目 A · ${LIVE_PHRASES.started}` })
     for (const tag of ['<button', '<a ', '<input', '<select', '<textarea', '<dialog', '<details', '<summary']) expect(html).not.toContain(tag)
-    for (const attr of ['role="button"', 'role="dialog"', 'tabindex', 'aria-modal', 'href=']) expect(html).not.toContain(attr)
+    for (const attr of ['role="button"', 'role="dialog"', 'tabindex', 'aria-modal']) expect(html).not.toContain(attr)
+    // Illustrated scenery loads local sprite sheets with SVG image href, not links.
+    expect(html).not.toMatch(/<a\b[^>]*href=/)
     expect(html).not.toContain('等你决定')
     expect(html).toContain('建筑 = 项目')
     expect(html).toContain('小人 = 一位 AI 助手')

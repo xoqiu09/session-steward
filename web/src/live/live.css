@@ -1,51 +1,52 @@
-/* 直播展示：竖屏优先（1080×1920），横屏（1920×1080）也能用。所有选择器挂在 .live-view 下。 */
-.live-view {
-  --live-ink: #3a2a1c; --live-muted: #6b5a44; --live-card: #fffaf0f2; --live-line: #e2d5bd; --live-ground: #d7e2bf;
-  position: fixed; inset: 0; overflow: hidden; background: var(--live-ground); color: var(--live-ink);
-  font-family: -apple-system, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
-  pointer-events: none; user-select: none; cursor: default;
-}
-.live-view .live-card { background: var(--live-card); border: 2px solid var(--live-line); border-radius: 18px; box-shadow: 0 6px 22px #5a432a1f; margin: 0; }
-.live-view .live-line { margin: 0; line-height: 1.35; overflow-wrap: anywhere; }
-.live-view .live-line + .live-line { margin-top: .35em; }
-.live-view .live-line b { color: var(--live-muted); font-weight: 700; }
-.live-view .live-line.is-default { color: var(--live-muted); }
-.live-view .live-count { margin: 0; color: var(--live-muted); line-height: 1.35; }
-.live-view .live-stale { position: absolute; margin: 0; padding: .2em .7em; border-radius: 999px; background: #fffaf0d9; color: #8a7a63; border: 1px solid var(--live-line); }
-.live-view .live-town { position: absolute; }
-.live-view .live-stage { position: absolute; inset: 0; }
-.live-view .live-stage-scene { position: absolute; inset: 0; pointer-events: none; }
-.live-view .live-stage-scene .town-svg.is-world { position: absolute; inset: 0; width: 100%; height: 100%; }
-.live-view .live-loading { position: absolute; inset: 0; display: grid; place-items: center; margin: 0; color: var(--live-muted); }
-.live-view .live-legend { position: absolute; left: 0; right: 0; display: flex; flex-wrap: wrap; justify-content: center; gap: .3em 1.2em; margin: 0; padding: 0; list-style: none; color: var(--live-muted); }
-.live-view .live-legend li { display: flex; align-items: center; gap: .4em; }
-.live-view .live-legend i { width: .8em; height: .8em; border-radius: 3px; display: inline-block; }
-.live-view .live-legend .lg-building { background: #c8674a; }
-.live-view .live-legend .lg-char { background: #334055; border-radius: 50%; }
-.live-view .live-legend .lg-parcel { background: #d6b27a; }
-.live-view .live-bubble {
-  position: absolute; transform: translate(-50%, -100%); max-width: 80%; padding: .45em .9em; border-radius: 16px;
-  background: #fffaf0; border: 2px solid #e3a23d; color: var(--live-ink); font-weight: 700; white-space: nowrap; box-shadow: 0 6px 18px #5a432a2e;
-  animation: live-bubble-in .5s ease-out both;
-}
-.live-view .live-bubble::after { content: ""; position: absolute; left: 50%; bottom: -10px; transform: translateX(-50%); border: 8px solid transparent; border-top-color: #e3a23d; border-bottom: 0; }
-.live-view .live-bubble.is-top { left: 50%; top: 4%; transform: translate(-50%, 0); }
-.live-view .live-bubble.is-top::after { display: none; }
-@keyframes live-bubble-in { from { opacity: 0; translate: 0 8px; } to { opacity: 1; translate: 0 0; } }
-@media (prefers-reduced-motion: reduce) { .live-view .live-bubble { animation: none; } }
+/* Only the read-only broadcast view uses these styles. */
+.live-view{--live-ground:#121f30;--live-ink:#faf4e7;--live-muted:#c2c8cc;--live-line:#ffffff20;--live-card:#1b2d3bc9;--live-accent:#f0c882;--live-earth:#233b43;--live-light:#f8bd69;position:fixed;inset:0;overflow:hidden;box-sizing:border-box;background:var(--live-ground);color:var(--live-ink);font-family:-apple-system,"SF Pro Text","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;pointer-events:none;user-select:none;cursor:default;isolation:isolate}
+.live-view[data-live-style="storybook-day"]{--live-ground:#f1eee1;--live-ink:#384f43;--live-muted:#657469;--live-line:#d1d6bf;--live-card:#fffcf4d9;--live-accent:#6e8663;--live-earth:#dce3c8;--live-light:#f4dc9e}
+.live-view[data-live-style="ai-studio"]{--live-ground:#101820;--live-ink:#ecf5f2;--live-muted:#a5bcbd;--live-line:#81c8c62e;--live-card:#182c33e6;--live-accent:#89e1d2;--live-earth:#1b3038;--live-light:#75e6d1}
+.live-view .live-atmosphere{position:absolute;inset:0;z-index:-1;overflow:hidden}
+.live-view .live-atmosphere i{position:absolute;width:3px;height:3px;border-radius:50%;background:var(--live-accent);opacity:.34}
+.live-view .live-atmosphere i:nth-child(1){left:12%;top:6%;box-shadow:21vw 14vh #c5dce3,73vw 62vh #c5dce3}
+.live-view .live-atmosphere i:nth-child(2){left:82%;top:8%;box-shadow:-8vw 64vh #c5dce3,-64vw 41vh #c5dce3}
+.live-view .live-atmosphere i:nth-child(3){left:24%;top:82%;box-shadow:42vw 11vh #c5dce3,53vw -26vh #c5dce3}
+.live-view .live-atmosphere i:nth-child(4){right:9%;top:21%;width:44px;height:44px;background:transparent;box-shadow:inset -9px -4px var(--live-accent);transform:rotate(-15deg);opacity:.7}
+.live-view[data-live-style="storybook-day"] .live-atmosphere{background-image:radial-gradient(#73835a12 1px,transparent 1px);background-size:7px 7px}
+.live-view[data-live-style="storybook-day"] .live-atmosphere i,.live-view[data-live-style="ai-studio"] .live-atmosphere i{display:none}
+.live-view[data-live-style="ai-studio"] .live-atmosphere{background-image:linear-gradient(#78c8c707 1px,transparent 1px),linear-gradient(90deg,#78c8c707 1px,transparent 1px);background-size:56px 56px}
+.live-view .live-heading{display:flex;align-items:center;justify-content:space-between;gap:24px}
+.live-view .live-heading-title{min-width:0}
+.live-view .live-eyebrow{display:flex;align-items:center;gap:.65em;margin:0 0 .8em;color:var(--live-muted);font-size:.29em;font-weight:600;letter-spacing:.18em;white-space:nowrap}
+.live-view .live-eyebrow i{flex:none;width:6px;height:6px;border-radius:50%;background:var(--live-accent);box-shadow:0 0 12px #f8c77a55}
+.live-view h1{margin:0;font-size:1em;font-weight:650;line-height:1.25;letter-spacing:.025em}
+.live-view[data-live-style="storybook-day"] h1{font-family:"Songti SC","STSong",serif;font-weight:700;letter-spacing:.1em}
+.live-view[data-live-style="ai-studio"] h1{font-weight:600;letter-spacing:.14em}
+.live-view .live-presence{display:flex;align-items:center;gap:.22em;padding-left:.35em;border-left:1px solid var(--live-line)}
+.live-view .live-presence strong{color:var(--live-accent);font-size:1.1em;font-weight:450;line-height:1;letter-spacing:-.07em;font-variant-numeric:tabular-nums}
+.live-view .live-presence span{font-size:.23em;line-height:1.65;white-space:nowrap;color:var(--live-muted)}
+.live-view .live-card{margin:0;border:1px solid var(--live-line);border-radius:12px;padding:.7em 1em;background:var(--live-card)}
+.live-view .live-line{margin:0;line-height:1.65;overflow-wrap:anywhere;text-wrap:pretty}.live-view .live-line+.live-line{margin-top:.3em}.live-view .live-line b{color:var(--live-muted);font-weight:500}.live-view .live-line.is-default{color:var(--live-muted)}
+.live-view .live-count{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+.live-view .live-stale{position:absolute;z-index:5;margin:0;padding:.3em .8em;border-radius:99px;color:var(--live-muted);background:var(--live-card);border:1px solid var(--live-line)}
+.live-view .live-town{position:relative;min-height:0}.live-view .live-stage{position:absolute;inset:0}
+.live-view .live-stage-scene{position:absolute;inset:0;pointer-events:none;mask-image:linear-gradient(transparent,#000 8%,#000 90%,transparent)}
+.live-view .live-stage-scene .town-svg.is-world{position:absolute;inset:0;width:100%;height:100%}
+.live-view .town-svg.is-world>polygon{fill:var(--live-earth);stroke:none}.live-view .town-svg.is-world>path{opacity:.08}
+.live-view .town-world-roads{--road-edge:#49606a;--road-surface:#77826e;opacity:.42}.live-view .town-world-roads .town-road-edge{stroke-width:24}.live-view .town-world-roads .town-road-surface{stroke-width:17}
+.live-view .town-sign rect{fill:#182a38ed;stroke:#c9d4cc;stroke-width:.7}.live-view .town-sign text{fill:var(--live-ink);stroke:none}.live-view .town-sign .town-sub{fill:var(--live-accent)}.live-view .town-sign line{stroke:var(--live-muted);opacity:.3}
+.live-view .town-char{filter:drop-shadow(0 3px 4px #0b152b66)}.live-view .town-tag rect{fill:#19313be8;stroke:#829da7}.live-view .town-tag text{fill:#eff5ef}.live-view .town-story-house-hit{fill:transparent}
+.live-view[data-live-style="cozy-night"] .town-story-prop{filter:saturate(.75) brightness(.92)}.live-view[data-live-style="cozy-night"] .town-story-nature{filter:brightness(.6) saturate(.6)}.live-view[data-live-style="cozy-night"] .town-building[data-live-working="true"]{filter:drop-shadow(0 0 12px #f5c57255)}
+.live-view[data-live-style="storybook-day"] .town-world-roads{--road-edge:#b6b59b;--road-surface:#e7d9b8;opacity:.75}.live-view[data-live-style="storybook-day"] .town-sign rect{fill:#fffdf2f5;stroke:#748d70}.live-view[data-live-style="storybook-day"] .town-tag rect{fill:#fffdf2f5;stroke:#93a386}.live-view[data-live-style="storybook-day"] .town-tag text{fill:#384f43}
+.live-view[data-live-style="ai-studio"] .live-stage-scene{filter:saturate(.45)}.live-view[data-live-style="ai-studio"] .town-world-roads{--road-edge:#428e92;--road-surface:#76d3cc;opacity:.45}.live-view[data-live-style="ai-studio"] .town-sign rect{fill:#13282fec;stroke:#83d6cb;rx:3}.live-view[data-live-style="ai-studio"] .town-building[data-live-working="true"]{filter:drop-shadow(0 0 12px #75e6d14d)}
+.live-view .live-lights{position:absolute;inset:0;overflow:hidden;pointer-events:none}.live-view .live-lights i{position:absolute;width:22%;aspect-ratio:1.8;transform:translate(-50%,-50%);background:radial-gradient(ellipse,var(--live-light),transparent 69%);opacity:.18;mix-blend-mode:screen}.live-view[data-live-style="storybook-day"] .live-lights{opacity:.25}
+.live-view .live-loading{position:absolute;inset:0;display:grid;place-items:center;margin:0;color:var(--live-muted);font-size:24px}
+.live-view .live-legend{position:absolute;left:0;right:0;display:flex;flex-wrap:wrap;justify-content:center;gap:.5em 1.5em;margin:0;padding:0;list-style:none;color:var(--live-muted)}.live-view .live-legend li{display:flex;align-items:center;gap:.5em}.live-view .live-legend i{width:.6em;height:.6em;border-radius:2px;display:block;background:var(--live-accent);opacity:.7}.live-view .live-legend .lg-char{border-radius:50%;background:var(--live-muted)}.live-view .live-legend .live-more{flex-basis:100%;justify-content:center;opacity:.8}
+.live-view .live-bubble{position:absolute;z-index:5;transform:translate(-50%,-100%);width:max-content;box-sizing:border-box;max-width:85%;padding:.65em 1em;border-radius:12px;background:var(--live-ink);color:var(--live-ground);border:1px solid var(--live-accent);box-shadow:0 8px 30px #0003;font-weight:600;font-size:clamp(14px,2.8vw,32px);line-height:1.6;white-space:normal;overflow-wrap:anywhere;animation:live-bubble-in .35s ease-out both}
+.live-view .live-bubble::after{content:"";position:absolute;left:50%;bottom:-8px;transform:translateX(-50%);border:8px solid transparent;border-top-color:var(--live-ink);border-bottom:0}
+@keyframes live-bubble-in{from{opacity:0;translate:0 6px}to{opacity:1;translate:0 0}}
+.live-view.is-portrait{display:flex;flex-direction:column;padding:5.5vh 7vw 30vh;gap:2.5vh}
+.live-view.is-portrait .live-heading{flex:none;font-size:clamp(30px,7.4vw,86px)}.live-view.is-portrait .live-card{flex:none;font-size:clamp(14px,2.7vw,31px)}.live-view.is-portrait .live-town{flex:1;min-height:22vh;margin:0 -7vw 2.2em}.live-view.is-portrait .live-legend{bottom:-3.1em;font-size:clamp(11px,2vw,23px);line-height:1.6}.live-view.is-portrait .live-stale{right:7vw;top:2vh;font-size:clamp(11px,1.5vw,18px)}
+.live-view.is-landscape .live-heading{position:absolute;z-index:3;left:5vw;top:5vh;width:36vw;font-size:clamp(30px,4.2vw,84px)}.live-view.is-landscape .live-card{position:absolute;z-index:3;left:5vw;top:23vh;max-width:30vw;font-size:clamp(14px,1.35vw,27px)}.live-view.is-landscape .live-town{position:absolute;inset:0 0 0 32%}.live-view.is-landscape .live-legend{right:4vw;bottom:5vh;left:4vw;font-size:clamp(12px,1.1vw,22px);line-height:1.6}.live-view.is-landscape .live-legend .live-more{flex-basis:auto}.live-view.is-landscape .live-stale{right:4vw;top:4vh;font-size:16px}.live-view.is-landscape .live-bubble{font-size:clamp(14px,1.25vw,25px)}
+@media(max-width:500px){.live-view .live-heading{gap:12px}.live-view.is-portrait .live-eyebrow{font-size:9px}.live-view.is-portrait .live-card{border-radius:8px}}
+@media(prefers-reduced-motion:reduce){.live-view .live-bubble{animation:none}}
 
-/* 竖屏：顶部约 8% 留空；底部约 30% 会被评论区盖住，只放地面，不放信息。中间按内容排：说明卡、数量说明、地图。 */
-.live-view.is-portrait { font-size: clamp(16px, 3.6vw, 44px); display: flex; flex-direction: column; gap: .6em; padding: 8vh 5vw 30vh; box-sizing: border-box; }
-.live-view.is-portrait .live-card { flex: none; padding: .7em .9em; font-size: 1.12em; }
-.live-view.is-portrait .live-count { flex: none; font-size: .78em; text-align: center; }
-.live-view.is-portrait .live-town { position: relative; flex: 1 1 auto; min-height: 20vh; margin: 0 -5vw 1.8em; }
-.live-view.is-portrait .live-legend { bottom: -1.9em; font-size: .62em; }
-.live-view.is-portrait .live-stale { right: 5vw; top: 3vh; font-size: .6em; }
-
-/* 横屏：地图铺满，说明卡放左上角。 */
-.live-view.is-landscape { font-size: clamp(14px, 1.6vw, 34px); }
-.live-view.is-landscape .live-town { inset: 0; }
-.live-view.is-landscape .live-card { position: absolute; z-index: 2; top: 4vh; left: 3vw; max-width: 38vw; padding: .7em 1em; font-size: 1.15em; }
-.live-view.is-landscape .live-count { position: absolute; z-index: 2; left: 3vw; bottom: 4vh; max-width: 60vw; padding: .3em .8em; border-radius: 12px; background: var(--live-card); font-size: .8em; }
-.live-view.is-landscape .live-legend { right: 3vw; left: auto; bottom: 4vh; padding: .3em .8em; border-radius: 12px; background: var(--live-card); font-size: .7em; z-index: 2; }
-.live-view.is-landscape .live-stale { right: 3vw; top: 4vh; font-size: .7em; z-index: 2; }
+/* In wide video the title, note and live count form a calm left column. */
+.live-view.is-landscape .live-heading{width:26vw}
+.live-view.is-landscape .live-presence{position:fixed;left:5vw;top:46vh;border-left:0;padding-left:0;gap:.3em}

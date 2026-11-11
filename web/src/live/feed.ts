@@ -3,6 +3,7 @@
 import type { LiveNote } from '../api'
 import type { Snapshot } from '../types'
 import { liveScrub, type LiveSnapshot } from './scrub'
+import { liveStyle } from './styles'
 
 export const SNAPSHOT_MS = 5_000
 export const NOTE_MS = 10_000
@@ -67,7 +68,7 @@ export function createLiveFeed(opts: {
   const pullNote = async () => {
     try {
       const n = await fetchNote()
-      if (!stopped) publish({ note: { doing: str(n?.doing), thinking: str(n?.thinking), contact: str(n?.contact), updated_at: str(n?.updated_at) } })
+      if (!stopped) publish({ note: { doing: str(n?.doing), thinking: str(n?.thinking), contact: str(n?.contact), style: liveStyle(n?.style), updated_at: str(n?.updated_at) } })
     } catch { /* 说明失败时保留上一份；画面状态只看快照 */ } finally { later('note', () => void pullNote(), NOTE_MS) }
   }
   return {
