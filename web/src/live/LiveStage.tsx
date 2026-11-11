@@ -1,6 +1,6 @@
 // 展示用的小镇舞台：复用世界地图的画法（WorldScene），但房子按展示布局紧凑重排（见 layout.ts），
 // 镜头固定框住这些房子和名牌；不巡游、不跟随、不响应指针；排布顺序只放在内存里，不读写浏览器存储。
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { Snapshot } from '../types'
 import type { BuildingView, TownModel } from '../town/townModel'
 import { WorldScene } from '../town/WorldScene'
@@ -45,7 +45,7 @@ export function liveBuildings(model: TownModel, snap: Snapshot): BuildingView[] 
     : list.slice().sort((a, b) => (pos.get(a.repo!.id) ?? 1e9) - (pos.get(b.repo!.id) ?? 1e9) || a.repo!.id - b.repo!.id).slice(0, LIVE_MAX)
 }
 
-export function LiveStage({ model, snap, bubble, initialAspect = 1.2, reserve = NO_RESERVE }: { model: TownModel; snap: Snapshot; bubble: LiveEvent | null; initialAspect?: number; reserve?: LiveReserve }) {
+export const LiveStage = memo(function LiveStage({ model, snap, bubble, initialAspect = 1.2, reserve = NO_RESERVE }: { model: TownModel; snap: Snapshot; bubble: LiveEvent | null; initialAspect?: number; reserve?: LiveReserve }) {
   // 排布顺序只记在这一页的内存里：同一批项目刷新后位置不变，有项目进出时其他房子尽量不动。
   const order = useRef<string[]>([])
   const box = useRef<HTMLDivElement>(null)
@@ -106,4 +106,4 @@ export function LiveStage({ model, snap, bubble, initialAspect = 1.2, reserve = 
       )}
     </div>
   )
-}
+})

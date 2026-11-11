@@ -153,4 +153,3 @@ export function roadRoute(graph:RoadGraph, from:GardenPoint, to:GardenPoint):Gar
   while (previous.has(path[0])) path.unshift(previous.get(path[0])!)
   return unique([from,start.at,...path.map(n=>graph.nodes[n]),end.at,to])
 }
-

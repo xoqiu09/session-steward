@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"crypto/hmac"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -26,32 +27,74 @@ import (
 const LiveNoteMax = 80
 
 const liveNoteKey = "live:note"
+const liveCompanionKey = "live:companion"
+
+// LiveCompanionAction is an owner-triggered visual gesture, never an Agent command.
+type LiveCompanionAction struct {
+	ID   string `json:"id"`
+	Kind string `json:"kind"`
+	At   string `json:"at"`
+}
 
 // LiveNote 是展示画面上方的说明卡，由用户在本机面板填写。
 type LiveNote struct {
-	Doing     string `json:"doing"`
-	Thinking  string `json:"thinking"`
-	Contact   string `json:"contact"`
-	Style     string `json:"style,omitempty"`
-	UpdatedAt string `json:"updated_at"`
+	Doing        string               `json:"doing"`
+	Thinking     string               `json:"thinking"`
+	Contact      string               `json:"contact"`
+	Style        string               `json:"style,omitempty"`
+	Presentation string               `json:"presentation,omitempty"`
+	Companion    *LiveCompanionAction `json:"companion,omitempty"`
+	UpdatedAt    string               `json:"updated_at"`
 }
 
 // LiveNote 读取展示说明；没有设置过时返回空值。
 func (c *Core) LiveNote(ctx context.Context) (LiveNote, error) {
 	var n LiveNote
 	raw, err := c.St.Meta(ctx, liveNoteKey)
-	if err != nil || raw == "" {
+	if err != nil {
 		return n, err
 	}
-	if json.Unmarshal([]byte(raw), &n) != nil {
-		return LiveNote{}, nil
+	if raw != "" && json.Unmarshal([]byte(raw), &n) != nil {
+		n = LiveNote{}
+	}
+	// Gestures live under a separate key: saving a note cannot replay/overwrite one.
+	n.Companion = nil
+	action, err := c.St.Meta(ctx, liveCompanionKey)
+	if err != nil {
+		return n, err
+	}
+	var a LiveCompanionAction
+	if json.Unmarshal([]byte(action), &a) == nil && oneOf(a.Kind, "pat", "walk", "home") != "" && len(a.ID) == 32 && liveTime(a.At) != "" {
+		if _, err := hex.DecodeString(a.ID); err == nil {
+			n.Companion = &a
+		}
 	}
 	return n, nil
+}
+
+func (c *Core) SetLiveCompanion(ctx context.Context, kind string) (LiveCompanionAction, error) {
+	if oneOf(kind, "pat", "walk", "home") == "" {
+		return LiveCompanionAction{}, fmt.Errorf("%w: 请选择摸摸、散步或回家", ErrBadRequest)
+	}
+	var id [16]byte
+	if _, err := rand.Read(id[:]); err != nil {
+		return LiveCompanionAction{}, err
+	}
+	a := LiveCompanionAction{ID: hex.EncodeToString(id[:]), Kind: kind, At: c.St.NowTS()}
+	b, _ := json.Marshal(a)
+	err := c.St.SetMeta(ctx, liveCompanionKey, string(b))
+	return a, err
 }
 
 // SetLiveNote 校验并保存展示说明。只写 meta 的一个键，不碰项目和工作项。
 func (c *Core) SetLiveNote(ctx context.Context, in LiveNote) (LiveNote, error) {
 	out := LiveNote{}
+	switch in.Presentation {
+	case "", "companion", "town":
+		out.Presentation = in.Presentation
+	default:
+		return LiveNote{}, fmt.Errorf("%w: 请选择已有的展示布局", ErrBadRequest)
+	}
 	switch in.Style {
 	case "", "cozy-night", "storybook-day", "ai-studio":
 		out.Style = in.Style

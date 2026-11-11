@@ -25,7 +25,7 @@ const SECRETS = [
 ]
 const note = (p: Partial<LiveNote> = {}): LiveNote => ({ doing: '', thinking: '', contact: '', updated_at: '', ...p })
 const screen = (snap: LiveSnapshot | null, n: LiveNote | null = null, layout: 'portrait' | 'landscape' = 'portrait', bubble: LiveEvent | null = null) =>
-  renderToStaticMarkup(<LiveScreen snap={snap} note={n} stale={false} bubble={bubble} layout={layout} />)
+  renderToStaticMarkup(<LiveScreen snap={snap} note={{ doing: '', thinking: '', contact: '', updated_at: '', ...n, presentation: 'town' }} stale={false} bubble={bubble} layout={layout} />)
 const text = (html: string) => html.replace(/<[^>]*>/g, ' ')
 
 describe('直播展示视图', () => {
@@ -262,7 +262,7 @@ describe('展示数据轮询', () => {
   }
   const flush = async () => { for (let i = 0; i < 5; i++) await Promise.resolve() }
 
-  it('快照 5 秒、说明 10 秒；失败时保留上一份画面并标记状态待更新；首次不算变化', async () => {
+  it('快照 5 秒、说明 2 秒；失败时保留上一份画面并标记状态待更新；首次不算变化', async () => {
     const t = manual()
     const snaps: (() => Promise<Snapshot>)[] = [async () => raw, async () => { throw new Error('offline') }, async () => ({ ...raw, cursor: 50 })]
     let i = 0
@@ -273,7 +273,7 @@ describe('展示数据轮询', () => {
     const feed = createLiveFeed({ fetchSnapshot, fetchNote, timers: t.timers, onState: (s) => states.push(s), onSnapshot: (p, n) => changes.push([p, n]) })
     feed.start()
     await flush()
-    expect(t.queue.map((x) => x.ms).sort((a, b) => a - b)).toEqual([5000, 10000])
+    expect(t.queue.map((x) => x.ms).sort((a, b) => a - b)).toEqual([2000, 5000])
     expect(feed.state.snap?.repos?.[0].name).toBe('项目 A')
     expect(JSON.stringify(feed.state.snap)).not.toContain('pixel-ledger')
     expect(feed.state.note?.doing).toBe('合成')

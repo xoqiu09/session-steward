@@ -12,6 +12,8 @@ import { createLiveFeed, type LiveFeedState } from './feed'
 import { diffLiveEvents, emptyBubbles, nextBubbleAt, pushBubbles, stepBubbles, type BubbleState, type LiveEvent } from './events'
 import { liveScrub, type LiveSnapshot } from './scrub'
 import { liveStyle, liveStyleArt, requestedLiveStyle } from './styles'
+import { livePresentation, requestedPresentation } from './companion'
+import { CompanionScene } from './CompanionScene'
 import './live.css'
 
 /** 三项说明都为空时显示的默认说明。 */
@@ -43,7 +45,7 @@ export function moreLine(more: number): string {
 const LANDSCAPE_RESERVE = { top: 0.2, bottom: 0.1 }
 
 /** 纯展示：给定数据画一帧。会再脱敏一次快照，不渲染任何可交互元素。 */
-export function LiveScreen({ snap, note, stale, bubble, layout }: { snap: LiveSnapshot | null; note: LiveNote | null; stale: boolean; bubble: LiveEvent | null; layout: LiveLayout }) {
+export function LiveScreen({ snap, note, stale, bubble, recent = null, layout }: { snap: LiveSnapshot | null; note: LiveNote | null; stale: boolean; bubble: LiveEvent | null; recent?: LiveEvent | null; layout: LiveLayout }) {
   setSceneStill(true)
   const safe = useMemo(() => (snap ? liveScrub(snap) : null), [snap])
   const model = useMemo(() => (safe ? buildTown(townSlice(hideInactive(safe, 'all').snap, 'all', 'all'), safe.now) : null), [safe])
@@ -52,6 +54,9 @@ export function LiveScreen({ snap, note, stale, bubble, layout }: { snap: LiveSn
   const style = requestedLiveStyle(search) ?? liveStyle(note?.style)
   const theme = sceneArt(requestedTheme(search) ?? liveStyleArt(style))
   const working = model?.counts.working ?? 0
+  if ((requestedPresentation(search) ?? livePresentation(note?.presentation)) === 'companion') return <TownArtProvider theme={theme}>
+    <CompanionScene snap={safe} model={model} note={note} stale={stale} bubble={bubble} recent={recent} layout={layout} style={style} theme={theme} />
+  </TownArtProvider>
   return (
     <TownArtProvider theme={theme}>
       <div className={`live-view is-${layout}`} data-town-theme={theme} data-live-style={style} lang="zh-CN">
@@ -96,12 +101,13 @@ function useLayout(): LiveLayout {
 export function useLiveView() {
   const [feed, setFeed] = useState<LiveFeedState>({ snap: null, note: null, stale: false })
   const [bubbles, setBubbles] = useState<BubbleState>(emptyBubbles)
+  const [recent, setRecent] = useState<LiveEvent | null>(null)
   useEffect(() => {
     const f = createLiveFeed({
       onState: setFeed,
       onSnapshot: (prev, next) => {
         const events = diffLiveEvents(prev, next)
-        if (events.length) setBubbles((b) => pushBubbles(b, events, Date.now()))
+        if (events.length) { setBubbles((b) => pushBubbles(b, events, Date.now())); setRecent(events[0]) }
       },
     })
     f.start()
@@ -113,13 +119,18 @@ export function useLiveView() {
     const t = window.setTimeout(() => setBubbles((b) => stepBubbles(b, Date.now())), Math.max(0, due - Date.now()) + 20)
     return () => window.clearTimeout(t)
   }, [due])
-  return { ...feed, bubble: bubbles.shown }
+  useEffect(() => {
+    if (!recent) return
+    const t = window.setTimeout(() => setRecent(null), 60_000)
+    return () => window.clearTimeout(t)
+  }, [recent?.key])
+  return { ...feed, bubble: bubbles.shown, recent }
 }
 
 export function LiveView() {
   setSceneStill(true)
-  const { snap, note, stale, bubble } = useLiveView()
+  const { snap, note, stale, bubble, recent } = useLiveView()
   const layout = useLayout()
   useEffect(() => { document.title = '工作小镇 · 直播' }, [])
-  return <LiveScreen snap={snap} note={note} stale={stale} bubble={bubble} layout={layout} />
+  return <LiveScreen snap={snap} note={note} stale={stale} bubble={bubble} recent={recent} layout={layout} />
 }

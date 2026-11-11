@@ -4,9 +4,10 @@ import type { LiveNote } from '../api'
 import type { Snapshot } from '../types'
 import { liveScrub, type LiveSnapshot } from './scrub'
 import { liveStyle } from './styles'
+import { livePresentation, publicCompanionAction } from './companion'
 
 export const SNAPSHOT_MS = 5_000
-export const NOTE_MS = 10_000
+export const NOTE_MS = 2_000
 const TIMEOUT_MS = 8_000
 
 export interface LiveFeedState {
@@ -34,7 +35,7 @@ export const liveFetch = {
 export interface FeedTimers { set: (fn: () => void, ms: number) => unknown; clear: (t: unknown) => void }
 const realTimers: FeedTimers = { set: (fn, ms) => setTimeout(fn, ms), clear: (t) => clearTimeout(t as ReturnType<typeof setTimeout>) }
 
-/** 轮询器：快照每 5 秒、说明每 10 秒；上一轮结束后才排下一轮，慢请求不会叠起来。 */
+/** 快照每 5 秒、轻量说明/居民动作每 2 秒；上一轮结束后才排下一轮。 */
 export function createLiveFeed(opts: {
   fetchSnapshot?: () => Promise<Snapshot>
   fetchNote?: () => Promise<LiveNote>
@@ -68,7 +69,7 @@ export function createLiveFeed(opts: {
   const pullNote = async () => {
     try {
       const n = await fetchNote()
-      if (!stopped) publish({ note: { doing: str(n?.doing), thinking: str(n?.thinking), contact: str(n?.contact), style: liveStyle(n?.style), updated_at: str(n?.updated_at) } })
+      if (!stopped) publish({ note: { doing: str(n?.doing), thinking: str(n?.thinking), contact: str(n?.contact), style: liveStyle(n?.style), presentation: livePresentation(n?.presentation), companion: publicCompanionAction(n?.companion), updated_at: str(n?.updated_at) } })
     } catch { /* 说明失败时保留上一份；画面状态只看快照 */ } finally { later('note', () => void pullNote(), NOTE_MS) }
   }
   return {

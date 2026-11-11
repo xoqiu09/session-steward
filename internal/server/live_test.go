@@ -91,6 +91,7 @@ func TestLiveCookieOnlyReadsLiveAPI(t *testing.T) {
 	for _, q := range []struct{ method, path string }{
 		{"GET", "/api/snapshot"}, {"GET", "/api/stream"}, {"GET", "/api/hooks/status"}, {"GET", "/api/history"}, {"GET", "/api/version"},
 		{"GET", "/api/live/link"}, {"PUT", "/api/live/note"}, {"PATCH", "/api/work-items/A-1"}, {"GET", "/api/projects"},
+		{"POST", "/api/live/companion"},
 	} {
 		if w := liveDo(h, q.method, local, q.path, liveCookie, "liv", `{"doing":"x"}`, true); w.Code != http.StatusUnauthorized {
 			t.Fatalf("展示 cookie 不应访问 %s %s: %d", q.method, q.path, w.Code)
@@ -107,6 +108,51 @@ func TestLiveCookieOnlyReadsLiveAPI(t *testing.T) {
 	}
 	if w := liveDo(h, "GET", local, "/?view=town&live=1", "", "", "", false); w.Code != http.StatusUnauthorized {
 		t.Fatalf("没有 cookie 不应打开展示首页: %d", w.Code)
+	}
+}
+
+func TestLiveCompanionRequiresLocalOwnerAndSameOrigin(t *testing.T) {
+	h := liveServer(t, "liv")
+	for _, q := range []struct {
+		host, cookie, token string
+		steward             bool
+		status              int
+	}{
+		{local, "", "", true, 401}, {local, liveCookie, "liv", true, 401},
+		{local, cookieName, "pan", false, 403}, {rh, remoteCookie, "rem", true, 403},
+		{local, cookieName, "pan", true, 200},
+	} {
+		w := liveDo(h, "POST", q.host, "/api/live/companion", q.cookie, q.token, `{"kind":"pat"}`, q.steward)
+		if w.Code != q.status {
+			t.Fatalf("gesture auth: %+v got %d %s", q, w.Code, w.Body)
+		}
+	}
+	w := liveDo(h, "GET", local, "/api/live/note", liveCookie, "liv", "", false)
+	var n core.LiveNote
+	if err := json.Unmarshal(w.Body.Bytes(), &n); err != nil || n.Companion == nil || n.Companion.Kind != "pat" {
+		t.Fatalf("display read: %s %v", w.Body, err)
+	}
+	w = liveDo(h, "POST", local, "/api/live/companion", cookieName, "pan", `{"kind":"approve"}`, true)
+	if w.Code != 400 {
+		t.Fatalf("arbitrary command accepted: %d", w.Code)
+	}
+}
+
+func TestLivePreviewCanOnlyEmbedTheReadOnlyLocalRoute(t *testing.T) {
+	h := liveServer(t, "liv")
+	w := liveDo(h, "GET", local, "/?view=town&live=1", cookieName, "pan", "", false)
+	if w.Code != 200 || w.Header().Get("X-Frame-Options") != "SAMEORIGIN" || w.Header().Get("Content-Security-Policy") != "frame-ancestors 'self'" {
+		t.Fatalf("local preview headers: %d %v", w.Code, w.Header())
+	}
+	for _, path := range []string{"/", "/?view=town", "/?view=town&live=0", "/?view=canvas&live=1", "/api/live/note"} {
+		w = liveDo(h, "GET", local, path, cookieName, "pan", "", false)
+		if w.Header().Get("X-Frame-Options") != "DENY" {
+			t.Fatalf("private route can be embedded: %s %v", path, w.Header())
+		}
+	}
+	w = liveDo(h, "GET", rh, "/?view=town&live=1", remoteCookie, "rem", "", false)
+	if w.Header().Get("X-Frame-Options") != "DENY" {
+		t.Fatal("remote framing allowed")
 	}
 }
 

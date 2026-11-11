@@ -318,6 +318,12 @@ func (s *Server) guard(next http.Handler) http.Handler {
 		}
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("X-Frame-Options", "DENY")
+		// The local studio embeds only the read-only live route. Private panels,
+		// remote access and other origins remain forbidden as frames.
+		if !remote && r.URL.Path == "/" && r.URL.Query().Get("view") == "town" && r.URL.Query().Get("live") == "1" {
+			w.Header().Set("X-Frame-Options", "SAMEORIGIN")
+			w.Header().Set("Content-Security-Policy", "frame-ancestors 'self'")
+		}
 		w.Header().Set("Referrer-Policy", "no-referrer")
 		next.ServeHTTP(w, r)
 	})

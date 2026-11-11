@@ -27,6 +27,28 @@ const note = { doing: '合成原说明', thinking: '合成思考', contact: '合
 afterEach(() => { host.reset(); vi.restoreAllMocks(); vi.unstubAllGlobals() })
 
 describe('直播说明的安全编辑与恢复', () => {
+  it('居民动作由独立的主人接口发送，失败可重试，不保存或丢弃主题草稿', async () => {
+    vi.spyOn(api, 'liveNote').mockResolvedValue(note)
+    const save = vi.spyOn(api, 'saveLiveNote').mockResolvedValue(note)
+    let fail!: (error: Error) => void
+    const gesture = vi.spyOn(api, 'liveCompanion').mockImplementationOnce(() => new Promise((_, reject) => { fail = reject })).mockResolvedValue({ id: 'a'.repeat(32), kind: 'pat', at: '2026-11-11T20:00:00Z' })
+    render(); await flush()
+    nodes(render()).find(node => node.type === 'input' && node.props.placeholder === '例如：给小镇加直播画面')!.props.onChange({ target: { value: '尚未保存的公开主题' } })
+    const send = button(render(), '摸摸团子').props.onClick
+    send(); send()
+    expect(gesture).toHaveBeenCalledOnce()
+    expect(button(render(), '去散步').props.disabled).toBe(true)
+    fail(new Error('合成动作失败')); await flush()
+    expect(renderToStaticMarkup(render())).toContain('动作没有发送成功')
+    expect(renderToStaticMarkup(render())).toContain('尚未保存的公开主题')
+    expect(renderToStaticMarkup(render())).toContain('尚未接入直播间弹幕')
+    button(render(), '摸摸团子').props.onClick(); await flush()
+    expect(gesture).toHaveBeenCalledTimes(2)
+    expect(gesture).toHaveBeenLastCalledWith('pat')
+    expect(save).not.toHaveBeenCalled()
+    expect(renderToStaticMarkup(render())).toContain('已发送「摸摸」')
+    expect(nodes(render()).find(node => node.type === 'iframe')!.props.src).toContain('live-layout=companion')
+  })
   it('读取失败时保持表单只读，不把空白初值保存；重试成功后沿用原说明和画风', async () => {
     vi.spyOn(api, 'liveNote').mockRejectedValueOnce(new Error('合成读取失败')).mockResolvedValueOnce(note)
     const save = vi.spyOn(api, 'saveLiveNote').mockResolvedValue(note)
@@ -44,7 +66,7 @@ describe('直播说明的安全编辑与恢复', () => {
     expect(renderToStaticMarkup(tree)).toContain('合成原说明')
     button(tree, '保存').props.onClick()
     await flush()
-    expect(save).toHaveBeenCalledWith({ doing: note.doing, thinking: note.thinking, contact: note.contact, style: 'storybook-day' })
+    expect(save).toHaveBeenCalledWith({ doing: note.doing, thinking: note.thinking, contact: note.contact, style: 'storybook-day', presentation: 'companion' })
   })
 
   it('保存期间锁住文字和画风，重复触发也只提交一次，失败后保留草稿供重试', async () => {
@@ -68,7 +90,7 @@ describe('直播说明的安全编辑与恢复', () => {
     expect(renderToStaticMarkup(tree)).toContain('合成新草稿')
     expect(button(tree, '保存').props.disabled).toBe(false)
     button(tree, '保存').props.onClick(); await flush()
-    expect(save).toHaveBeenLastCalledWith({ doing: '合成新草稿', thinking: note.thinking, contact: note.contact, style: 'storybook-day' })
+    expect(save).toHaveBeenLastCalledWith({ doing: '合成新草稿', thinking: note.thinking, contact: note.contact, style: 'storybook-day', presentation: 'companion' })
   })
 
   it('使用原生模态，Escape 交还给受控关闭且只调用一次', async () => {
