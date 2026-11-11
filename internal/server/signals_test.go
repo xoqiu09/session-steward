@@ -154,7 +154,8 @@ func TestTrustedPanelStillRecordsUserSignalAfterHookRejection(t *testing.T) {
 		t.Fatalf("%d %s", code, body)
 	}
 	path := fmt.Sprintf("/api/sessions/%d/unbind", before.Sessions[0].ID)
-	if code, body := panelReq(t, ts, "POST", path, map[string]string{}); code != http.StatusOK {
+	target := testUnbindTarget(t, c, before.Sessions[0].ID)
+	if code, body := panelReq(t, ts, "POST", path, map[string]any{"expected_run_id": target.RunID, "expected_work_item_id": target.WorkItemID}); code != http.StatusOK {
 		t.Fatalf("panel user action rejected: %d %s", code, body)
 	}
 	after, _ := signalState(t, c)

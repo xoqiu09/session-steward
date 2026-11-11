@@ -1,14 +1,15 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { LIVE_DEFAULT_NOTE, LiveScreen, countLine, noteLines } from './LiveView'
+import { LIVE_DEFAULT_NOTE, LiveScreen, countLine, moreLine, noteLines } from './LiveView'
 import { diffLiveEvents, emptyBubbles, nextBubbleAt, pushBubbles, stepBubbles, BUBBLE_GAP_MS, BUBBLE_SHOW_MS, LIVE_PHRASES, type LiveEvent } from './events'
 import { createLiveFeed, type FeedTimers, type LiveFeedState } from './feed'
-import { liveProjectNames, liveScrub } from './scrub'
+import { liveProjectNames, liveRepoNames, liveScrub, type LiveSnapshot } from './scrub'
 import { noteProblem } from './LiveSettings'
 import { parseTownRoute } from '../town/route'
 import { demoSnapshot, fakeItem, fakeRun, fakeSession } from '../town/fixtures'
 import type { LiveNote } from '../api'
 import type { Snapshot } from '../types'
+import { LIVE_STYLES, liveStyle, requestedLiveStyle } from './styles'
 
 // 未脱敏的合成快照：故意带上项目路径、会话标题、分支、工具预览等文字，验证展示视图自己的第二道防线。
 const raw: Snapshot = {
@@ -23,8 +24,8 @@ const SECRETS = [
   'PL-7', 'PL-8', 'TW-1', 'TW-2', 'MB-3', 'MB-4', 'A-1', 'A-2', '小猫',
 ]
 const note = (p: Partial<LiveNote> = {}): LiveNote => ({ doing: '', thinking: '', contact: '', updated_at: '', ...p })
-const screen = (snap: Snapshot | null, n: LiveNote | null = null, layout: 'portrait' | 'landscape' = 'portrait', bubble: LiveEvent | null = null) =>
-  renderToStaticMarkup(<LiveScreen snap={snap} note={n} stale={false} bubble={bubble} layout={layout} />)
+const screen = (snap: LiveSnapshot | null, n: LiveNote | null = null, layout: 'portrait' | 'landscape' = 'portrait', bubble: LiveEvent | null = null) =>
+  renderToStaticMarkup(<LiveScreen snap={snap} note={{ doing: '', thinking: '', contact: '', updated_at: '', ...n, presentation: 'town' }} stale={false} bubble={bubble} layout={layout} />)
 const text = (html: string) => html.replace(/<[^>]*>/g, ' ')
 
 describe('直播展示视图', () => {
@@ -34,6 +35,21 @@ describe('直播展示视图', () => {
     vi.stubGlobal('localStorage', storage)
   })
   afterEach(() => { vi.unstubAllGlobals() })
+
+  it('三种风格都保持只读、脱敏和无浏览器存储；只允许已知预览值', () => {
+    for (const style of LIVE_STYLES) {
+      const html = screen(raw, note({ style: style.id }))
+      expect(html).toContain(`data-live-style="${style.id}"`)
+      expect(html).toContain(`data-town-theme="${style.art}"`)
+      for (const secret of SECRETS) expect(html).not.toContain(secret)
+      for (const tag of ['<button', '<a ', '<input', '<select', 'tabindex']) expect(html).not.toContain(tag)
+      expect(requestedLiveStyle(`?live-style=${style.id}`)).toBe(style.id)
+    }
+    for (const bad of ['unknown', '<script>', '__proto__', undefined]) expect(liveStyle(bad)).toBe('cozy-night')
+    expect(requestedLiveStyle('?live-style=unknown')).toBeNull()
+    expect(storage.getItem).not.toHaveBeenCalled()
+    expect(storage.setItem).not.toHaveBeenCalled()
+  })
 
   it('即使传进未脱敏的快照，页面也不出现项目名、路径、会话标题和工作项标题', () => {
     for (const layout of ['portrait', 'landscape'] as const) {
@@ -48,7 +64,9 @@ describe('直播展示视图', () => {
     const html = screen(raw, note({ doing: '合成', thinking: '合成', contact: '合成' }), 'portrait',
       { key: 'k', kind: 'started', repoId: 1, text: `项目 A · ${LIVE_PHRASES.started}` })
     for (const tag of ['<button', '<a ', '<input', '<select', '<textarea', '<dialog', '<details', '<summary']) expect(html).not.toContain(tag)
-    for (const attr of ['role="button"', 'role="dialog"', 'tabindex', 'aria-modal', 'href=']) expect(html).not.toContain(attr)
+    for (const attr of ['role="button"', 'role="dialog"', 'tabindex', 'aria-modal']) expect(html).not.toContain(attr)
+    // Illustrated scenery loads local sprite sheets with SVG image href, not links.
+    expect(html).not.toMatch(/<a\b[^>]*href=/)
     expect(html).not.toContain('等你决定')
     expect(html).toContain('建筑 = 项目')
     expect(html).toContain('小人 = 一位 AI 助手')
@@ -97,6 +115,22 @@ describe('直播展示视图', () => {
     expect(text(screen(raw))).toMatch(/现在 \d+ 位在工作/)
   })
 
+  it('项目多于 12 个时最多画 12 栋，没画出来的只说数量', () => {
+    const many: LiveSnapshot = {
+      ...raw, more: 112,
+      repos: Array.from({ length: 15 }, (_, i) => ({ id: 100 + i, name: `项目 ${i + 30}`, common_dir: '', is_git: true, target_ref: '', activity: 'active' as const })),
+      sessions: Array.from({ length: 15 }, (_, i) => fakeSession({ id: 500 + i, provider: 'claude', state: 'running', repo_id: 100 + i, last_activity_at: raw.now })),
+      work_items: [], runs: [],
+    }
+    for (const layout of ['portrait', 'landscape'] as const) {
+      const html = screen(many, null, layout)
+      expect(new Set([...html.matchAll(/data-repo-id="(\d+)"/g)].map((m) => m[1])).size).toBe(12)
+      expect(text(html)).toContain('另有 112 个项目在休息')
+    }
+    expect(moreLine(0)).toBe('')
+    expect(text(screen(raw))).not.toContain('个项目在休息')
+  })
+
   it('没有数据时显示加载中，不报错', () => {
     expect(text(screen(null))).toContain('小镇加载中')
   })
@@ -120,6 +154,19 @@ describe('前端白名单重建', () => {
     expect(s.runs!.find((r) => r.id === 301)!.work_item_id).toBe(tw1)
     expect(s.work_items!.some((w) => w.id === tw1)).toBe(true)
     expect(s.sessions!.find((x) => x.id === 31)!.provider).toBe('other')
+  })
+
+  it('沿用服务端按全部项目排好的通用名；不是通用格式的名字按编号名次现起', () => {
+    const s = liveScrub({ ...raw, repos: [{ id: 40, name: '项目 87', common_dir: '', is_git: true, target_ref: '' }, { id: 41, name: '项目 Q', common_dir: '', is_git: true, target_ref: '' }, { id: 7, name: 'pixel-ledger', common_dir: '', is_git: true, target_ref: '' }] })
+    expect(s.repos!.map((r) => r.name)).toEqual(['项目 87', '项目 Q', '项目 A'])
+    for (const bad of ['项目 87 ', '项目 0', '项目 AB', '项目 1234567', '项目 a', 'pixel-ledger 项目 1']) {
+      expect(liveRepoNames([{ id: 3, name: bad }]).get(3), bad).toBe('项目 A')
+    }
+  })
+
+  it('没画出来的项目数只保留非负整数', () => {
+    expect(liveScrub({ ...raw, more: 112 }).more).toBe(112)
+    for (const bad of [-1, 1.5, '9' as unknown as number, undefined]) expect(liveScrub({ ...raw, more: bad }).more).toBe(0)
   })
 
   it('服务端换过的编号原样沿用', () => {
@@ -152,6 +199,12 @@ describe('快照差异 → 气泡事件', () => {
     const events = diffLiveEvents(base, next)
     expect(events.map((e) => e.text)).toEqual(['项目 B · 一位助手开始干活', '项目 B · 一轮运行完成', '项目 B · 完成一项交付', '项目 A · 一项工作已收下'])
     expect(events.map((e) => e.repoId)).toEqual([8, 8, 8, 5])
+  })
+
+  it('裁剪后的快照：项目名沿用服务端的通用名，不按这份快照里的名次重排', () => {
+    const trimmed: Snapshot = { ...base, repos: [{ id: 5, name: '项目 40', common_dir: '', is_git: true, target_ref: '' }, { id: 8, name: '项目 Z', common_dir: '', is_git: true, target_ref: '' }] }
+    const next: Snapshot = { ...trimmed, work_items: [fakeItem({ id: 'item-aaaaaaaa', repo_id: 8, title: '工作项', status: 'review' }), fakeItem({ id: 'item-bbbbbbbb', repo_id: 5, title: '工作项', status: 'done' })] }
+    expect(diffLiveEvents(trimmed, next).map((e) => e.text)).toEqual(['项目 Z · 完成一项交付', '项目 40 · 一项工作已收下'])
   })
 
   it('句式不拼接数据里的文字', () => {
@@ -209,7 +262,7 @@ describe('展示数据轮询', () => {
   }
   const flush = async () => { for (let i = 0; i < 5; i++) await Promise.resolve() }
 
-  it('快照 5 秒、说明 10 秒；失败时保留上一份画面并标记状态待更新；首次不算变化', async () => {
+  it('快照 5 秒、说明 2 秒；失败时保留上一份画面并标记状态待更新；首次不算变化', async () => {
     const t = manual()
     const snaps: (() => Promise<Snapshot>)[] = [async () => raw, async () => { throw new Error('offline') }, async () => ({ ...raw, cursor: 50 })]
     let i = 0
@@ -220,7 +273,7 @@ describe('展示数据轮询', () => {
     const feed = createLiveFeed({ fetchSnapshot, fetchNote, timers: t.timers, onState: (s) => states.push(s), onSnapshot: (p, n) => changes.push([p, n]) })
     feed.start()
     await flush()
-    expect(t.queue.map((x) => x.ms).sort((a, b) => a - b)).toEqual([5000, 10000])
+    expect(t.queue.map((x) => x.ms).sort((a, b) => a - b)).toEqual([2000, 5000])
     expect(feed.state.snap?.repos?.[0].name).toBe('项目 A')
     expect(JSON.stringify(feed.state.snap)).not.toContain('pixel-ledger')
     expect(feed.state.note?.doing).toBe('合成')

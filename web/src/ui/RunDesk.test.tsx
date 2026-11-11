@@ -105,16 +105,16 @@ describe('运行台渲染', () => {
     const snap = { ...synthSnapshot, work_items: synthSnapshot.work_items!.map(w => w.id === item.id ? { ...w, status: 'review' as const } : w) }
     const html = render(false, snap)
     expect(html).toContain('这项交付待你处理')
-    expect(html.indexOf('>已处理</button>')).toBeLessThan(html.indexOf('当前运行 vs 候选提交'))
-    expect(html.match(/>已处理<\/button>/g)).toHaveLength(1)
-    expect(html).toContain('“已处理”只记录这件事已处理，验证结果与功能确认分别保留')
+    expect(html.indexOf('>验收并完成</button>')).toBeLessThan(html.indexOf('当前运行 vs 候选提交'))
+    expect(html.match(/>验收并完成<\/button>/g)).toHaveLength(1)
+    expect(html).toContain('“验收并完成”记录你的工作项验收；验证记录与功能确认分别保留')
   })
   it('keeps delivery acceptance read-only remotely', () => {
     const snap = { ...synthSnapshot, work_items: synthSnapshot.work_items!.map(w => w.id === item.id ? { ...w, status: 'review' as const } : w) }
     const html = render(true, snap)
     expect(html).toContain('这项交付待你处理')
     expect(html).toContain('请在本机面板验收')
-    expect(html).not.toContain('>已处理</button>')
+    expect(html).not.toContain('>验收并完成</button>')
     expect(html).not.toContain('>退回修改</button>')
   })
   it('removes every write entry in remote read-only mode', () => {

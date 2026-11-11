@@ -362,9 +362,26 @@ export const HOUSE_SHAPE: BuildingShape = {
   walls: { top: '#efe3cc', front: '#f6ecda', side: '#e4d4b8', edge: '#9b7b55' },
 }
 
-export function Building({ plot: p, b, selected, dimClass, onSelect, signScale = 1, shape = HOUSE_SHAPE, live = false }: { plot: Plot; b: BuildingView; selected: boolean; dimClass: string; onSelect: () => void; signScale?: number; shape?: BuildingShape
+/** 插画主题里建筑图片的位置和大小（纯计算，直播展示的取景也用它估算建筑占地）。 */
+export function buildingArt(p: Plot, shape: BuildingShape, miniature: boolean) {
+  const H = shape.h
+  const storyWidth = (p.w + p.d) * 30 + 10
+  const houseFoot = iso(p.gx + p.w / 2, p.gy + p.d - .3)
+  const artKind = shape.kind === 'cabin' || shape.kind === 'house' ? 'cottage' as const : shape.kind
+  // New large-building sprites use the actual project door as their pivot,
+  // so resident arrivals and entrance badges keep their existing coordinates.
+  const artAnchor = artKind === 'cottage' ? houseFoot : iso(p.gx + p.w / 2, p.gy + p.d + .4)
+  const initialArt = storyPropBox(artKind, artAnchor, storyWidth, miniature)
+  const artWidth = artKind === 'cottage' ? storyWidth : Math.min(storyWidth, ((p.w + p.d) * 16 + H + shape.rise + 12) * initialArt.width / initialArt.height)
+  const artBox = storyPropBox(artKind, artAnchor, artWidth, miniature)
+  return { artKind, artAnchor, artWidth, artBox }
+}
+
+export function Building({ plot: p, b, selected, dimClass, onSelect, signScale = 1, shape = HOUSE_SHAPE, live = false, signAt }: { plot: Plot; b: BuildingView; selected: boolean; dimClass: string; onSelect: () => void; signScale?: number; shape?: BuildingShape
   /** 直播展示：招牌只写项目名和“N 位在工作”，不写任务、未完成和已完成计数。 */
-  live?: boolean }) {
+  live?: boolean
+  /** 直播展示：招牌放在这里（由展示布局统一避让）；不给时照常放在屋顶上方。 */
+  signAt?: Pt }) {
   const { theme, illustrated, miniature } = useTownArt()
 
   const H = shape.h
@@ -375,16 +392,8 @@ export function Building({ plot: p, b, selected, dimClass, onSelect, signScale =
   const tasks = live ? { lines: [] as ReturnType<typeof buildingTasks>['lines'], more: 0 } : buildingTasks(b.items)
   const working = b.characters.filter((c) => c.status === 'working').length
   const signW = measure(sign, 14) + 26
-  const storyWidth = (p.w + p.d) * 30 + 10
-  const houseFoot = iso(p.gx + p.w / 2, p.gy + p.d - .3)
-  const artKind = shape.kind === 'cabin' || shape.kind === 'house' ? 'cottage' : shape.kind
-  // New large-building sprites use the actual project door as their pivot,
-  // so resident arrivals and entrance badges keep their existing coordinates.
-  const artAnchor = artKind === 'cottage' ? houseFoot : iso(p.gx + p.w / 2, p.gy + p.d + .4)
-  const initialArt = storyPropBox(artKind, artAnchor, storyWidth, miniature)
-  const artWidth = artKind === 'cottage' ? storyWidth : Math.min(storyWidth, ((p.w + p.d) * 16 + H + shape.rise + 12) * initialArt.width / initialArt.height)
-  const artBox = storyPropBox(artKind, artAnchor, artWidth, miniature)
-  const label = illustrated ? [artBox.x + artBox.width / 2, artBox.y - 18] as Pt : iso(p.gx + p.w / 2, p.gy + p.d / 2, H + 66)
+  const { artKind, artAnchor, artWidth, artBox } = buildingArt(p, shape, miniature)
+  const label = signAt ?? (illustrated ? [artBox.x + artBox.width / 2, artBox.y - 18] as Pt : iso(p.gx + p.w / 2, p.gy + p.d / 2, H + 66))
   const corner = iso(p.gx + p.w, p.gy + p.d)
   // 窗户与门画在朝向镜头的长面上。
   const win = (u: number, v: number, ww: number, wh: number, color: string) => {
@@ -393,7 +402,7 @@ export function Building({ plot: p, b, selected, dimClass, onSelect, signScale =
   }
   const long = p.facing === 'x' ? p.w : p.d
   return (
-    <g className={`town-obj town-building${selected ? ' is-selected' : ''}${dimClass}`} data-repo-id={b.repo?.id} data-building-kind={shape.kind} data-building-art={illustrated ? theme : 'original'}
+    <g className={`town-obj town-building${selected ? ' is-selected' : ''}${dimClass}`} data-repo-id={b.repo?.id} data-building-kind={shape.kind} data-building-art={illustrated ? theme : 'original'} data-live-working={live ? working > 0 : undefined}
       aria-label={live ? `项目建筑 ${b.name}` : `项目建筑 ${b.name}：${b.characters.length} 个会话，${active} 个未完成任务${hidden ? `，另有 ${hidden} 个会话不在画面中` : ''}`} {...activate(onSelect)}>
       {illustrated ? <>
         <rect className="town-story-house-hit" {...artBox} />
@@ -532,7 +541,7 @@ export function Character({ at, c, selected, dimClass, onSelect, now, live = fal
   const girl = illustrated ? workCompanion(s.provider) : null
   const pose = c.status === 'working' ? 'activity' : c.status === 'waiting' ? 'greet' : c.status === 'ended' ? 'sleep' : 'idle'
   return (
-    <g style={{ transform: `translate(${at[0]}px,${at[1]}px) scale(1.22)` }}
+    <g style={{ transform: `translate(${at[0]}px,${at[1]}px) scale(${live ? 2 : 1.22})` }}
       className={`town-obj town-move town-char is-${c.status}${selected ? ' is-selected' : ''}${dimClass}`}
       aria-label={live ? `${liveCharacterName(c)}，${liveCharacterStatus(c)}` : `${characterDisplayName(c, illustrated)}，${characterStatusLabel[c.status]}${c.item ? `，任务 ${c.item.title}` : ''}`} {...activate(onSelect)}>
       {!live && <title>{`${characterDisplayName(c, illustrated)} · ${recentSignal(s.signal, now ?? new Date().toISOString())}`}</title>}

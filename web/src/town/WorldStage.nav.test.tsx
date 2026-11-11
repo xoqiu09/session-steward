@@ -64,6 +64,14 @@ const withParents = (node: any, parents: Node[] = []): { n: Node; parents: Node[
 }
 const words = (node: any): string => Array.isArray(node) ? node.map(words).join('') : typeof node === 'string' || typeof node === 'number' ? String(node) : node?.props ? words(kids(node)) : ''
 const button = (tree: Node, text: string) => nodes(tree).find((n) => n.type === 'button' && (words(n) === text || n.props['aria-label'] === text))
+// Hook-only rendering does not attach DOM refs. Give actual button refs stable
+// focus targets, so closing a secondary dialog can return to the visible “更多”.
+const mountButtonRefs = (tree: Node) => {
+  for (const node of nodes(tree)) {
+    const ref = node.type === 'button' ? node.props.ref : null
+    if (ref && typeof ref === 'object' && !ref.current) ref.current = { focus: vi.fn(), isConnected: true }
+  }
+}
 const needsYou = () => false
 const selected = vi.fn()
 const noop = () => {}
@@ -92,6 +100,7 @@ const render = () => {
   for (let n = 0; n < 12; n++) {
     host.begin()
     tree = WorldStage(stageProps)
+    mountButtonRefs(tree)
     host.commit()
     const resident = nodes(tree).find((n) => n.type === ResidentFollow)!
     host.begin('resident-follow')
@@ -111,7 +120,13 @@ const district = (id: string) => scene().props.world.districts.find((d: any) => 
 const plate = (label: string) => nodes(drawn()).find((n) => typeof n.props['aria-label'] === 'string' && n.props['aria-label'].startsWith(label))
 const inside = () => nodes(tree).some((n) => n.type === InteriorScene)
 const touch = () => tree.props.onPointerDownCapture()
-const press = (label: string) => { touch(); button(tree, label)!.props.onClick(); render() }
+const targetButton = (label: string) => {
+  let target = button(tree, label)
+  if (!target) { button(tree, '更多')?.props.onClick(); render(); target = button(tree, label) }
+  if (!target) throw new Error(`地图入口不存在：${label}`)
+  return target
+}
+const press = (label: string) => { touch(); const target = targetButton(label); target.props.onClick({ currentTarget: target.props.ref?.current }); render() }
 const hit = (n: Node | undefined) => { touch(); n!.props.onClick(); render() }
 const within = (p: [number, number], v: Box) => p[0] >= v.x && p[0] <= v.x + v.w && p[1] >= v.y && p[1] <= v.y + v.h
 /** 近景（看得清小人和菜），门前花园（菜地中心）和房子都在镜头里，镜头对着这个街区。 */
@@ -143,6 +158,22 @@ beforeEach(() => {
 afterEach(() => { host.reset(); vi.unstubAllGlobals(); vi.useRealTimers(); vi.restoreAllMocks() })
 
 describe('名牌去花园', () => {
+  it.each([390, 1280])('%ipx 都先从“更多”找到二级地图操作，关闭后重新保持简洁', width => {
+    window.innerWidth = width; render()
+    expect(button(tree, '结构说明')).toBeUndefined()
+    expect(button(tree, '项目 8')).toBeUndefined()
+    expect(button(tree, '按 Agent 看')).toBeUndefined()
+    expect(button(tree, '更多')!.props['aria-expanded']).toBe(false)
+    press('更多')
+    const group = nodes(tree).find(node => node.props['aria-label'] === '更多地图操作')!
+    expect(group.props.role).toBe('group')
+    expect(group.props.id).toBe(button(tree, '更多')!.props['aria-controls'])
+    expect(button(tree, '结构说明')).toBeDefined()
+    expect(button(tree, '项目 8')).toBeDefined()
+    press('更多')
+    expect(button(tree, '更多')!.props['aria-expanded']).toBe(false)
+    expect(button(tree, '项目 8')).toBeUndefined()
+  })
   it('点项目名牌立即定位到房子和门前花园，仍在世界里，不开详情', () => {
     render(); const before = view()
     expect(gardenInView('self#1')).toBe(false)
@@ -353,15 +384,19 @@ describe('导航零业务写入', () => {
 describe('结构说明保留阅读现场', () => {
   const explanation = () => nodes(tree).find(n => n.type === TownStructure)
   const open = (focus = vi.fn()) => {
-    touch(); button(tree, '结构说明')!.props.onClick({ currentTarget: { focus } }); render()
-    return focus
+    touch(); const target = targetButton('结构说明')
+    const restoredFocus = inside() ? focus : button(tree, '更多')!.props.ref.current.focus
+    target.props.onClick({ currentTarget: { focus } }); render()
+    return restoredFocus
   }
   const close = () => { explanation()!.props.onClose(); render() }
-  it('地图保留 SS 样本，房间读取自己的结构；关闭保留房间和原入口焦点', () => {
-    render(); const before = view(); const focus = open()
+  it('地图保留 SS 样本并返回更多，房间读取自己的结构并返回室内入口', () => {
+    render(); const before = view(); const hiddenTriggerFocus = vi.fn(), focus = open(hiddenTriggerFocus)
     expect(explanation()).toBeDefined(); expect(explanation()!.props.project).toBeUndefined()
     expect(nodes(tree).find(n => n.props.className === 'town-world-surface')!.props.inert).toBe(true)
     close(); expect(view()).toEqual(before); expect(focus).toHaveBeenCalledWith({ preventScroll: true })
+    expect(hiddenTriggerFocus).not.toHaveBeenCalled()
+    expect(button(tree, '更多')!.props['aria-expanded']).toBe(false)
     scene().props.onSelect({ kind: 'building', key: 'repo-1' }); render()
     const roomFocus = open(); expect(inside()).toBe(true)
     expect(explanation()!.props.project.b.repo.id).toBe(1)
@@ -531,5 +566,42 @@ describe('跟着串门居民走', () => {
     expect(store.getSnapshot().actors.gpt.trip).toEqual(before); expect(view()).toEqual(camera)
     store.configure('paused', false); residentTick(); expect(view()).not.toEqual(camera)
     props = { ...props, replaying: true }; render(); expect(followNode().props.id).toBeNull(); expect(residentTree).toBeNull()
+  })
+})
+
+
+describe('全局对话框保持地图阅读现场', () => {
+  let modal: boolean, listeners: Set<(event: any) => void>
+  beforeEach(() => {
+    modal = false; listeners = new Set()
+    vi.stubGlobal('document', { hidden: false, querySelector: () => modal ? {} : null, addEventListener: vi.fn(), removeEventListener: vi.fn() })
+    vi.mocked(window.addEventListener).mockImplementation(((type: string, listener: (event: any) => void) => { if (type === 'keydown') listeners.add(listener) }) as any)
+    vi.mocked(window.removeEventListener).mockImplementation(((type: string, listener: (event: any) => void) => { if (type === 'keydown') listeners.delete(listener) }) as any)
+  })
+  const escape = () => {
+    let stopped = false
+    const event = { key: 'Escape', stopImmediatePropagation: () => { stopped = true }, preventDefault: vi.fn() }
+    for (const listener of [...listeners]) { listener(event); if (stopped) break }
+    render()
+  }
+  it('Esc只关闭更多操作并把焦点还给可见入口', () => {
+    render(); press('更多')
+    const focus = button(tree, '更多')!.props.ref.current.focus
+    escape()
+    expect(button(tree, '更多')!.props['aria-expanded']).toBe(false)
+    expect(button(tree, '结构说明')).toBeUndefined()
+    expect(focus).toHaveBeenCalledExactlyOnceWith({ preventScroll: true })
+  })
+  it('设置或直播说明在上层时 Esc 不退出正在阅读的项目房间，关上后才退出', () => {
+    render(); press('项目 8'); press('进入工作室：合成片区项目1')
+    expect(inside()).toBe(true)
+    modal = true; escape(); expect(inside()).toBe(true)
+    modal = false; escape(); expect(inside()).toBe(false)
+  })
+  it('上层画风对话框关闭时不同时收起背景项目列表', () => {
+    render(); press('项目 8')
+    expect(button(tree, '去花园：合成花园')).toBeDefined()
+    modal = true; escape(); expect(button(tree, '去花园：合成花园')).toBeDefined()
+    modal = false; escape(); expect(button(tree, '去花园：合成花园')).toBeUndefined()
   })
 })

@@ -126,7 +126,7 @@ describe('用户管理日常提醒', () => {
 })
 
 describe('TodayView', () => {
-  it('每件交付旁边直接能标记已处理和退回，证据和 Agent 说的分开写', () => {
+  it('每件交付旁边明确验收完成或退回，证据和 Agent 说的分开写', () => {
     const html = renderToStaticMarkup(<TodayView snap={snap} onSelectItem={() => {}} onOpenTown={() => {}} />)
     expect(html).toContain('要你回应')
     expect(html).toContain('正式请求')
@@ -134,8 +134,8 @@ describe('TodayView', () => {
     expect(html).not.toContain('做完了，等你验收')
     expect(html).toContain('npm publish --tag beta')
     expect(html).toContain('允许这一次')
-    // 交付、决定卡片各自的“已处理”仍在；卡住的工作另有统一的收起选项，每个都要再确认一次。
-    expect((html.match(/>已处理</g) ?? []).length).toBeGreaterThanOrEqual(3)
+    expect(html).toContain('>验收并完成<')
+    expect(html).toContain('>退回修改<')
     expect(html).toContain('>暂停提醒<')
     expect(html).toContain('>不再跟进<')
     expect(html).toContain('Agent 说：')

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { APPEARANCE_KEY, createAppearanceStore, readAppearance, requestedTheme, TownArtProvider } from './appearance'
+import { APPEARANCE_KEY, TOWN_THEMES, createAppearanceStore, readAppearance, requestedTheme, sceneArt, TownArtProvider } from './appearance'
 import { WorldScene } from './WorldScene'
 import { buildTown } from './townModel'
 import { demoSnapshot, fakeItem } from './fixtures'
@@ -19,6 +19,21 @@ function deferred() {
 }
 
 describe('整镇外观偏好', () => {
+  it.each(['cozy-night','storybook-day','ai-studio'] as const)('%s 可取消预览，也能保存后重新打开，保留居民与布局', async theme => {
+    const storage=memory('{"version":1,"theme":"miniature"}')
+    storage.values.set('ss.town.layout.v1','synthetic-layout')
+    storage.values.set('ss.town.residents.v1','synthetic-residents')
+    const store=createAppearanceStore(storage,'',async()=>{})
+    await store.preview(theme)
+    expect(readAppearance(storage)).toBe('miniature')
+    store.cancel('miniature')
+    expect(store.getSnapshot().theme).toBe('miniature')
+    await store.preview(theme); expect(store.apply()).toBe(true)
+    expect(createAppearanceStore(storage).getSnapshot().theme).toBe(theme)
+    expect(storage.getItem('ss.town.layout.v1')).toBe('synthetic-layout')
+    expect(storage.getItem('ss.town.residents.v1')).toBe('synthetic-residents')
+    expect(requestedTheme(`?town-art=${theme}`)).toBe(theme)
+  })
   it('旧用户保留经典主题，未知和损坏的偏好可以恢复', () => {
     for (const raw of [undefined, '{', '{}', '{"version":2,"theme":"miniature"}', '{"version":1,"theme":"future"}']) expect(readAppearance(memory(raw))).toBe('original')
     expect(readAppearance(memory('{"version":1,"theme":"miniature"}'))).toBe('miniature')
@@ -79,7 +94,8 @@ describe('整镇外观偏好', () => {
 })
 
 describe('两套美术共享世界与角色身份', () => {
-  it.each(['original','storybook','miniature'] as const)('%s 覆盖每个项目的四档建筑，保留独立入口和原有世界数据', theme => {
+  it.each(TOWN_THEMES.map(t=>t.id))('%s 覆盖每个项目的四档建筑，保留独立入口和原有世界数据', theme => {
+    const art=sceneArt(theme)
     const repos=[1,3,8,16].map((size,i)=>({id:i+1,name:`synthetic-tier-${size}`,common_dir:`/synthetic/tier-${i}`,is_git:true,target_ref:'main'}))
     const work_items=[1,3,8,16].flatMap((size,i)=>Array.from({length:size},(_,j)=>fakeItem({id:`T${i}-${j}`,title:'合成建筑覆盖验证',status:'todo',repo_id:i+1})))
     const model=buildTown({...demoSnapshot,repos,work_items,sessions:[],runs:[],approvals:[],deps:[]}), none=()=>false
@@ -92,10 +108,10 @@ describe('两套美术共享世界与角色身份', () => {
     for (const kind of ['cabin','house','workshop','tower']) {
       const building=buildings.find(part=>part.includes(`data-building-kind="${kind}"`))!
       expect(building).toBeDefined()
-      expect(building).toContain(`data-building-art="${theme}"`)
+      expect(building).toContain(`data-building-art="${art}"`)
       expect(building).toContain('role="button"')
       expect(building).toContain('tabindex="0"')
-      if (theme==='original') {
+      if (art==='original') {
         expect(building).not.toContain('data-town-prop=')
         expect(building).toContain('<polygon')
       } else {
@@ -109,7 +125,7 @@ describe('两套美术共享世界与角色身份', () => {
         expect(height).toBeLessThanOrEqual(382)
         expect(building).toContain(`x="${x}" y="${y}" width="${width}" height="${height}" viewBox=`)
         if (kind==='workshop'||kind==='tower') {
-          expect(building).toContain(`/town/${theme}/buildings.png`)
+          expect(building).toContain(`/town/${art}/buildings.png`)
           expect(building).not.toContain('town-story-nature')
         }
       }

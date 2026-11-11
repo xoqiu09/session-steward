@@ -410,7 +410,7 @@ func TestEndedSessionCanResumeReportingWithoutDuplicateItem(t *testing.T) {
 	if len(snap.WorkItems) != 1 || len(snap.Runs) != 2 || snap.WorkItems[0].Brief.Fields["progress"].Text != "new resumed progress" {
 		t.Fatalf("incorrect resume: %+v", snap)
 	}
-	if err := c.Unbind(context.Background(), snap.Sessions[0].ID, ""); err != nil {
+	if err := c.Unbind(context.Background(), snap.Sessions[0].ID, "", testUnbindTarget(t, c, snap.Sessions[0].ID)); err != nil {
 		t.Fatal(err)
 	}
 	previous, err := c.ReportingPreviousItem(context.Background(), "h", "claude", "resume-report")

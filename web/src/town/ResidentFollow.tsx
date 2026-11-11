@@ -10,7 +10,7 @@ export function ResidentFollow({ store, id, following, active, controls = true, 
 }) {
   const life = useResidentLife(store), actor = id ? life.actors[id] : null
   useEffect(() => { if (id && active) onFrame.current(life.enabled ? actor : null) }, [life, id, following, active, onFrame])
-  if (!controls || !active || !life.enabled || !actor?.trip) return null
+  if (!controls || !active || !life.enabled || (!actor?.trip && !actor?.wander)) return null
   return <div className="town-resident-follow town-world-ui" aria-label="居民镜头跟随" onPointerDown={(e) => e.stopPropagation()}>
     <img src={residentImage(actor.id, 'avatar')} alt="" width="34" height="34" />
     <div role="status" aria-live="polite"><strong>{following ? '正在跟随' : '跟随已暂停'} · {residentSpec(actor.id).name}</strong><small>{residentStatus(actor)}</small></div>

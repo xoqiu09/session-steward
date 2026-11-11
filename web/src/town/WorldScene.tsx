@@ -1,3 +1,4 @@
+import { hasOpenModal } from '../ui/modalLayers'
 // 小镇世界：每个项目一个街区，中间是广场。远景只画街区名牌和计数，近景画小人、包裹和任务。只读。
 import { useEffect, useId, useMemo, useRef, useState, type PointerEvent as RPointerEvent, type RefObject } from 'react'
 import { STALE_REVIEW_MS } from '../workManagement'
@@ -102,7 +103,11 @@ interface SceneProps {
   sceneRef?: RefObject<SVGSVGElement | null>
   /** 直播展示：只画房子、作坊、小人和项目名牌；不画告示栏、验收台、退件架、菜地、包裹、路障和各种待办计数。默认照常画。 */
   live?: boolean
+  /** 直播展示的标签位置（由展示布局统一避让）：招牌按建筑键、小人标签按小人键，以及两者的放大倍数。 */
+  liveDress?: LiveDress
 }
+
+export interface LiveDress { signK: number; signs: ReadonlyMap<string, Pt>; pillK: number; pills: ReadonlyMap<string, Pt> }
 
 /** 手动导航的目标：项目按稳定项目键（来源设备 + 原始项目编号），片区按片区键。 */
 export type NavTarget = { kind: 'project'; id: string } | { kind: 'area'; key: string }
@@ -113,19 +118,19 @@ const DESK = { gx: 5.0, gy: 1.2 }
 const DISPATCH = { gx: 0.8, gy: 4.2 }
 
 /** 四档建筑：占地、墙色、高度、窗户层数。占满院子后排，远看也认得出大小差别。 */
-const TIERS: Record<Tier, { shape: BuildingShape; w: number; d: number }> = {
+export const TIERS: Record<Tier, { shape: BuildingShape; w: number; d: number }> = {
   0: { ...DISTRICT_FOOTPRINT[0], shape: { kind: 'cabin', name: '小木屋', h: 48, rise: 38, floors: 1, walls: { top: '#b48a5c', front: '#c99c6a', side: '#ad8152', edge: '#7a5636' } } },
   1: { ...DISTRICT_FOOTPRINT[1], shape: { ...HOUSE_SHAPE, h: 72, rise: 44, floors: 2 } },
   2: { ...DISTRICT_FOOTPRINT[2], shape: { kind: 'workshop', name: '工坊', h: 86, rise: 34, floors: 2, walls: { top: '#e9dcc4', front: '#efe1c8', side: '#dccaa8', edge: '#8f7350' } } },
   3: { ...DISTRICT_FOOTPRINT[3], shape: { kind: 'tower', name: '大楼', h: 196, rise: 30, floors: 5, walls: { top: '#e7e2d6', front: '#f1ece0', side: '#dcd4c3', edge: '#8d8270' } } },
 }
 
-function districtPlot(d: District): Plot {
+export function districtPlot(d: District): Plot {
   const t = TIERS[d.tier]
   return { gx: d.ox + 0.8, gy: d.oy + 0.5, w: t.w, d: t.d, facing: 'x', ...buildingColors(d.b.repo?.id) }
 }
 
-export function WorldScene({ model, world, view, far, selected, highlight, onSelect, changed = new Set(), offline = false, needsYou, stalled, onHoverHouse, agents = null, momentGlow, progressSparks, onNavigate, focusArea = null, dispatch = [], onDispatch, residents, sceneRef, live = false }: SceneProps) {
+export function WorldScene({ model, world, view, far, selected, highlight, onSelect, changed = new Set(), offline = false, needsYou, stalled, onHoverHouse, agents = null, momentGlow, progressSparks, onNavigate, focusArea = null, dispatch = [], onDispatch, residents, sceneRef, live = false, liveDress }: SceneProps) {
   const { illustrated, miniature } = useTownArt()
   const isSel = (kind: Selection['kind'], key: string) => selected?.kind === kind && selected.key === key
   const dim = (match: boolean) => (highlight && !match ? ' is-dim' : '')
@@ -151,9 +156,8 @@ export function WorldScene({ model, world, view, far, selected, highlight, onSel
   const sceneryCells = visible.length > SCENERY_MAX ? visible.filter(inWorld) : visible
   const isNear = (c: Cell) => { for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) if (used.has(`${c.cx + dx},${c.cy + dy}`)) return true; return false }
   // 路经过的格子不放湖：湖让路，路线和居民存档不动；这些格子按“紧挨项目”只长矮花草。
-  const roadLand = (c: Cell) => terrainAtCell(c.cx, c.cy) === 'lake' && roads.has(`${c.cx},${c.cy}`)
   const lakeAt = (cx: number, cy: number) => !used.has(`${cx},${cy}`) && terrainAtCell(cx, cy) === 'lake' && !isNear({ cx, cy }) && !roads.has(`${cx},${cy}`)
-  const landOf = (c: Cell) => sceneryOf(c, isNear(c) || roadLand(c), { e: lakeAt(c.cx + 1, c.cy), s: lakeAt(c.cx, c.cy + 1), w: lakeAt(c.cx - 1, c.cy), n: lakeAt(c.cx, c.cy - 1) })
+  const landOf = (c: Cell) => sceneryOf(c, isNear(c) || roads.has(`${c.cx},${c.cy}`), { e: lakeAt(c.cx + 1, c.cy), s: lakeAt(c.cx, c.cy + 1), w: lakeAt(c.cx - 1, c.cy), n: lakeAt(c.cx, c.cy - 1) })
   const empty = sceneryCells.map((c) => ({ c, s: landOf(c) }))
   // 拉得很远时，世界外的空地只画湖（树太多太小，画了也看不清），拉远拉近山水的位置不变。
   if (sceneryCells !== visible) {
@@ -294,6 +298,7 @@ export function WorldScene({ model, world, view, far, selected, highlight, onSel
         const e = emptyAt.get(key)
         if (e) return <g key={key}><EmptyLand s={e.s} /><g data-resident-ground={`${e.c.cx},${e.c.cy}`} /></g>
         if (key === '__residents' && residents && world.residential) return <ResidentsVillage key={key} cell={world.residential} {...residents} far={far} />
+        if (key === '__plaza' && live) return null
         if (key === '__plaza') return (
           <g key="__plaza">
             {illustrated ? <StoryClearing gx={P.ox+.4} gy={P.oy+.4} w={INNER_W-.4} d={INNER_D-.4} fill="#e9dcc2" opacity={.7} /> : <IsoTile gx={P.ox + 0.4} gy={P.oy + 0.4} w={INNER_W - 0.4} d={INNER_D - 0.4} fill="#e9dcc2" stroke="#cdbb98" />}
@@ -330,7 +335,7 @@ export function WorldScene({ model, world, view, far, selected, highlight, onSel
             <g onPointerEnter={(e) => onHoverHouse?.(d.b.key, { x: e.clientX, y: e.clientY })} onPointerLeave={() => onHoverHouse?.(null)}
               onFocus={(e) => { const r = (e.target as Element).getBoundingClientRect(); onHoverHouse?.(d.b.key, { x: r.right, y: r.top }) }} onBlur={() => onHoverHouse?.(null)}>
               <Building plot={plot} shape={TIERS[d.tier].shape} b={d.b} selected={isSel('building', d.b.key)} dimClass={dim(false)} onSelect={() => onSelect({ kind: 'building', key: d.b.key })}
-                {...(live ? { live, signScale: liveK } : {})} />
+                {...(live ? { live, signScale: liveDress?.signK ?? liveK, signAt: liveDress?.signs.get(d.key) } : {})} />
             </g>
             {onDispatch && (() => {
               // 派活台发起的工作在门口挂个牌子，点了直接到那件任务（最近的一件）。
@@ -420,11 +425,11 @@ export function WorldScene({ model, world, view, far, selected, highlight, onSel
       {/* 近景标签层 */}
       <g className="town-near">
         {seats.map(({ c }) => {
-          const at = charPos.get(c.key)!
+          const at = (live && liveDress?.pills.get(c.key)) || charPos.get(c.key)!
           const { style, st } = charLook(c)
           const label = characterStatusLabel[c.status]
           return (
-            <g key={`${c.key}-pill`} style={{ transform: `translate(${at[0]}px,${at[1]}px) scale(${1.22 * (live ? Math.max(1, liveK * 0.8) : 1)})` }}
+            <g key={`${c.key}-pill`} style={{ transform: `translate(${at[0]}px,${at[1]}px) scale(${1.22 * (live ? liveDress?.pillK ?? Math.max(1, liveK * 0.8) : 1)})` }}
               className={`town-obj town-move${fadeChar(c) || dim(highlight ? charMatches(c, highlight) : true)}`} aria-hidden onClick={() => onSelect({ kind: 'character', key: c.key })}>
               <StatusPill at={[0, 17]} name={live ? liveCharacterName(c) : characterPillName(c, illustrated)} status={live ? liveCharacterStatus(c) : offline && c.status === 'working' ? `断线前·${label}` : label} bg={st.bg} fg={st.fg} edge={style.body} />
             </g>
@@ -682,8 +687,8 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
   const showMoments = popover === 'moments', setShowMoments = toggle('moments')
   useEffect(() => {
     if (!popover) return
-    const away = (e: PointerEvent) => { if (!(e.target as Element | null)?.closest?.(`[${POPOVER_ATTR}="${popover}"]`)) setPopover(null) }
-    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.stopImmediatePropagation(); setPopover(null); if (popover === 'tools') toolsTrigger.current?.focus({ preventScroll: true }) } }
+    const away = (e: PointerEvent) => { if (hasOpenModal()) return; if (!(e.target as Element | null)?.closest?.(`[${POPOVER_ATTR}="${popover}"]`)) setPopover(null) }
+    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape' && !hasOpenModal()) { e.stopImmediatePropagation(); setPopover(null); if (popover === 'tools') toolsTrigger.current?.focus({ preventScroll: true }) } }
     window.addEventListener('pointerdown', away, true)
     window.addEventListener('keydown', esc, true)
     return () => { window.removeEventListener('pointerdown', away, true); window.removeEventListener('keydown', esc, true) }
@@ -695,7 +700,7 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
   const insideB = inside ? model.buildings.find((b) => b.key === inside) ?? null : null
   useEffect(() => {
     if (!inside) return
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { releaseResident(); setInside(null) } }
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !hasOpenModal()) { releaseResident(); setInside(null) } }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [inside])
@@ -737,7 +742,7 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
   const box = useRef<HTMLDivElement>(null)
   const [aspect, setAspect] = useState(1.6)
   const [compact, setCompact] = useState(() => typeof window !== 'undefined' && window.innerWidth < 760)
-  const [compactTools, setCompactTools] = useState(false)
+  const compactTools = true
   const [cam, setCam] = useState<Camera | null>(null)
   const anim = useRef<number | null>(null)
   const lastTouch = useRef(0)
@@ -776,7 +781,7 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
     const ro = new ResizeObserver(() => {
       const r = el.getBoundingClientRect()
       if (r.width <= 0 || r.height <= 0) return
-      setAspect(r.width / r.height); setCompact(r.width < 760); setCompactTools(r.width < 1000)
+      setAspect(r.width / r.height); setCompact(r.width < 760)
       if (r.width >= 1000) setPopover(p => p === 'tools' ? null : p)
     })
     ro.observe(el)
@@ -948,17 +953,18 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
   const away = feed.away.filter(inWorld)
   const localAway = away.filter((m) => m.local)
   const remoteAway = away.filter((m) => !m.local)
-  const awayRipe = localAway.filter((m) => m.kind === 'ripe').length
-  const awayDecisions = localAway.filter((m) => m.kind === 'decision').length
-  const remoteRipe = remoteAway.filter((m) => m.kind === 'ripe').length
-  const remoteDecisions = remoteAway.filter((m) => m.kind === 'decision').length
+  const awayText = (items: TownMoment[]) => {
+    const counts = (kind: TownMoment['kind']) => items.filter(item => item.kind === kind).length
+    return [[counts('ripe'), '棵菜熟了'], [counts('decision'), '件要你决定'], [counts('returned'), '件已回到会话推进']]
+      .filter(([count]) => Number(count) > 0).map(([count, label]) => `${count} ${label}`).join('，') || `${items.length} 条新动态`
+  }
   const awayFirst = localAway[0] ?? remoteAway[0]
   const visibleMoment = !inside && !paused && !guide && !structure && !harvest && !props.replaying ? moment : null
   useEffect(() => { if (moment && !feed.queue.some((m) => m.key === moment.key)) setMoment(null) }, [moment, feed.queue])
   useEffect(() => { setResolving({ busy: false, error: '' }) }, [moment?.key])
   useEffect(() => {
     if (!moment && !showMoments) return
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { setMoment(null); setShowMoments(false) } }
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !hasOpenModal()) { setMoment(null); setShowMoments(false) } }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [moment, showMoments])
@@ -979,7 +985,7 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
   }, [harvest?.index, current, structure])
   useEffect(() => {
     if (!harvest) return
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !inside) setHarvest(null) }
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !inside && !hasOpenModal()) setHarvest(null) }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [harvest, inside])
@@ -1055,15 +1061,15 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
   const selectResident = (id: ResidentId) => { setResidentSelected(id); setPopover('residents') }
   const enterResidentProject = (id: string) => { const d = world.districts.find((d) => d.id === id); if (d) { setPopover(null); enter(d.key) } }
   const locateResident = (id: ResidentId) => {
-    const trip = residentStore.getSnapshot().actors[id].trip
-    if (!trip) { visitResidents(); return }
+    const actor = residentStore.getSnapshot().actors[id]
+    if (!actor.trip && !actor.wander) { visitResidents(); return }
     lastTouch.current = Date.now(); leaveNav(); setHarvest(null); setMoment(null); setShowMoments(false)
     setResidentSelected(id); setPopover(null); setResidentWatch(id); setResidentFollow(id)
   }
   // 订阅只发生在 ResidentFollow；每次生活推进用最新相机、房间与布局，避免动画自身触发跟随循环。
   residentFrame.current = (actor) => {
     if (!actor || !world.residential) { releaseResident(); setResidentWatch(null); return }
-    if (!actor.trip && !residentFollow) { setResidentWatch(null); return }
+    if (!actor.trip && !actor.wander && !residentFollow) { setResidentWatch(null); return }
     if (!residentFollow || document.hidden || props.replaying || structure) return
     if (actor.trip?.phase === 'inside') {
       const destination = world.districts.find((d) => d.id === actor.trip!.projectId)
@@ -1071,7 +1077,7 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
       return
     }
     if (inside) setInside(null)
-    const point = actor.trip ?? addPoint(cellOrigin(world.residential), actor)
+    const point = actor.trip ?? actor.wander ?? addPoint(cellOrigin(world.residential), actor)
     const p = iso(point.x, point.y), w = 900, h = w / aspect
     let fx = .5, fy = .56
     if (popover === 'residents') {
@@ -1083,7 +1089,7 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
     }
     const target = clampCamera({ cx: p[0] - (fx - .5) * w, cy: p[1] - (fy - .5) * h, w }, world.bounds)
     if (Math.abs(camera.cx - target.cx) > 2 || Math.abs(camera.cy - target.cy) > 2 || Math.abs(camera.w - target.w) > 2) flyTo(target, 420)
-    if (!actor.trip) { setResidentFollow(null); setResidentWatch(null) }
+    if (!actor.trip && !actor.wander) { setResidentFollow(null); setResidentWatch(null) }
   }
   useEffect(() => { if (props.replaying) { releaseResident(); setResidentWatch(null) } }, [props.replaying])
 
@@ -1141,7 +1147,7 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
         {!props.replaying && <button type="button" data-town-popover="residents" aria-expanded={popover === 'residents'} className={popover === 'residents' ? 'is-on' : undefined}
           onClick={() => { const open = popover !== 'residents'; setPopover(open ? 'residents' : null); if (open && !residentFollow) visitResidents() }} title="七位常住居民：去她们家，摸摸头，看看今天的小事">居民 7</button>}
         {!props.replaying && <button type="button" className={`town-basket${ripe.length ? ' has-ripe' : ''}`} onClick={startHarvest} disabled={!ripe.length && !harvest}
-          title={`${ripe.length ? `熟了 ${ripe.length} 棵：一棵一棵打开验收卡片，收下或退回` : '现在没有熟了的菜（没有待验收的工作项）'}。菜地只放待验收交付；Agent 交给你的事在右侧“待审阅／验收”，卡住的工作在“每日十分钟”。`}>收菜 {ripe.length}</button>}
+          title={`${ripe.length ? `熟了 ${ripe.length} 棵：一棵一棵打开验收卡片，收下或退回` : '现在没有熟了的菜（没有待验收的工作项）'}。菜地只放待验收交付；Agent 交给你的事在工作面板的“待审阅／验收”，卡住的工作在“每日十分钟”。`}>收菜 {ripe.length}</button>}
         {compactTools ? <>
           <button ref={toolsTrigger} type="button" data-town-popover="tools" aria-expanded={popover === 'tools'} aria-controls={toolsId} onClick={() => setPopover(popover === 'tools' ? null : 'tools')}>更多</button>
           {popover === 'tools' && <div className="town-world-more-panel" data-town-popover="tools" role="group" aria-label="更多地图操作" id={toolsId}>{secondaryTools}</div>}
@@ -1157,8 +1163,8 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
         </ol>}
       </div>
       {away.length > 0 && <div className="town-away town-world-ui" role="status" onPointerDown={(e) => e.stopPropagation()}>
-        <span>你离开期间：{awayRipe} 棵菜熟了，{awayDecisions} 件要你决定</span>
-        {remoteAway.length > 0 && <span>另一台电脑：{remoteRipe} 棵菜熟了，{remoteDecisions} 件要你决定（请到那台电脑处理）</span>}
+        <span>{localAway.length ? `你离开期间：${awayText(localAway)}` : '你离开期间有其他设备的新动态'}</span>
+        {remoteAway.length > 0 && <span>另一台电脑：{awayText(remoteAway)}（请到那台电脑处理）</span>}
         <button type="button" disabled={paused || !!harvest || !!props.replaying || guide} onClick={() => { visitMoment(awayFirst); feed.dismissAway() }}>带我去看</button>
         <button type="button" onClick={feed.dismissAway}>知道了</button>
       </div>}

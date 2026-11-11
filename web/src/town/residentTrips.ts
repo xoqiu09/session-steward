@@ -1,8 +1,10 @@
+import { buildRoadGraph, worldRoads, roadRoute, homeGate, homeGardenPoint, projectRoute } from './roadNetwork'
+export { projectRoute } from './roadNetwork'
 import { CELL_D, CELL_W, DISTRICT_FOOTPRINT, type Cell, type WorldLayout } from './world'
 import { GARDEN_SPOTS, gardenRoute, homePoint, pointDistance, RESIDENT_IDS, type GardenPoint, type GardenSpot, type ResidentId } from './residents'
 
 export interface ResidentDestination { id: string; key: string; name: string; cell: Cell; door: GardenPoint }
-export interface ResidentWorld { home: Cell; destinations: ResidentDestination[] }
+export interface ResidentWorld { home: Cell; destinations: ResidentDestination[]; roads?: ReturnType<typeof buildRoadGraph> }
 export interface ResidentTrip extends GardenPoint {
   projectId: string; projectName: string; phase: 'outbound' | 'inside' | 'returning'
   origin: GardenPoint; path: GardenPoint[]; trail: GardenPoint[]
@@ -12,38 +14,35 @@ export const cellOrigin = (cell: Cell): GardenPoint => ({ x: cell.cx * CELL_W, y
 export const pointCell = (point: GardenPoint): Cell => ({ cx: Math.floor(point.x / CELL_W), cy: Math.floor(point.y / CELL_D) })
 export const cellKey = (cell: Cell) => `${cell.cx},${cell.cy}`
 export const addPoint = (a: GardenPoint, b: GardenPoint): GardenPoint => ({ x: a.x + b.x, y: a.y + b.y })
-export const localTripPoint = (trip: ResidentTrip): GardenPoint => ({ x: trip.x - trip.origin.x, y: trip.y - trip.origin.y })
+export const localTripPoint = (trip: GardenPoint & { origin: GardenPoint }): GardenPoint => ({ x: trip.x - trip.origin.x, y: trip.y - trip.origin.y })
 const gate = (origin: GardenPoint) => addPoint(origin, GARDEN_SPOTS.square)
-const junction = (cell: Cell): GardenPoint => addPoint(cellOrigin(cell), { x: 9.7, y: 8.9 })
 const unique = (points: GardenPoint[]) => points.filter((p, i) => !i || pointDistance(p, points[i - 1]) > 0.01)
 
 export function residentWorld(world: WorldLayout): ResidentWorld | undefined {
   if (!world.residential) return undefined
-  return { home: world.residential, destinations: world.districts.map((d) => ({
+  return { home: world.residential, roads: buildRoadGraph(worldRoads(world)), destinations: world.districts.map((d) => ({
     id: d.id, key: d.key, name: d.b.name, cell: d.cell,
     door: { x: d.ox + 0.8 + DISTRICT_FOOTPRINT[d.tier].w / 2, y: d.oy + 0.5 + DISTRICT_FOOTPRINT[d.tier].d + 0.4 },
   })) }
 }
 
-/** 只沿格子边缘的道路走，先到房前小路，再到门口，不穿过项目建筑。 */
-export function projectRoute(home: Cell, destination: ResidentDestination): GardenPoint[] {
-  const origin = cellOrigin(home), path: GardenPoint[] = [gate(origin), { x: gate(origin).x, y: junction(home).y }, junction(home)]
-  const cell = { ...home }
-  while (cell.cx !== destination.cell.cx) { cell.cx += Math.sign(destination.cell.cx - cell.cx); path.push(junction(cell)) }
-  while (cell.cy !== destination.cell.cy) { cell.cy += Math.sign(destination.cell.cy - cell.cy); path.push(junction(cell)) }
-  path.push({ x: destination.door.x, y: junction(destination.cell).y }, destination.door)
-  return unique(path)
-}
-
-export function startResidentTrip(id: ResidentId, from: GardenPoint, world: ResidentWorld, destination: ResidentDestination): ResidentTrip {
-  const origin = cellOrigin(world.home), position = addPoint(origin, from)
-  const path = unique([...gardenRoute(from, 'square').map((p) => addPoint(origin, p)), ...projectRoute(world.home, destination)])
+export function startResidentTrip(id: ResidentId, from: GardenPoint, world: ResidentWorld, destination: ResidentDestination, walking?: GardenPoint): ResidentTrip {
+  const origin = cellOrigin(world.home), position = walking ?? addPoint(origin, from)
+  const local=walking?homeGardenPoint(walking,world.home):from
+  const path = walking && !local && world.roads ? roadRoute(world.roads, walking, destination.door)
+    : unique([...gardenRoute(local??from, 'square').map((p) => addPoint(origin, p)), ...projectRoute(world.home, destination)])
   return { ...position, projectId: destination.id, projectName: destination.name, phase: 'outbound', origin, path,
     trail: [position], insideMs: 0, insideLeft: 26_000 + RESIDENT_IDS.indexOf(id) * 2000, restOnReturn: false }
 }
 
-export function returnResidentTrip(trip: ResidentTrip, id: ResidentId, rest: boolean): ResidentTrip {
+export function returnResidentTrip(trip: ResidentTrip, id: ResidentId, rest: boolean, world?: ResidentWorld): ResidentTrip {
   if (trip.phase === 'returning') return { ...trip, restOnReturn: rest, ...(rest ? { returnTarget: undefined } : {}) }
+  if (world?.roads) {
+    const local=homeGardenPoint(trip,world.home)
+    if (local) return {...trip,phase:'returning',path:gardenRoute(local,'home',homePoint(id)).map(p=>addPoint(trip.origin,p)),restOnReturn:rest}
+    const path = unique([...roadRoute(world.roads, trip, homeGate(world.home)), ...gardenRoute(GARDEN_SPOTS.square, 'home', homePoint(id)).map(p => addPoint(trip.origin,p))])
+    return { ...trip, phase: 'returning', path, restOnReturn: rest }
+  }
   const gatePoint = gate(trip.origin), index = trip.trail.findIndex((p) => pointDistance(p, gatePoint) < 0.02)
   const last = index >= 0 ? GARDEN_SPOTS.square : localTripPoint(trip)
   const reverse = index >= 0 ? [...trip.trail.slice(index)].reverse() : []
@@ -51,11 +50,11 @@ export function returnResidentTrip(trip: ResidentTrip, id: ResidentId, rest: boo
   return { ...trip, phase: 'returning', path, restOnReturn: rest }
 }
 
-export function tickResidentTrip(before: ResidentTrip, id: ResidentId, dt: number): { trip?: ResidentTrip; entered: boolean } {
+export function tickResidentTrip(before: ResidentTrip, id: ResidentId, dt: number, world?: ResidentWorld): { trip?: ResidentTrip; entered: boolean } {
   let trip: ResidentTrip = { ...before, path: [...before.path], trail: [...before.trail] }
   if (trip.phase === 'inside') {
     trip.insideMs += dt * 1000; trip.insideLeft -= dt * 1000
-    if (trip.insideLeft <= 0) trip = returnResidentTrip(trip, id, false)
+    if (trip.insideLeft <= 0) trip = returnResidentTrip(trip, id, false, world)
     return { trip, entered: false }
   }
   let left = dt * 2.1

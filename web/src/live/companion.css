@@ -1,0 +1,58 @@
+/* Broadcast composition: upper-right information, companion in the courtyard,
+   actual SS town below, then an empty area for the platform's own comments. */
+.live-view.live-companion:is(.is-portrait,.is-landscape){--companion-panel:#18323bf0;--companion-panel-ink:#f8f1df;display:grid;grid-template-rows:minmax(0,49fr) minmax(0,31fr) minmax(0,17fr);gap:1.5vh;padding:2vh 4vw 0;background:#172e37}
+.live-companion .companion-hero{position:relative;min-height:0;overflow:hidden;border-radius:1.6vw;border:1px solid #c9d0b329;background:#203743;color:#fff6e5;isolation:isolate}
+.companion-courtyard{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:50% 64%;z-index:-3}
+.companion-shade{position:absolute;inset:0;z-index:-2;background:linear-gradient(180deg,#112f3af5 0%,#173340df 21%,#15323b27 57%,#17333a0a 76%,#172e37e6 100%)}
+.companion-title{position:absolute;left:5.5%;top:5%;width:55%;z-index:2}
+.companion-eyebrow{display:flex;align-items:center;gap:.65em;margin:0 0 1em;font-size:clamp(10px,2.1vw,24px);line-height:1.5;letter-spacing:.1em;color:#dce4d2}
+.companion-eyebrow i,.companion-card-label i,.companion-name i,.companion-town-heading i{display:inline-block;width:.4em;height:.4em;flex:none;border-radius:50%;background:#eac984}
+.live-companion .companion-title h1{margin:0;font-family:"Songti SC","STSong",serif;font-size:clamp(24px,5.1vw,58px);line-height:1.55;font-weight:600;letter-spacing:.07em;overflow-wrap:anywhere;white-space:pre-line;text-wrap:balance;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.live-companion .companion-title h1.is-long{font-size:clamp(15px,3vw,33px);line-height:1.6;-webkit-line-clamp:5}
+.companion-thought{margin:.75em 0 0;font-size:clamp(11px,2.25vw,26px);line-height:1.75;color:#d7e0d0;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.companion-cards{position:absolute;right:4%;top:5%;width:32%;display:grid;gap:1.5vh;z-index:3}
+.companion-info{padding:1.2em 1em;background:#19343deb;border:1px solid #dee0bc4d;border-radius:.8em;box-shadow:0 8px 24px #071b2426;font-size:clamp(10px,2.1vw,24px);color:#fff4dc;overflow-wrap:anywhere}
+.companion-card-label{display:flex;align-items:center;gap:.55em;font-size:.84em;letter-spacing:.06em;color:#d7d9bf;line-height:1.6}
+.companion-info p{margin:.6em 0 0;line-height:1.65;text-wrap:pretty;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden}
+.companion-info small{display:block;margin-top:.8em;line-height:1.6;color:#c4d0bc;font-size:.78em}
+.companion-invitation{background:#f4eedeea;color:#344f43;border-color:#f8eed5cc}
+.companion-invitation .companion-card-label{color:#4d6853}.companion-invitation small{color:#687b61}
+.companion-resident{position:absolute;left:24%;bottom:4%;width:36%;z-index:2;display:flex;flex-direction:column;align-items:center;transform-origin:bottom center}
+.companion-speech{position:relative;box-sizing:border-box;margin:0 0 1.5vw;width:max-content;max-width:145%;padding:.65em .9em;border:1px solid #c5b48d;border-radius:.8em;background:#fffcee;color:#4c5646;font-size:clamp(11px,2.3vw,26px);line-height:1.65;text-align:center;box-shadow:0 8px 22px #142b3f2b;overflow-wrap:anywhere}
+.companion-speech::after{content:"";position:absolute;left:50%;bottom:-.45em;width:.7em;height:.7em;background:#fffcee;border-right:1px solid #c5b48d;border-bottom:1px solid #c5b48d;transform:rotate(45deg)}
+.companion-pet{position:relative;display:grid;place-items:center;width:100%;aspect-ratio:.92}
+.companion-pet>img{display:block;width:100%;height:100%;object-fit:contain;filter:drop-shadow(0 8px 6px #0b20252e);animation:companion-breathe 4.5s ease-in-out infinite;transform-origin:50% 88%}
+.companion-shadow{position:absolute;left:20%;right:20%;bottom:2%;height:9%;background:#132b3355;border-radius:50%;filter:blur(6px)}
+.companion-name{display:flex;align-items:center;justify-content:center;gap:.55em;white-space:nowrap;margin:.35em 0 0;padding:.4em .8em;border:1px solid #b5b597;border-radius:99px;background:#fbf6e5;color:#385144;font-size:clamp(10px,2vw,23px);font-weight:650}
+.companion-name i{background:#b08a4d}.companion-name span{padding-left:.6em;border-left:1px solid #c9c7ac;font-size:.82em;font-weight:400;color:#6f7d65}
+.companion-heart{position:absolute;top:4%;right:4%;font-size:5vw;color:#efb9ac;animation:companion-heart 1.5s ease-in-out infinite}
+.companion-resident.is-walk{animation:companion-walk 8s ease-in-out both}.companion-resident.is-home{animation:companion-home 8s ease-in-out both}
+.companion-resident.is-pat .companion-pet>img{animation:companion-pat .8s ease-in-out infinite}
+.companion-courtyard-caption{position:absolute;bottom:4%;left:5%;font-size:clamp(9px,1.65vw,20px);letter-spacing:.14em;color:#e0dec2}
+.companion-town-panel{position:relative;display:flex;flex-direction:column;min-height:0;border:1px solid #a9c5b330;border-radius:1.2vw;overflow:hidden;background:var(--companion-panel);color:var(--companion-panel-ink)}
+.companion-town-heading{display:flex;flex-direction:column;gap:.35em;flex:none;position:relative;z-index:2;padding:1.4vh 3vw .3vh;font-size:clamp(10px,2vw,23px);color:#d3dfca}
+.companion-town-heading>div{display:flex;align-items:center;gap:.6em;min-width:0}.companion-town-heading h2{margin:0;font-size:1em;font-weight:650;letter-spacing:.05em}.companion-town-heading span{margin-left:auto;font-size:.85em;font-variant-numeric:tabular-nums}.companion-town-heading small{font-size:.75em;color:#b2c6b9;line-height:1.7}
+.live-view.live-companion:is(.is-portrait,.is-landscape) .companion-town{position:relative;inset:auto;flex:1;min-height:0;margin:0 1vw 1vh}
+.companion-more{position:absolute;right:3vw;bottom:.6vh;margin:0;font-size:clamp(9px,1.5vw,18px);color:#b2c6b9;background:var(--companion-panel);padding:.25em .6em;border-radius:99px}
+.companion-connection{position:absolute;left:3vw;bottom:.6vh;margin:0;font-size:clamp(10px,1.7vw,20px);padding:.25em .6em;background:var(--companion-panel);color:#d7dec5;border-radius:99px}
+.live-companion .companion-town .live-bubble{font-size:clamp(12px,2vw,24px);border-radius:.7em}
+.companion-safe-area{min-height:0}
+.live-view.live-companion[data-live-style="storybook-day"]{--companion-panel:#eeefdfee;--companion-panel-ink:#384f43;background:#e5e8d6}
+.live-companion[data-live-style="storybook-day"] .companion-town-heading{color:#3d5846}.live-companion[data-live-style="storybook-day"] .companion-town-heading small,.live-companion[data-live-style="storybook-day"] .companion-town-heading span,.live-companion[data-live-style="storybook-day"] .companion-more{color:#62755d}
+.live-companion[data-live-style="storybook-day"] .companion-shade{background:linear-gradient(180deg,#dfe6d0f5 0%,#dee5cdd9 22%,#cbd9b417 60%,#e5e8d6c9 100%)}
+.live-companion[data-live-style="storybook-day"] .companion-title,.live-companion[data-live-style="storybook-day"] .companion-thought,.live-companion[data-live-style="storybook-day"] .companion-eyebrow{color:#304c3b}
+.live-view.live-companion[data-live-style="ai-studio"]{--companion-panel:#122b32f0;background:#10272e}
+.live-companion[data-live-style="ai-studio"] .companion-courtyard{filter:saturate(.5) hue-rotate(18deg)}
+.live-companion[data-live-style="ai-studio"] .companion-info{border-color:#82c6be55}
+.live-view.live-companion.is-landscape{grid-template-rows:54fr 34fr 9fr;padding:2vh 4vw 0;gap:1.5vh}
+.live-companion.is-landscape .companion-title{width:40%;left:3%;top:8%}.live-companion.is-landscape .companion-title h1{font-size:clamp(24px,3.5vw,68px);-webkit-line-clamp:2}.live-companion.is-landscape .companion-eyebrow{font-size:clamp(11px,1.2vw,24px);margin-bottom:.65em}.live-companion.is-landscape .companion-thought{font-size:clamp(12px,1.3vw,26px)}
+.live-companion.is-landscape .companion-cards{right:3%;width:24%;top:8%;gap:1.5vh}.live-companion.is-landscape .companion-info{font-size:clamp(12px,1.15vw,24px);padding:.9em 1em}.live-companion.is-landscape .companion-info p{-webkit-line-clamp:2}.live-companion.is-landscape .companion-info small{margin-top:.4em}
+.live-companion.is-landscape .companion-resident{left:44%;width:17%;bottom:5%}.live-companion.is-landscape .companion-speech{font-size:clamp(12px,1.2vw,25px);margin-bottom:.6vw}.live-companion.is-landscape .companion-name{font-size:clamp(11px,1.1vw,23px)}
+.live-companion.is-landscape .companion-town-heading{padding:1.3vh 2vw 0;flex-direction:row;align-items:center;justify-content:space-between;font-size:clamp(12px,1.1vw,23px)}.live-companion.is-landscape .companion-town-heading>div{gap:.8em}.live-companion.is-landscape .companion-town-heading span{margin-left:1em}.live-companion.is-landscape .companion-town .live-bubble{font-size:clamp(12px,1vw,22px)}
+.live-companion.is-landscape .companion-courtyard-caption{font-size:clamp(10px,1vw,20px);left:3%}
+@keyframes companion-breathe{0%,100%{transform:scaleY(1)}50%{transform:scaleY(.983)}}
+@keyframes companion-pat{0%,100%{transform:translateY(0) rotate(-1deg)}50%{transform:translateY(-2%) rotate(1deg)}}
+@keyframes companion-walk{0%,100%{translate:0 0}35%{translate:-16% 0;rotate:-2deg}65%{translate:16% 0;rotate:2deg}}
+@keyframes companion-home{0%,100%{translate:0 0;scale:1}40%,70%{translate:-20% -8%;scale:.8}}
+@keyframes companion-heart{0%,100%{opacity:.4;translate:0 0}50%{opacity:1;translate:0 -15%}}
+@media(prefers-reduced-motion:reduce){.live-companion .companion-resident,.live-companion .companion-pet>img,.live-companion .companion-heart{animation:none}}

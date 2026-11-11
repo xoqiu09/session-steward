@@ -23,7 +23,7 @@ function repoName(s: Snapshot, id: number | null) {
 // 每条待处理都说明：目前做到哪、为什么现在要处理、处理后会怎样。
 const WHY: Record<Approval['kind'], [string, string]> = {
   permission: ['Agent 正在等这条命令，处于暂停。', '允许只对本次请求生效；以“已确认继续”为准，送达不等于工具已执行成功。'],
-  decision: ['Agent 明确提出了问题，等待你的回答。', '复制恢复命令回到该会话回答；回答后此项自动关闭。'],
+  decision: ['Agent 明确提出了问题，等待你的回答。', '复制恢复命令回到该会话回答；已回答可点“已在原会话回答”记录，不需要回应可点“忽略这条提醒”。'],
   merge: ['分支等待合并批准。', '批准绑定当前源和目标提交，分支变化后作废；“已合并”只由 Git 确认。'],
   attention: ['最后一条回复以问句结尾（低置信）。', '不需要回应时忽略即可，不影响工作项状态。'],
 }
@@ -35,7 +35,7 @@ function Context({ a, snap }: { a: Approval; snap: Snapshot }) {
   const p = own && field(own, 'progress')
   const [why, usual] = WHY[a.kind]
   // 没有恢复命令（例如合成演示里的虚构会话）时，不提示去复制它。
-  const after = a.kind === 'decision' && !s?.resume_command ? '回到原会话回答；不需要时点“已处理”关闭。' : usual
+  const after = a.kind === 'decision' && !s?.resume_command ? '回到原会话回答；已回答可点“已在原会话回答”记录，不需要回应可点“忽略这条提醒”。' : usual
   return <div className="q-context">
     {item && <div><b>目前：</b>{p ? <>{p.text} <span className={`src ${sourceTag(p).cls}`}>{sourceTag(p).mark} {sourceTag(p).label}</span> <small className="muted">{ago(p.at, snap.now)}</small></> : <span className="muted">暂无内容回报</span>}</div>}
     <div><b>为什么现在：</b>{why}</div>
@@ -108,7 +108,7 @@ export function PermissionCard({ a, snap }: { a: Approval; snap: Snapshot }) {
         <div className="row">
           <span className="pill warn">请回原界面处理</span>
           <span className="muted">这个请求没有经过可接管的 hook，只能在 Agent 界面里批准</span>
-          <button disabled={isRemote()} className="btn small" onClick={() => act.run(() => api.dismiss(a.id, 'handled_elsewhere'))}>已处理</button>
+          <button disabled={isRemote()} className="btn small" onClick={() => act.run(() => api.dismiss(a.id, 'handled_elsewhere'))}>已在原会话处理</button>
         </div>
       )}
       {a.status === 'decided' && <p className="hint">面板已作出决定。其他 hook 的拒绝可能优先，以“已确认继续”为准。</p>}
@@ -143,7 +143,7 @@ export function DecisionCard({ a, snap }: { a: Approval; snap: Snapshot }) {
       <div className="row">
         {s?.resume_command && <CopyButton text={s.resume_command} label="复制恢复命令" />}
         {s?.cwd && <CopyButton text={`cd ${JSON.stringify(s.cwd)}`} label="复制目录" />}
-        <button disabled={isRemote()} className="btn small" onClick={() => act.run(() => api.dismiss(a.id, low ? 'ignored' : 'resolved'))}>{low ? '忽略' : memory ? '我已在原会话处理' : '已处理'}</button>
+        <button disabled={isRemote()} className="btn small" onClick={() => act.run(() => api.dismiss(a.id, low ? 'ignored' : 'resolved'))}>{low ? '忽略' : memory ? '已在原会话处理' : '已在原会话回答'}</button>
         {!low && !memory && <button disabled={isRemote()} className="btn small" title="只收起这条提醒，不改工作状态" onClick={() => act.run(() => api.dismiss(a.id, 'ignored'))}>忽略这条提醒</button>}
       </div>
       <ErrorLine msg={act.error} />

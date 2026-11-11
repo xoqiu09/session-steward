@@ -86,6 +86,23 @@ func (s *Server) liveRoutes(mux *http.ServeMux) {
 		w.Header().Set("Cache-Control", "no-store")
 		writeJSON(w, 200, map[string]string{"url": u.String(), "view": "/?view=town&live=1"})
 	})))
+	// Only the local owner can trigger one of three visual gestures. Display cookies stay read-only.
+	mux.HandleFunc("POST /api/live/companion", s.liveLocal(s.panel(func(w http.ResponseWriter, r *http.Request) {
+		var in struct {
+			Kind string `json:"kind"`
+		}
+		if err := readJSON(r, &in); err != nil {
+			writeErr(w, err)
+			return
+		}
+		a, err := s.Core.SetLiveCompanion(r.Context(), in.Kind)
+		if err != nil {
+			writeErr(w, err)
+			return
+		}
+		w.Header().Set("Cache-Control", "no-store")
+		writeJSON(w, 200, a)
+	})))
 }
 
 func (s *Server) handleLiveLogin(w http.ResponseWriter, r *http.Request) {

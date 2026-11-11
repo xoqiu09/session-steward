@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { Approval, MergeJob, Snapshot, Tokens, WorkItem } from './types'
 import { api } from './api'
 import { ErrorLine, useAction } from './bits'
@@ -56,20 +56,52 @@ export function HandoffForm({ snap, item, onLaunched }: { snap: Snapshot; item: 
   const current = new Set(item.agents)
   const [to, setTo] = useState(agents.find((a) => !current.has(a.provider))?.name ?? agents[0]?.name ?? '')
   const [note, setNote] = useState('')
-  const [preview, setPreview] = useState<{package: string; source_sha: string; itemId: string} | null>(null)
+  const [preview, setPreview] = useState<{package: string; source_sha: string; itemId: string; to: string; note: string; generation: number} | null>(null)
   const act = useAction()
-  const visiblePreview = preview?.itemId === item.id ? preview : null
+  const generation = useRef(0)
+  const inFlight = useRef<'preview' | 'launch' | null>(null)
+  const identity = useRef({ itemId: item.id, to, note })
+  identity.current = { itemId: item.id, to, note }
+  useEffect(() => () => { ++generation.current }, [item.id, to, note])
+  const validAgent = agents.some(agent => agent.name === to)
+  const matches = (submitted: { itemId: string; to: string; note: string }) => identity.current.itemId === submitted.itemId && identity.current.to === submitted.to && identity.current.note === submitted.note
+  const visiblePreview = preview && preview.generation === generation.current && matches(preview) ? preview : null
+  const invalidate = () => { ++generation.current; setPreview(null) }
+  const prepare = () => {
+    if (!validAgent || inFlight.current) return
+    const request = ++generation.current, submitted = { itemId: item.id, to, note }
+    inFlight.current = 'preview'; setPreview(null)
+    act.run(async () => {
+      try {
+        const result = await api.handoffPreview(submitted.itemId, { to_agent: submitted.to, note: submitted.note })
+        if (generation.current === request && matches(submitted)) setPreview({ ...result, ...submitted, generation: request })
+      } catch (error) { if (generation.current === request && matches(submitted)) throw error }
+      finally { inFlight.current = null }
+    })
+  }
+  const launch = () => {
+    if (!visiblePreview || visiblePreview.generation !== generation.current || !matches(visiblePreview) || !validAgent || inFlight.current) return
+    const submitted = visiblePreview, request = generation.current
+    inFlight.current = 'launch'
+    act.run(async () => {
+      try {
+        const result = await api.handoff(submitted.itemId, { to_agent: submitted.to, note: submitted.note, source_sha: submitted.source_sha })
+        if (generation.current === request && matches(submitted)) { setPreview(null); onLaunched(result.managed.work_item_id) }
+      } catch (error) { if (generation.current === request && matches(submitted)) throw error }
+      finally { inFlight.current = null }
+    })
+  }
   if (!agents.length || item.repo_id == null || ['done', 'abandoned'].includes(item.status)) return null
-  return <details className="handoff">
+  return <details className="handoff" onToggle={event => { if (!event.currentTarget.open && inFlight.current !== 'launch') invalidate() }}>
     <summary>交接给其他 Agent</summary>
     <p className="hint">根据简报、功能清单和 Git 记录生成交接包（不含对话正文），在新的 worktree 中从当前分支启动接手 Agent。上一位会话不会被停止，未提交改动不会带过去。</p>
     <div className="row wrap">
-      <label>接手<select value={to} onChange={(e) => { setTo(e.target.value); setPreview(null) }}>{agents.map((a) => <option key={a.name} value={a.name}>{providerLabel(a.provider)}{a.name !== a.provider ? ` (${a.name})` : ''}{a.hooks ? '' : ' · 无 hooks'}</option>)}</select></label>
-      <label className="grow">补充说明<input value={note} onChange={(e) => { setNote(e.target.value); setPreview(null) }} maxLength={2000} placeholder="可选：给接手方的提醒" /></label>
+      <label>接手<select value={to} disabled={act.busy} onChange={(e) => { invalidate(); setTo(e.target.value) }}>{agents.map((a) => <option key={a.name} value={a.name}>{providerLabel(a.provider)}{a.name !== a.provider ? ` (${a.name})` : ''}{a.hooks ? '' : ' · 无 hooks'}</option>)}</select></label>
+      <label className="grow">补充说明<input value={note} disabled={act.busy} onChange={(e) => { invalidate(); setNote(e.target.value) }} maxLength={2000} placeholder="可选：给接手方的提醒" /></label>
     </div>
     <div className="row">
-      <button className="btn small" disabled={act.busy || !to} onClick={() => act.run(() => api.handoffPreview(item.id, { to_agent: to, note }).then((r) => setPreview({...r, itemId:item.id})))}>预览交接包</button>
-      {visiblePreview != null && <button className="btn small primary" disabled={act.busy} onClick={() => act.run(() => api.handoff(item.id, { to_agent: to, note, source_sha: visiblePreview.source_sha }).then((r) => { setPreview(null); onLaunched(r.managed.work_item_id) }))}>确认交接并启动</button>}
+      <button className="btn small" disabled={act.busy || !validAgent} onClick={prepare}>{act.busy && inFlight.current === 'preview' ? '生成预览中…' : '预览交接包'}</button>
+      {visiblePreview != null && <><button className="btn small primary" disabled={act.busy || !validAgent} onClick={launch}>{act.busy && inFlight.current === 'launch' ? '交接启动中…' : '确认交接并启动'}</button><button className="btn small" disabled={act.busy} onClick={invalidate}>取消预览</button></>}
     </div>
     {visiblePreview != null && <pre className="preview handoff-preview">{visiblePreview.package}</pre>}
     <ErrorLine msg={act.error} />

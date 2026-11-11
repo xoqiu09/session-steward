@@ -30,7 +30,7 @@ it('remote viewers cannot archive or trigger remote scans', () => {
   expect(html).toContain('请在项目所在的电脑上管理')
   expect(html).toMatch(/disabled=""[^>]*>立即核对外部合并/)
   expect(html).toMatch(/disabled=""[^>]*>归档所选项目/)
-  expect(html).toMatch(/disabled=""[^>]*>删除所选项目/)
+  expect(html).toMatch(/disabled=""[^>]*>将所选项目移入回收站/)
 })
 it('archived scope excludes trash markers and exposes restore and delete actions', () => {
   const html = renderToStaticMarkup(<ProjectManager projects={projects} statuses={[]} initialScope="archived" onArchive={noop} onTrash={noop} onSync={noop} />)
@@ -38,7 +38,7 @@ it('archived scope excludes trash markers and exposes restore and delete actions
   expect(html).not.toContain('选择项目 Deleted')
   expect(html).not.toContain('选择项目 Demo')
   expect(html).toContain('恢复所选项目')
-  expect(html).toContain('删除所选项目')
+  expect(html).toContain('将所选项目移入回收站')
 })
 it('trash scope exposes original recovery destinations with preserved history and no permanent erase', () => {
   const html = renderToStaticMarkup(<ProjectManager projects={projects} statuses={[]} initialScope="trash" readOnly onArchive={noop} onTrash={noop} onSync={noop} />)
@@ -47,7 +47,7 @@ it('trash scope exposes original recovery destinations with preserved history an
   expect(html).toContain('恢复至使用中')
   expect(html).toContain('恢复至已归档')
   expect(html).not.toContain('选择项目 Archived')
-  expect(html).not.toContain('删除所选项目')
+  expect(html).not.toContain('将所选项目移入回收站')
   expect(html).toContain('代码目录和历史记录都会保留')
   expect(html).toMatch(/disabled=""[^>]*>恢复所选项目/)
 })

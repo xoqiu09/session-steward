@@ -2,6 +2,7 @@ import { useEffect, useId, useRef } from 'react'
 import type { ProjectFeature, ProjectStructure } from '../types'
 import type { BuildingView } from './townModel'
 import { TownFeaturePanel } from './TownFeaturePanel'
+import { hasNativeModal } from '../ui/modalLayers'
 
 export interface ProjectRoomContext { b: BuildingView; features: readonly ProjectFeature[] | null; structure?: ProjectStructure | null }
 
@@ -10,6 +11,7 @@ export function ProjectRoomDialog({ project, onClose }: { project: ProjectRoomCo
   useEffect(() => { close.current?.focus({ preventScroll: true }) }, [])
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
+      if (hasNativeModal()) return
       if (e.key === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); onClose(); return }
       if (e.key !== 'Tab') return
       const items = [...(panel.current?.querySelectorAll<HTMLElement>('button:not([disabled]):not([tabindex="-1"]), summary, [tabindex="0"]') ?? [])]

@@ -1,6 +1,6 @@
 import { recentSignal } from './signals'
 import { isRemote } from './access'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { ManagedPanel, Unmanaged } from './Managed'
 import { HandoffForm, ItemUsageLine, SessionUsageLine } from './P1'
 import { AISummaryBox } from './P2'
@@ -17,19 +17,34 @@ import { FeatureProgress } from './FeatureProgress'
 import { HistoryItems } from './HistoryItems'
 import { mergeGroups, repoLabel } from './workbench'
 import { RunDesk } from './ui/RunDesk'
-import { DeliveryReview } from './ui/DeliveryReview'
+import { DeliveryActionReceipt, DeliveryReview, type DeliveryReceipt } from './ui/DeliveryReview'
+import { ActionFeedback } from './ui/ActionFeedback'
 import { SessionActivity } from './ui/SessionActivity'
 import { SessionUsagePanel } from './ui/SessionUsagePanel'
 import { BriefReadOnly } from './ui/BriefReadOnly'
 import { WorkStatusActions } from './ui/WorkStatusActions'
 import { requestsForItem } from './ui/WorkOverview'
 import { ConversationReturn } from './ui/ConversationReturn'
+import { currentUnbindTarget } from './sessionBinding'
 import {
   ago, freshnessLabel, itemSignal, itemStatusLabel, mergeStateLabel, nextItemId, providerLabel, repoPrefix, sessionBuckets, sessionName, sessionRepo, sessionSignal, sessionStateLabel, sessionsFor, type SessionScope,
 } from './model'
 
 export const outcomeLabel: Record<string, string> = { delivered: '交付', failed: '失败', abandoned: '放弃', handed_off: '转交', historical: '历史关联', attribution_reverted: '已撤销归属', '': '结果待定' }
 export const bindingLabel: Record<string, string> = { manual: '人工绑定', tag: '显式标识', inherited: '继承', branch_guess: '分支推断', auto: '自动关联' }
+
+function MissingDetail({ kind, id, onClose }: { kind: 'item' | 'session'; id: string | number; onClose: () => void }) {
+  const label = kind === 'item' ? '工作项' : '会话'
+  return <section className="detail" role="status" aria-label={`${label}记录暂不可用`}>
+    <div className="detail-head">
+      <h2>暂时找不到这条{label}</h2>
+      <button className="btn small right" onClick={onClose} aria-label={kind === 'item' ? '关闭工作详情' : '关闭会话详情'}>✕</button>
+    </div>
+    <p>{label} <span className="mono">{kind === 'session' ? `#${id}` : id}</span> 不在当前范围中。</p>
+    <p className="hint">可能与项目归档、移除或来源设备有关。请返回原页面，确认查看范围后重新选择。</p>
+    <button className="btn" onClick={onClose}>返回原页面</button>
+  </section>
+}
 
 export function ItemDetail({ snap, id, onClose, onSelectSession, onSelectItem = () => {}, preferredSession }: { snap: Snapshot; id: string; onClose: () => void; onSelectSession: (id: number) => void; onSelectItem?: (id: string) => void; preferredSession?: number }) {
   const item = (snap.work_items ?? []).find((w) => w.id === id)
@@ -39,12 +54,26 @@ export function ItemDetail({ snap, id, onClose, onSelectSession, onSelectItem = 
   const [editing, setEditing] = useState(false)
   const [editTitle, setEditTitle] = useState('')
   const [editRepo, setEditRepo] = useState<number | ''>('')
+  const editAct = useAction()
+  const editGate = useRef(false)
+  const [savedInfo, setSavedInfo] = useState('')
+  const reviewAct = useAction()
+  const reviewGate = useRef(false)
+  const [deliveryReceipt, setDeliveryReceipt] = useState<DeliveryReceipt | null>(null)
   const remote = isRemote()
-  if (!item) return null
+  if (!item) return <MissingDetail kind="item" id={id} onClose={onClose} />
   const sessions = sessionsFor(snap, id)
   const ups = (snap.deps ?? []).filter((d) => d.downstream === id)
   const downs = (snap.deps ?? []).filter((d) => d.upstream === id)
   const set = (status: ItemStatus) => act.run(() => api.patchItem(id, { status }))
+  const recordReview = (status: 'done' | 'in_progress') => {
+    if (reviewGate.current) return
+    reviewGate.current = true
+    return reviewAct.run(async () => {
+      await api.patchItem(id, { status })
+      setDeliveryReceipt({ item, snapshot: snap, status })
+    }).finally(() => { reviewGate.current = false })
+  }
   const repo = (snap.repos ?? []).find((r) => r.id === item.repo_id)
 
   return (
@@ -55,16 +84,17 @@ export function ItemDetail({ snap, id, onClose, onSelectSession, onSelectItem = 
         // Retain every member of the same bound merge, including peer items.
         const merges = mergeGroups(openApprovals(snap).filter(a => a.kind === 'merge')).filter(g => g.members.some(a => requests.some(r => r.id === a.id)))
         return <>
+          {deliveryReceipt && <DeliveryActionReceipt receipt={deliveryReceipt} onSelectSession={onSelectSession} />}
+          {reviewAct.error && <ActionFeedback tone="error">未确认这次交付处理成功：{reviewAct.error}。请核对当前状态后重试。</ActionFeedback>}
           {merges.length > 0 && <section className="item-requests" aria-label="处理代码合并"><h3>处理代码合并</h3>{merges.map(g => <MergeCard key={g.key} group={g} snap={snap} onSelectItem={onSelectItem} advice={[]} compact />)}</section>}
           {perms.length > 0 && <div className="item-permissions"><h3>等待你处理的权限</h3>{perms.map((a) => <PermissionCard key={a.id} a={a} snap={snap} />)}</div>}
           {decisions.length > 0 && <section className="item-requests" aria-label="等待你回答"><h3>等待你回答</h3>{decisions.map(a => <DecisionCard key={a.id} a={a} snap={snap} />)}</section>}
           {item.automatic_history && <section className="delivery-review" aria-label="自动任务归档"><h3>本轮已自动归档</h3><p>Agent 已回报完成，按例行整理规则收进历史，无需你逐轮验收。可以在这里查看本轮来源；发现问题时可重新开始。</p></section>}
           {item.status === 'review' && item.completion_policy !== 'auto_history' && <DeliveryReview snap={snap} item={item} onSelectSession={onSelectSession} actions={<>
             {remote ? <p className="hint">远程只读，请在本机面板验收。</p> : <div className="row wrap">
-              <button className="btn primary" disabled={act.busy} onClick={() => set('done')}>已处理</button>
-              <button className="btn" disabled={act.busy} onClick={() => set('in_progress')}>退回修改</button>
+              <button className="btn primary" disabled={reviewAct.busy} onClick={() => recordReview('done')}>{reviewAct.busy ? '正在记录…' : '验收并完成'}</button>
+              <button className="btn" disabled={reviewAct.busy} onClick={() => recordReview('in_progress')}>退回修改</button>
             </div>}
-            <ErrorLine msg={act.error} />
           </>} />}
         </>
       })()}>
@@ -77,12 +107,27 @@ export function ItemDetail({ snap, id, onClose, onSelectSession, onSelectItem = 
       <FeatureProgress snap={snap} repoId={item.repo_id} itemId={item.id} onSelectSession={onSelectSession} />
       <details className="project-work-details"><summary>完整工作简报与来源</summary>{remote ? <BriefReadOnly snap={snap} item={item} /> : <BriefSection snap={snap} item={item} />}</details>
       <div className="assigned-runners">{sessions.map((s) => <button key={s.id} className="btn small" onClick={() => onSelectSession(s.id)}><AgentBadge provider={s.provider} client={s.client} /> #{shownNo(s.id)} · {sessionSignal(snap, s).label}</button>)}</div>
-      {!remote && <button className="btn small" onClick={() => { setEditing(!editing); setEditTitle(item.title); setEditRepo(item.repo_id ?? '') }}>修改标题 / 项目</button>}
-      {!remote && editing && <form className="new-item compact" onSubmit={(e) => { e.preventDefault(); act.run(() => api.patchItem(id, { title: editTitle, repo_id: editRepo || 0 }).then(() => setEditing(false))) }}>
-        <label>工作标题<input value={editTitle} onChange={(e) => setEditTitle(e.target.value)} required /></label>
-        <label>所属项目<select value={editRepo} onChange={(e) => setEditRepo(e.target.value ? Number(e.target.value) : '')}><option value="">未关联</option>{(snap.repos ?? []).map((r) => <option key={r.id} value={r.id}>{repoLabel(snap, r.id)}</option>)}</select></label>
-        <button className="btn small primary" disabled={act.busy}>保存工作信息</button>
+      {!remote && <button className="btn small" disabled={editAct.busy} onClick={() => { if (editGate.current) return; setEditing(!editing); setEditTitle(item.title); setEditRepo(item.repo_id ?? ''); editAct.setError('') }}>修改标题 / 项目</button>}
+      {!remote && editing && <form className="new-item compact" aria-label={`修改工作信息 ${id}`} aria-busy={editAct.busy} onSubmit={(e) => {
+        e.preventDefault()
+        if (editGate.current) return
+        editGate.current = true
+        setSavedInfo('')
+        const title = editTitle, repo = editRepo
+        return editAct.run(async () => {
+          await api.patchItem(id, { title, repo_id: repo || 0 })
+          setSavedInfo(`已保存 ${id} · ${title.trim()}；所属项目：${repo ? repoLabel(snap, repo) : '未关联'}。`)
+          setEditing(false)
+        }).finally(() => { editGate.current = false })
+      }}>
+        <fieldset className="workflow-fields" disabled={editAct.busy}>
+          <label>工作标题<input value={editTitle} onChange={(e) => { if (!editGate.current) setEditTitle(e.target.value) }} required /></label>
+          <label>所属项目<select value={editRepo} onChange={(e) => { if (!editGate.current) setEditRepo(e.target.value ? Number(e.target.value) : '') }}><option value="">未关联</option>{(snap.repos ?? []).map((r) => <option key={r.id} value={r.id}>{repoLabel(snap, r.id)}</option>)}</select></label>
+          <button className="btn small primary" disabled={editAct.busy}>{editAct.busy ? '正在保存…' : '保存工作信息'}</button>
+        </fieldset>
+        {editAct.error && <ActionFeedback tone="error">保存失败，填写内容已保留。{editAct.error}</ActionFeedback>}
       </form>}
+      {savedInfo && <ActionFeedback>{savedInfo}</ActionFeedback>}
       <dl className="kv">
         <dt>项目</dt><dd>{repo?.name ?? '未关联'}</dd>
         <dt>分支</dt><dd className="mono">{item.branch || '—'}</dd>
@@ -135,7 +180,7 @@ export function MergeProof({ evidence }: { evidence: MergeEvidence }) {
   </section>
 }
 
-export function SessionDetail({ snap, id, onClose, onSelectItem, foldEvents = false }: { snap: Snapshot; id: number; onClose: () => void; onSelectItem: (id: string) => void; foldEvents?: boolean }) {
+export function SessionDetail({ snap, id, onClose, onSelectItem, foldEvents = false }: { snap: Snapshot; id: number; onClose: () => void; onSelectItem: (id: string, notice?: string) => void; foldEvents?: boolean }) {
   const s = (snap.sessions ?? []).find((x) => x.id === id)
   const act = useAction()
   const [bind, setBind] = useState('')
@@ -147,10 +192,11 @@ export function SessionDetail({ snap, id, onClose, onSelectItem, foldEvents = fa
     api.sessionEvents(id).then(setEvents).catch(() => setEvents([]))
     api.sessionUsage(id).then(setUsage).catch(() => setUsage(null))
   }, [id, s?.last_activity_at])
-  if (!s) return null
+  if (!s) return <MissingDetail kind="session" id={id} onClose={onClose} />
   const name = sessionName(snap, s)
   const signal = sessionSignal(snap, s)
   const attribution = (snap.attributions ?? []).find((a) => a.session_id === s.id && a.status === 'applied' && a.work_item_id === s.work_item_id)
+  const unbindTarget = currentUnbindTarget(snap, s)
   return (
     <div className="detail">
       <div className="detail-head">
@@ -205,7 +251,7 @@ export function SessionDetail({ snap, id, onClose, onSelectItem, foldEvents = fa
         </select>
         <button className="btn small" type="submit" disabled={!bind || act.busy}>{s.work_item_id ? '更换关联' : '关联工作项'}</button>
         {s.work_item_id && (
-          <select aria-label="结束当前绑定" defaultValue="" onChange={(e) => e.target.value && act.run(() => api.unbind(s.id, e.target.value))}>
+          <select aria-label="结束当前绑定" value="" disabled={act.busy || !unbindTarget} onChange={(e) => e.target.value && unbindTarget && act.run(() => api.unbind(s.id, e.target.value, unbindTarget))}>
             <option value="">结束当前绑定…</option>
             <option value="delivered">交付</option>
             <option value="failed">失败</option>
@@ -214,6 +260,7 @@ export function SessionDetail({ snap, id, onClose, onSelectItem, foldEvents = fa
           </select>
         )}
       </form>}
+      {!isRemote() && s.work_item_id && !unbindTarget && <p className="hint">当前绑定的运行信息尚未核对，请刷新面板后再结束绑定。</p>}
       {!s.work_item_id && <button disabled={isRemote()} className="btn primary" onClick={() => setCreating(!creating)}>{creating ? '收起创建表单' : '从此会话创建工作项'}</button>}
       {!isRemote() && creating && !s.work_item_id && <NewItem key={s.id} snap={snap} session={s} onCreated={onSelectItem} />}
       <ErrorLine msg={act.error} />
@@ -224,7 +271,7 @@ export function SessionDetail({ snap, id, onClose, onSelectItem, foldEvents = fa
   )
 }
 
-export function WorkItemsPanel({ snap, items, history = [], repoId, onSelect }: { snap: Snapshot; items: NonNullable<Snapshot['work_items']>; history?: NonNullable<Snapshot['work_items']>; repoId: number | 'all'; onSelect: (id: string) => void }) {
+export function WorkItemsPanel({ snap, items, history = [], repoId, onSelect }: { snap: Snapshot; items: NonNullable<Snapshot['work_items']>; history?: NonNullable<Snapshot['work_items']>; repoId: number | 'all'; onSelect: (id: string, notice?: string) => void }) {
   const [creating, setCreating] = useState(false)
   return <div>
     <div className="row"><strong>工作项 {items.length}</strong><button disabled={isRemote()} className="btn small right" onClick={() => setCreating(!creating)}>{creating ? '收起表单' : '新建工作项'}</button></div>
@@ -238,7 +285,7 @@ export function WorkItemsPanel({ snap, items, history = [], repoId, onSelect }: 
   </div>
 }
 
-export function NewItem({ snap, onCreated, session, initialRepoId }: { snap: Snapshot; onCreated: (id: string) => void; session?: Session; initialRepoId?: number }) {
+export function NewItem({ snap, onCreated, session, initialRepoId }: { snap: Snapshot; onCreated: (id: string, notice?: string) => void; session?: Session; initialRepoId?: number }) {
   const repos = snap.repos ?? []
   const [repoId, setRepoId] = useState<number | ''>(session?.repo_id ?? initialRepoId ?? '')
   const [repoPath, setRepoPath] = useState('')
@@ -249,29 +296,42 @@ export function NewItem({ snap, onCreated, session, initialRepoId }: { snap: Sna
   const [acceptance, setAcceptance] = useState('')
   const [needsMerge, setNeedsMerge] = useState(repo?.is_git ?? false)
   const act = useAction()
+  const createGate = useRef(false)
+  const [created, setCreated] = useState('')
   const suggested = nextItemId(snap, repoPrefix(repo?.name ?? 'WI'))
   if (isRemote()) return null
   return (
-    <form className="new-item" onSubmit={(e) => {
+    <form className="new-item" aria-label="新建工作项" aria-busy={act.busy} onSubmit={(e) => {
       e.preventDefault()
+      if (createGate.current) return
+      createGate.current = true
+      setCreated('')
       const finalId = (id || suggested).toUpperCase()
-      act.run(() => api.createItem({ id: finalId, title, repo_id: repoId === '' ? undefined : repoId, repo_path: repoId === '' ? repoPath || undefined : undefined, branch, acceptance, needs_merge: needsMerge, session_id: session?.id })
-        .then(() => { setTitle(''); setId(''); setBranch(''); setAcceptance(''); onCreated(finalId) }))
+      const notice = `已创建 ${finalId} · ${title.trim()}${session ? '，并关联此会话' : ''}。`
+      return act.run(async () => {
+        await api.createItem({ id: finalId, title, repo_id: repoId === '' ? undefined : repoId, repo_path: repoId === '' ? repoPath || undefined : undefined, branch, acceptance, needs_merge: needsMerge, session_id: session?.id })
+        setCreated(notice)
+        setTitle(''); setId(''); setBranch(''); setAcceptance('')
+        onCreated(finalId, notice)
+      }).finally(() => { createGate.current = false })
     }}>
+      <fieldset className="workflow-fields" disabled={act.busy}>
       <label>项目
-        <select value={repoId} onChange={(e) => setRepoId(e.target.value === '' ? '' : Number(e.target.value))}>
+        <select value={repoId} onChange={(e) => { if (!createGate.current) setRepoId(e.target.value === '' ? '' : Number(e.target.value)) }}>
           <option value="">未关联 / 登记其他项目目录</option>
           {repos.map((r) => <option key={r.id} value={r.id}>{repoLabel(snap, r.id)}</option>)}
         </select>
       </label>
-      {repoId === '' && <label>项目目录（可选）<input value={repoPath} onChange={(e) => setRepoPath(e.target.value)} placeholder="填写已有项目的完整目录" /></label>}
-      <label>编号<input value={id} onChange={(e) => setId(e.target.value)} placeholder={suggested} /></label>
-      <label>标题<input value={title} onChange={(e) => setTitle(e.target.value)} required placeholder="行情页断网后显示明确状态并能恢复" /></label>
-      <label>分支<input value={branch} onChange={(e) => setBranch(e.target.value)} placeholder={`feat/${(id || suggested).toLowerCase()}-…`} className="mono" /></label>
-      <label>验收条件<textarea value={acceptance} onChange={(e) => setAcceptance(e.target.value)} rows={3} placeholder="断网 5 秒内显示离线；恢复后自动重连并补齐数据" /></label>
-      <label className="check"><input type="checkbox" checked={needsMerge} onChange={(e) => setNeedsMerge(e.target.checked)} /> 需要合并代码（调研、运维类任务可取消）</label>
-      <button className="btn primary" type="submit" disabled={act.busy}>{session ? '创建并关联此会话' : '新建工作项'}</button>
-      <ErrorLine msg={act.error} />
+      {repoId === '' && <label>项目目录（可选）<input value={repoPath} onChange={(e) => { if (!createGate.current) setRepoPath(e.target.value) }} placeholder="填写已有项目的完整目录" /></label>}
+      <label>编号<input value={id} onChange={(e) => { if (!createGate.current) setId(e.target.value) }} placeholder={suggested} /></label>
+      <label>标题<input value={title} onChange={(e) => { if (!createGate.current) setTitle(e.target.value) }} required placeholder="行情页断网后显示明确状态并能恢复" /></label>
+      <label>分支<input value={branch} onChange={(e) => { if (!createGate.current) setBranch(e.target.value) }} placeholder={`feat/${(id || suggested).toLowerCase()}-…`} className="mono" /></label>
+      <label>验收条件<textarea value={acceptance} onChange={(e) => { if (!createGate.current) setAcceptance(e.target.value) }} rows={3} placeholder="断网 5 秒内显示离线；恢复后自动重连并补齐数据" /></label>
+      <label className="check"><input type="checkbox" checked={needsMerge} onChange={(e) => { if (!createGate.current) setNeedsMerge(e.target.checked) }} /> 需要合并代码（调研、运维类任务可取消）</label>
+      <button className="btn primary" type="submit" disabled={act.busy}>{act.busy ? '正在创建…' : session ? '创建并关联此会话' : '新建工作项'}</button>
+      </fieldset>
+      {act.error && <ActionFeedback tone="error">创建失败，填写内容已保留。{act.error}</ActionFeedback>}
+      {created && <ActionFeedback>{created}</ActionFeedback>}
       <p className="hint">在会话里输入 #{(id || suggested)}，或让 Agent 运行 <code>steward-hook claim {id || suggested}</code>，会话就会归属到这个工作项。</p>
     </form>
   )

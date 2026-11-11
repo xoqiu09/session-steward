@@ -147,8 +147,9 @@ func TestPanelSignalsAreAtomicScopedAndDoNotRefreshActivity(t *testing.T) {
 	snap := signalSnapshot(t, c)
 	sid := snap.Sessions[0].ID
 	beforeActivity := snap.Sessions[0].LastActivityAt
+	target := testUnbindTarget(t, c, sid)
 	ctx := PanelSignalContext(context.Background(), "POST /api/sessions/{id}/unbind", fmt.Sprint(sid))
-	if err := c.Unbind(ctx, sid, ""); err != nil {
+	if err := c.Unbind(ctx, sid, "", target); err != nil {
 		t.Fatal(err)
 	}
 	snap = signalSnapshot(t, c)
@@ -160,7 +161,7 @@ func TestPanelSignalsAreAtomicScopedAndDoNotRefreshActivity(t *testing.T) {
 	if count != 1 {
 		t.Fatal(count)
 	}
-	if err := c.Unbind(ctx, sid, ""); err != nil {
+	if err := c.Unbind(ctx, sid, "", target); err != nil {
 		t.Fatal(err)
 	}
 	c.St.R().QueryRow(`SELECT COUNT(*) FROM events WHERE kind='user_action'`).Scan(&count)

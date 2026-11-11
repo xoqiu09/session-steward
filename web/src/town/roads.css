@@ -2,7 +2,9 @@
 .town-view.is-storybook .town-world-roads { --road-edge: #9c8b68; --road-surface: #e9d2a5; }
 .town-view.is-miniature .town-world-roads { --road-edge: #95916b; --road-surface: #efd7a4; }
 .town-view .town-world-roads path { fill: none; stroke-linecap: round; stroke-linejoin: round; }
-.town-view .town-road-edge { stroke: var(--road-edge); stroke-width: 33; }
-.town-view .town-road-surface { stroke: var(--road-surface); stroke-width: 27; }
-.town-view .town-road-edge.is-path { stroke-width: 22; }
+.town-view .town-road-edge { stroke: var(--road-edge); stroke-width: 29; }
+.town-view .town-road-surface { stroke: var(--road-surface); stroke-width: 25; }
+.town-view .town-road-edge.is-path { stroke-width: 21; }
 .town-view .town-road-surface.is-path { stroke-width: 17; }
+.town-view .town-road-grain { stroke: var(--road-edge); stroke-width: 1.2; stroke-dasharray: 1 13; opacity: .24; }
+.town-view .town-road-grain.is-path { stroke-dasharray: 1 11; opacity: .18; }

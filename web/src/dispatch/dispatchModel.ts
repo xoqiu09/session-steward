@@ -9,7 +9,7 @@ export interface DispatchTask {
   work_status: string; delivery_summary?: string; desktop_handoff: boolean
   pending: DispatchPending[]; events?: DispatchEvent[]
 }
-export interface DispatchProject { repo_id: number; name: string; added_at: string }
+export interface DispatchProject { repo_id: number; name: string; common_dir: string; added_at: string }
 export interface DispatchDeskState {
   background_control?: boolean
   host: string; codex_version: string; owner: string; epoch: number; lease_until: string

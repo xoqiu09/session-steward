@@ -27,11 +27,11 @@ export function ResidentsVillage({ cell, store, far, selected, onSelect }: {
     const point = new DOMPoint(e.clientX, e.clientY).matrixTransform(matrix.inverse())
     return { x: point.x / 60 + point.y / 30, y: point.y / 30 - point.x / 60 }
   }
-  const visibleIds = RESIDENT_IDS.filter((id) => { const trip = life.actors[id].trip; return !trip || trip.phase !== 'inside' && cellKey(pointCell(trip)) === cellKey(cell) })
+  const visibleIds = RESIDENT_IDS.filter((id) => { const actor=life.actors[id], trip=actor.trip, walk=trip??actor.wander; return !walk || trip?.phase !== 'inside' && cellKey(pointCell(walk)) === cellKey(cell) })
   const positions = illustrated ? residentDisplayPositions(visibleIds.map(id => {
     const actor = life.actors[id]
-    const at = dragged?.id === id ? dragged.at : actor.trip ? localTripPoint(actor.trip) : actor
-    return { id, at, locked: !!actor.trip || dragged?.id === id || !life.paused && actor.route.length > 0 && actor.holdUntil <= life.now }
+    const at = dragged?.id === id ? dragged.at : actor.trip || actor.wander ? localTripPoint((actor.trip??actor.wander)!) : actor
+    return { id, at, locked: !!actor.trip || !!actor.wander || dragged?.id === id || !life.paused && actor.route.length > 0 && actor.holdUntil <= life.now }
   })) : null
   const objects = [
     { key: 'house', depth: illustrated ? 5.2 : 6.5, content: <g className="town-resident-house" aria-label="七只的小屋，查看七位居民" {...activate(() => onSelect('deepseek'))} onPointerDown={(e) => e.stopPropagation()}>
@@ -67,9 +67,9 @@ export function ResidentsVillage({ cell, store, far, selected, onSelect }: {
     { key: 'tree-back', depth: 1.1, content: <Tree at={iso(0.15, 1)} k={0.7} /> },
     { key: 'tree-front', depth: illustrated ? 9.6 : 17, content: <Tree at={illustrated ? iso(9.2, .4) : iso(8.6, 8.4)} k={0.85} /> },
     ...(life.enabled ? visibleIds.map((id) => {
-      const actor = life.actors[id], at = positions?.get(id) ?? (dragged?.id === id ? dragged.at : actor.trip ? localTripPoint(actor.trip) : actor)
+      const actor = life.actors[id], at = positions?.get(id) ?? (dragged?.id === id ? dragged.at : actor.trip || actor.wander ? localTripPoint((actor.trip??actor.wander)!) : actor)
       return { key: id, depth: at.x + at.y, content: <ResidentFigure actor={actor} at={at} now={life.now} quiet={life.quiet} far={far}
-        selected={selected === id} draggable={!actor.trip} moving={!life.paused && (actor.trip ? actor.trip.path.length > 0 : actor.route.length > 0) && actor.holdUntil <= life.now && dragged?.id !== id}
+        selected={selected === id} draggable={!actor.trip && !actor.wander} moving={!life.paused && ((actor.trip??actor.wander)?.path.length ?? actor.route.length) > 0 && actor.holdUntil <= life.now && dragged?.id !== id}
         onSelect={() => onSelect(id)} onDrag={(e) => { const p = localPoint(e); if (p) setDragged({ id, at: p }) }}
         onDrop={(e) => { const p = localPoint(e); if (p) store.drop(id, p); setDragged(null) }} onCancel={() => setDragged(null)} /> }
     }) : []),
@@ -138,7 +138,7 @@ export function ResidentsPanel({ store, selected, onSelect, onClose, onVisit, de
     .sort((a, b) => b.points - a.points).slice(0, 2)
   return <section className="town-residents-panel town-world-ui" aria-label="小镇居民" data-town-popover="residents" onPointerDown={(e) => e.stopPropagation()}>
     <div className="town-residents-heading"><div><span>小镇日常</span><h2>七只的小屋</h2></div><button type="button" className="town-residents-close" onClick={onClose} aria-label="关闭居民面板">×</button></div>
-    <p className="town-residents-intro">各自散步，也会偶尔聊上几句。去串门时镜头会跟上。</p>
+    <p className="town-residents-intro">沿小镇道路随意散步，偶尔停下来聊几句。点“跟着她走”可随行。</p>
     <div className="town-residents-visit"><button type="button" onClick={onVisit}>去她们家</button><button type="button" disabled={!life.enabled} onClick={() => { store.gather(); onVisit() }}>叫大家来喝茶</button></div>
     <div className="town-residents-roster" role="group" aria-label="七位常住居民">
       {RESIDENTS.map((r) => <button key={r.id} type="button" aria-pressed={selected === r.id} onClick={() => onSelect(r.id)}>
@@ -161,7 +161,7 @@ export function ResidentsPanel({ store, selected, onSelect, onClose, onVisit, de
         {!destinations.length && <option value="">当前地图还没有项目</option>}
         {destinations.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
       </select><button type="button" disabled={!life.enabled || !visitId || !!actor.trip} onClick={() => { if (store.visit(selected, visitId)) onLocate?.(selected) }}>去串门</button></div>
-      {actor.trip && <p>{residentStatus(actor)} {onLocate && <button type="button" onClick={() => following === selected ? onStopFollow?.() : onLocate(selected)}>{following === selected ? '停止跟随' : actor.trip.phase === 'inside' ? '进屋看看并跟随' : '跟着她走'}</button>}</p>}
+      {(actor.trip || actor.wander) && <p>{residentStatus(actor)} {onLocate && <button type="button" onClick={() => following === selected ? onStopFollow?.() : onLocate(selected)}>{following === selected ? '停止跟随' : actor.trip?.phase === 'inside' ? '进屋看看并跟随' : '跟着她走'}</button>}</p>}
     </div>
     {friendship.length > 0 && <p className="town-resident-friends">熟悉的邻居：{friendship.map((f) => `${residentSpec(f.id).name} · 碰面 ${f.points} 次`).join('，')}</p>}
     <ResidentJournal life={life} />

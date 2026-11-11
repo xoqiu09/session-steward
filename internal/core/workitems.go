@@ -285,8 +285,20 @@ func (c *Core) BindManual(ctx context.Context, sessionID int64, item string) err
 	return err
 }
 
-// Unbind 结束 session 当前的 run，结果由人工指定。
-func (c *Core) Unbind(ctx context.Context, sessionID int64, outcome string) error {
+// UnbindTarget identifies the binding that the panel actually displayed. A session
+// can move to another item (or start another run of the same item) before the
+// request arrives, so the session ID alone is not a safe write target.
+type UnbindTarget struct {
+	RunID      int64
+	WorkItemID string
+}
+
+// Unbind ends only the observed run. Identity checks and the write share one
+// transaction with attribution changes; a stale panel cannot end a newer run.
+func (c *Core) Unbind(ctx context.Context, sessionID int64, outcome string, target UnbindTarget) error {
+	if target.RunID <= 0 || target.WorkItemID == "" {
+		return fmt.Errorf("%w: 缺少当前绑定的运行身份，请刷新面板后重试", ErrConflict)
+	}
 	switch outcome {
 	case "delivered", "failed", "abandoned", "handed_off", "":
 	default:
@@ -294,8 +306,36 @@ func (c *Core) Unbind(ctx context.Context, sessionID int64, outcome string) erro
 	}
 	now := c.St.NowTS()
 	err := c.panelTx(ctx, func(tx *sql.Tx) error {
-		if _, err := tx.Exec(`UPDATE runs SET ended_at=?, outcome=? WHERE session_id=? AND ended_at=''`, now, outcome, sessionID); err != nil {
+		conflict := fmt.Errorf("%w: 会话绑定或运行已变化，请刷新后重新选择；未结束任何运行", ErrConflict)
+		var count int
+		var runID int64
+		var item string
+		if err := tx.QueryRow(`SELECT COUNT(*),COALESCE(MIN(id),0),COALESCE(MIN(work_item_id),'') FROM runs WHERE session_id=? AND ended_at=''`, sessionID).Scan(&count, &runID, &item); err != nil {
 			return err
+		}
+		if count == 0 {
+			// Repeating an acknowledged operation is harmless only while no newer
+			// run has existed for this session, even if that newer run has ended.
+			var ended int
+			if err := tx.QueryRow(`SELECT COUNT(*) FROM runs r WHERE r.id=? AND r.session_id=? AND r.work_item_id=? AND r.ended_at<>'' AND NOT EXISTS (SELECT 1 FROM runs newer WHERE newer.session_id=r.session_id AND newer.id>r.id)`, target.RunID, sessionID, target.WorkItemID).Scan(&ended); err != nil {
+				return err
+			}
+			if ended == 1 {
+				return nil
+			}
+			return conflict
+		}
+		if count != 1 || runID != target.RunID || item != target.WorkItemID {
+			return conflict
+		}
+		result, err := tx.Exec(`UPDATE runs SET ended_at=?, outcome=? WHERE id=? AND session_id=? AND work_item_id=? AND ended_at=''`, now, outcome, target.RunID, sessionID, target.WorkItemID)
+		if err != nil {
+			return err
+		}
+		if changed, err := result.RowsAffected(); err != nil {
+			return err
+		} else if changed != 1 {
+			return conflict
 		}
 		return store.Touch(tx, now, "session", "")
 	})

@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"crypto/hmac"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -26,31 +27,80 @@ import (
 const LiveNoteMax = 80
 
 const liveNoteKey = "live:note"
+const liveCompanionKey = "live:companion"
+
+// LiveCompanionAction is an owner-triggered visual gesture, never an Agent command.
+type LiveCompanionAction struct {
+	ID   string `json:"id"`
+	Kind string `json:"kind"`
+	At   string `json:"at"`
+}
 
 // LiveNote 是展示画面上方的说明卡，由用户在本机面板填写。
 type LiveNote struct {
-	Doing     string `json:"doing"`
-	Thinking  string `json:"thinking"`
-	Contact   string `json:"contact"`
-	UpdatedAt string `json:"updated_at"`
+	Doing        string               `json:"doing"`
+	Thinking     string               `json:"thinking"`
+	Contact      string               `json:"contact"`
+	Style        string               `json:"style,omitempty"`
+	Presentation string               `json:"presentation,omitempty"`
+	Companion    *LiveCompanionAction `json:"companion,omitempty"`
+	UpdatedAt    string               `json:"updated_at"`
 }
 
 // LiveNote 读取展示说明；没有设置过时返回空值。
 func (c *Core) LiveNote(ctx context.Context) (LiveNote, error) {
 	var n LiveNote
 	raw, err := c.St.Meta(ctx, liveNoteKey)
-	if err != nil || raw == "" {
+	if err != nil {
 		return n, err
 	}
-	if json.Unmarshal([]byte(raw), &n) != nil {
-		return LiveNote{}, nil
+	if raw != "" && json.Unmarshal([]byte(raw), &n) != nil {
+		n = LiveNote{}
+	}
+	// Gestures live under a separate key: saving a note cannot replay/overwrite one.
+	n.Companion = nil
+	action, err := c.St.Meta(ctx, liveCompanionKey)
+	if err != nil {
+		return n, err
+	}
+	var a LiveCompanionAction
+	if json.Unmarshal([]byte(action), &a) == nil && oneOf(a.Kind, "pat", "walk", "home") != "" && len(a.ID) == 32 && liveTime(a.At) != "" {
+		if _, err := hex.DecodeString(a.ID); err == nil {
+			n.Companion = &a
+		}
 	}
 	return n, nil
+}
+
+func (c *Core) SetLiveCompanion(ctx context.Context, kind string) (LiveCompanionAction, error) {
+	if oneOf(kind, "pat", "walk", "home") == "" {
+		return LiveCompanionAction{}, fmt.Errorf("%w: 请选择摸摸、散步或回家", ErrBadRequest)
+	}
+	var id [16]byte
+	if _, err := rand.Read(id[:]); err != nil {
+		return LiveCompanionAction{}, err
+	}
+	a := LiveCompanionAction{ID: hex.EncodeToString(id[:]), Kind: kind, At: c.St.NowTS()}
+	b, _ := json.Marshal(a)
+	err := c.St.SetMeta(ctx, liveCompanionKey, string(b))
+	return a, err
 }
 
 // SetLiveNote 校验并保存展示说明。只写 meta 的一个键，不碰项目和工作项。
 func (c *Core) SetLiveNote(ctx context.Context, in LiveNote) (LiveNote, error) {
 	out := LiveNote{}
+	switch in.Presentation {
+	case "", "companion", "town":
+		out.Presentation = in.Presentation
+	default:
+		return LiveNote{}, fmt.Errorf("%w: 请选择已有的展示布局", ErrBadRequest)
+	}
+	switch in.Style {
+	case "", "cozy-night", "storybook-day", "ai-studio":
+		out.Style = in.Style
+	default:
+		return LiveNote{}, fmt.Errorf("%w: 请选择已有的直播画面风格", ErrBadRequest)
+	}
 	for _, f := range []struct {
 		name string
 		src  string
@@ -156,16 +206,210 @@ func liveOutcome(o string) string {
 		"handed_off", "attribution_reverted", "historical", "ended", "ended_with_question", "stopped", "held")
 }
 
-func liveBinding(b string) string {
-	return oneOf(b, "manual", "auto", "claim", "suggested", "inferred", "dispatch", "handoff")
+// 展示快照的上限。画面最多画 LiveMaxProjects 栋房子；每个项目只带画面和进度气泡用得到的少量记录，
+// 项目和会话再多，快照也只有几十 KB。
+const (
+	LiveMaxProjects     = 12
+	liveMaxSessions     = 8 // 每个项目：正在干活的优先
+	liveMaxOpenItems    = 8 // 每个项目：未关闭的工作项
+	liveMaxClosedItems  = 3 // 每个项目：最近关闭的工作项（气泡要看到状态变化）
+	liveMaxOpenRuns     = 8 // 每个项目：未结束的运行
+	liveMaxEndedRuns    = 4 // 每个项目：最近结束的运行
+	liveClosedWindow    = 2 * time.Hour
+	liveRunWindow       = time.Hour
+	liveSessionIdleHide = 30 * time.Minute // 与前端 sessionBuckets 一致：空闲超过 30 分钟不上画面
+)
+
+// LiveRepo 等是展示快照专用的输出结构：只有这些字段，JSON 键名与普通快照相同，前端可以按同一类型读取。
+type LiveRepo struct {
+	ID             int64  `json:"id"`
+	Name           string `json:"name"`
+	IsGit          bool   `json:"is_git,omitempty"`
+	Activity       string `json:"activity,omitempty"`
+	LastActivityAt string `json:"last_activity_at,omitempty"`
 }
 
-// LiveSnapshot 用白名单重建一份可以公开展示的快照。key 用于把工作项编号换成稳定的不透明编号。
-// 审批、功能、结构、归属、托管、派活、交接、合并、用量、设备等一律不带。
-func LiveSnapshot(s *Snapshot, key []byte) *Snapshot {
-	out := &Snapshot{
-		Repos: []Repo{}, Sessions: []Session{}, WorkItems: []WorkItem{}, Deps: []Dep{}, Runs: []Run{}, Approvals: []Approval{},
+type LiveSession struct {
+	ID               int64   `json:"id"`
+	Provider         string  `json:"provider,omitempty"`
+	RepoID           *int64  `json:"repo_id"`
+	State            string  `json:"state"`
+	DataSource       string  `json:"data_source"`
+	Freshness        string  `json:"freshness"`
+	FirstSeenAt      string  `json:"first_seen_at,omitempty"`
+	LastActivityAt   string  `json:"last_activity_at,omitempty"`
+	LastProgressAt   string  `json:"last_progress_at,omitempty"`
+	LastToolAt       string  `json:"last_tool_at,omitempty"`
+	WorkItemID       string  `json:"work_item_id,omitempty"`
+	WorktreeConflict bool    `json:"worktree_conflict,omitempty"`
+	Signal           *Signal `json:"signal,omitempty"`
+}
+
+type LiveWorkItem struct {
+	ID               string   `json:"id"`
+	RepoID           *int64   `json:"repo_id"`
+	Status           string   `json:"status"`
+	MergeState       string   `json:"merge_state,omitempty"`
+	NeedsMerge       bool     `json:"needs_merge,omitempty"`
+	CreatedAt        string   `json:"created_at,omitempty"`
+	UpdatedAt        string   `json:"updated_at,omitempty"`
+	Agents           []string `json:"agents,omitempty"`
+	CompletionPolicy string   `json:"completion_policy,omitempty"`
+	AutomaticHistory bool     `json:"automatic_history,omitempty"`
+	Signal           *Signal  `json:"signal,omitempty"`
+	ReturnedAt       string   `json:"returned_at,omitempty"`
+}
+
+type LiveRun struct {
+	ID         int64  `json:"id"`
+	WorkItemID string `json:"work_item_id,omitempty"`
+	SessionID  int64  `json:"session_id"`
+	Provider   string `json:"provider,omitempty"`
+	Attempt    int    `json:"attempt"`
+	StartedAt  string `json:"started_at,omitempty"`
+	EndedAt    string `json:"ended_at,omitempty"`
+	Outcome    string `json:"outcome,omitempty"`
+}
+
+// LiveSnap 是展示快照。Deps 和 Approvals 恒为空数组，只为和普通快照的结构兼容。
+// More 是没有画出来的项目数（只是一个数量）。
+type LiveSnap struct {
+	SignalGapAfterMin int            `json:"signal_gap_after_min,omitempty"`
+	Cursor            int64          `json:"cursor"`
+	Now               string         `json:"now"`
+	Repos             []LiveRepo     `json:"repos"`
+	Sessions          []LiveSession  `json:"sessions"`
+	WorkItems         []LiveWorkItem `json:"work_items"`
+	Deps              []struct{}     `json:"deps"`
+	Runs              []LiveRun      `json:"runs"`
+	Approvals         []struct{}     `json:"approvals"`
+	More              int            `json:"more"`
+}
+
+func liveAt(v string) time.Time {
+	t, err := time.Parse(time.RFC3339Nano, v)
+	if err != nil {
+		return time.Time{}
 	}
+	return t
+}
+
+func liveSessionState(s string) string {
+	return oneOf(s, "running", "waiting_permission", "idle", "interrupted", "error", "ended", "unknown")
+}
+
+func liveItemStatus(s string) string {
+	return oneOf(s, "todo", "in_progress", "blocked", "review", "done", "abandoned")
+}
+
+// liveOnStage：前端会把它画成小人的会话（与 sessionBuckets 的 recent 同一口径；展示快照没有审批，所以没有“等你处理”的例外）。
+func liveOnStage(x *Session, now time.Time) bool {
+	state := liveSessionState(x.State)
+	if x.DataSource != "live" || state == "ended" || x.Freshness == "stale" {
+		return false
+	}
+	if state == "running" || state == "waiting_permission" {
+		return true
+	}
+	at := liveAt(x.LastActivityAt)
+	return at.IsZero() || now.Sub(at) < liveSessionIdleHide
+}
+
+func liveWorking(x *Session) bool {
+	return liveSessionState(x.State) == "running" && x.Freshness != "stale" && x.Freshness != "history"
+}
+
+func liveOpen(status string) bool {
+	switch liveItemStatus(status) {
+	case "todo", "in_progress", "blocked", "review":
+		return true
+	}
+	return false
+}
+
+// liveRepoOrder 选出要画的项目：没有被收起（安静、沉睡）且有未关闭工作项或在画面上的会话；
+// 有助手在干活的排前面，其次按最近活动，最后按编号。
+func liveRepoOrder(s *Snapshot, now time.Time) []Repo {
+	type info struct {
+		open, working bool
+		onStage       bool
+		last          time.Time
+	}
+	by := map[int64]*info{}
+	get := func(id *int64) *info {
+		if id == nil {
+			return nil
+		}
+		if by[*id] == nil {
+			by[*id] = &info{}
+		}
+		return by[*id]
+	}
+	for i := range s.WorkItems {
+		if w := &s.WorkItems[i]; liveOpen(w.Status) {
+			if r := get(w.RepoID); r != nil {
+				r.open = true
+			}
+		}
+	}
+	for i := range s.Sessions {
+		x := &s.Sessions[i]
+		r := get(x.RepoID)
+		if r == nil || !liveOnStage(x, now) {
+			continue
+		}
+		r.onStage = true
+		r.working = r.working || liveWorking(x)
+		if at := liveAt(x.LastActivityAt); at.After(r.last) {
+			r.last = at
+		}
+	}
+	type cand struct {
+		repo Repo
+		info info
+	}
+	var list []cand
+	for _, r := range s.Repos {
+		a := by[r.ID]
+		if a == nil || (!a.open && !a.onStage) || r.Activity == "quiet" || r.Activity == "dormant" {
+			continue
+		}
+		c := cand{repo: r, info: *a}
+		if at := liveAt(r.LastActivityAt); at.After(c.info.last) {
+			c.info.last = at
+		}
+		list = append(list, c)
+	}
+	sort.SliceStable(list, func(i, j int) bool {
+		a, b := list[i].info, list[j].info
+		if a.working != b.working {
+			return a.working
+		}
+		if !a.last.Equal(b.last) {
+			return a.last.After(b.last)
+		}
+		return list[i].repo.ID < list[j].repo.ID
+	})
+	out := make([]Repo, 0, min(len(list), LiveMaxProjects))
+	seen := map[int64]bool{}
+	for _, c := range list {
+		if len(out) == LiveMaxProjects {
+			break
+		}
+		if !seen[c.repo.ID] {
+			seen[c.repo.ID] = true
+			out = append(out, c.repo)
+		}
+	}
+	return out
+}
+
+// LiveSnapshot 用白名单重建一份可以公开展示的快照：只带要画的项目（最多 LiveMaxProjects 个），
+// 以及这些项目下数量有限的会话、工作项和运行。key 用于把工作项编号换成稳定的不透明编号。
+// 输出结构是专用的 Live* 类型，只有画面需要的字段；审批、功能、结构、归属、托管、派活、交接、合并、用量、设备等一律不带。
+// 项目通用名按全部项目编号的升序名次计算，所以裁剪不会改变同一个项目的名字。
+func LiveSnapshot(s *Snapshot, key []byte) *LiveSnap {
+	out := &LiveSnap{Repos: []LiveRepo{}, Sessions: []LiveSession{}, WorkItems: []LiveWorkItem{}, Deps: []struct{}{}, Runs: []LiveRun{}, Approvals: []struct{}{}}
 	if s == nil {
 		out.Now = time.Now().UTC().Format(time.RFC3339Nano)
 		return out
@@ -175,25 +419,59 @@ func LiveSnapshot(s *Snapshot, key []byte) *Snapshot {
 	if out.Now == "" {
 		out.Now = time.Now().UTC().Format(time.RFC3339Nano)
 	}
+	now := liveAt(out.Now)
 	out.SignalGapAfterMin = s.SignalGapAfterMin
 	item := func(id string) string { return LiveItemID(key, id) }
 
-	ids := make([]int64, 0, len(s.Repos))
+	all := make([]int64, 0, len(s.Repos))
+	distinct := map[int64]bool{}
 	for _, r := range s.Repos {
-		ids = append(ids, r.ID)
+		all = append(all, r.ID)
+		distinct[r.ID] = true
 	}
-	names := LiveProjectNames(ids)
-	for _, r := range s.Repos {
-		out.Repos = append(out.Repos, Repo{
+	names := LiveProjectNames(all)
+	chosen := liveRepoOrder(s, now)
+	shown := make(map[int64]bool, len(chosen))
+	for _, r := range chosen {
+		shown[r.ID] = true
+		out.Repos = append(out.Repos, LiveRepo{
 			ID: r.ID, Name: names[r.ID], IsGit: r.IsGit,
 			Activity:       oneOf(r.Activity, "active", "quiet", "dormant"),
 			LastActivityAt: liveTime(r.LastActivityAt),
 		})
 	}
-	for _, x := range s.Sessions {
-		out.Sessions = append(out.Sessions, Session{
+	out.More = len(distinct) - len(chosen)
+	in := func(id *int64) bool { return id != nil && shown[*id] }
+	repoKey := func(id *int64) int64 { return *id }
+
+	// 会话：每个项目先放正在干活的，再按最近活动。
+	sessionsBy := map[int64][]*Session{}
+	sessionRepo := map[int64]*int64{}
+	for i := range s.Sessions {
+		x := &s.Sessions[i]
+		sessionRepo[x.ID] = x.RepoID
+		if in(x.RepoID) && liveOnStage(x, now) {
+			sessionsBy[repoKey(x.RepoID)] = append(sessionsBy[repoKey(x.RepoID)], x)
+		}
+	}
+	var sessions []*Session
+	for _, list := range sessionsBy {
+		sort.SliceStable(list, func(i, j int) bool {
+			if a, b := liveWorking(list[i]), liveWorking(list[j]); a != b {
+				return a
+			}
+			if a, b := liveAt(list[i].LastActivityAt), liveAt(list[j].LastActivityAt); !a.Equal(b) {
+				return a.After(b)
+			}
+			return list[i].ID < list[j].ID
+		})
+		sessions = append(sessions, list[:min(len(list), liveMaxSessions)]...)
+	}
+	sort.Slice(sessions, func(i, j int) bool { return sessions[i].ID < sessions[j].ID })
+	for _, x := range sessions {
+		out.Sessions = append(out.Sessions, LiveSession{
 			ID: x.ID, Provider: liveProvider(x.Provider), RepoID: x.RepoID,
-			State:            oneOf(x.State, "running", "waiting_permission", "idle", "interrupted", "error", "ended", "unknown"),
+			State:            liveSessionState(x.State),
 			DataSource:       oneOf(x.DataSource, "live", "history"),
 			Freshness:        oneOf(x.Freshness, "live", "history", "stale"),
 			FirstSeenAt:      liveTime(x.FirstSeenAt),
@@ -201,43 +479,126 @@ func LiveSnapshot(s *Snapshot, key []byte) *Snapshot {
 			LastProgressAt:   liveTime(x.LastProgressAt),
 			LastToolAt:       liveTime(x.LastToolAt),
 			WorkItemID:       item(x.WorkItemID),
-			Binding:          liveBinding(x.Binding),
 			WorktreeConflict: x.WorktreeConflict,
 			Signal:           liveSignal(x.Signal),
 		})
 	}
-	for _, w := range s.WorkItems {
-		waiting := make([]string, 0, len(w.Waiting))
-		for _, u := range w.Waiting {
-			waiting = append(waiting, item(u))
+
+	// 工作项：未关闭的按“待处理 > 进行中 > 卡住 > 待开始”再按更新时间；另带少量最近关闭的，
+	// 这样上一份快照里的工作项关闭时，下一份还看得到它，进度气泡能比出状态变化。
+	rank := map[string]int{"review": 0, "in_progress": 1, "blocked": 2, "todo": 3}
+	openBy, closedBy := map[int64][]*WorkItem{}, map[int64][]*WorkItem{}
+	itemRepo := map[string]*int64{}
+	for i := range s.WorkItems {
+		w := &s.WorkItems[i]
+		itemRepo[w.ID] = w.RepoID
+		if !in(w.RepoID) {
+			continue
 		}
+		switch {
+		case liveOpen(w.Status):
+			openBy[repoKey(w.RepoID)] = append(openBy[repoKey(w.RepoID)], w)
+		case liveItemStatus(w.Status) != "":
+			if at := liveAt(w.UpdatedAt); !at.IsZero() && now.Sub(at) < liveClosedWindow {
+				closedBy[repoKey(w.RepoID)] = append(closedBy[repoKey(w.RepoID)], w)
+			}
+		}
+	}
+	newer := func(list []*WorkItem, i, j int) bool {
+		if a, b := liveAt(list[i].UpdatedAt), liveAt(list[j].UpdatedAt); !a.Equal(b) {
+			return a.After(b)
+		}
+		return list[i].ID < list[j].ID
+	}
+	var items []*WorkItem
+	for _, list := range openBy {
+		sort.SliceStable(list, func(i, j int) bool {
+			if a, b := rank[list[i].Status], rank[list[j].Status]; a != b {
+				return a < b
+			}
+			return newer(list, i, j)
+		})
+		items = append(items, list[:min(len(list), liveMaxOpenItems)]...)
+	}
+	for _, list := range closedBy {
+		sort.SliceStable(list, func(i, j int) bool { return newer(list, i, j) })
+		items = append(items, list[:min(len(list), liveMaxClosedItems)]...)
+	}
+	sort.Slice(items, func(i, j int) bool { return items[i].ID < items[j].ID })
+	for _, w := range items {
 		agents := make([]string, 0, len(w.Agents))
 		for _, a := range w.Agents {
 			agents = append(agents, liveProvider(a))
 		}
-		out.WorkItems = append(out.WorkItems, WorkItem{
-			ID: item(w.ID), RepoID: w.RepoID, Title: "工作项",
-			Status:           oneOf(w.Status, "todo", "in_progress", "blocked", "review", "done", "abandoned"),
+		out.WorkItems = append(out.WorkItems, LiveWorkItem{
+			ID: item(w.ID), RepoID: w.RepoID,
+			Status:           liveItemStatus(w.Status),
 			MergeState:       oneOf(w.MergeState, "none", "not_ready", "awaiting", "approved", "merged"),
 			NeedsMerge:       w.NeedsMerge,
 			CreatedAt:        liveTime(w.CreatedAt),
 			UpdatedAt:        liveTime(w.UpdatedAt),
-			Ready:            w.Ready,
-			Waiting:          waiting,
-			Agents:           agents,
+			Agents:           agents[:min(len(agents), 4)],
 			CompletionPolicy: oneOf(w.CompletionPolicy, "auto_history", "manual"),
 			AutomaticHistory: w.AutomaticHistory,
 			Signal:           liveSignal(w.Signal),
 			ReturnedAt:       liveTime(w.ReturnedAt),
 		})
 	}
-	for _, d := range s.Deps {
-		out.Deps = append(out.Deps, Dep{Upstream: item(d.Upstream), Downstream: item(d.Downstream), Cond: oneOf(d.Cond, "accepted", "merged"), Satisfied: d.Satisfied})
+
+	// 运行：归到工作项（没有时归到会话）的项目；未结束的优先，另带最近一小时结束的。
+	runsBy := map[int64][]*Run{}
+	for i := range s.Runs {
+		r := &s.Runs[i]
+		repo, ok := itemRepo[r.WorkItemID]
+		if !ok || repo == nil {
+			repo = sessionRepo[r.SessionID]
+		}
+		if !in(repo) {
+			continue
+		}
+		if r.EndedAt != "" {
+			if at := liveAt(r.EndedAt); at.IsZero() || now.Sub(at) >= liveRunWindow {
+				continue
+			}
+		}
+		runsBy[repoKey(repo)] = append(runsBy[repoKey(repo)], r)
 	}
-	for _, r := range s.Runs {
-		out.Runs = append(out.Runs, Run{
+	// 未结束的：先放画面上那些会话的（它们结束时才会出“一轮运行完成”），再按编号从新到旧；
+	// 刚结束的另算名额，按结束时间从新到旧，这样上一份里未结束的运行结束后，下一份还看得到它。
+	onStage := make(map[int64]bool, len(out.Sessions))
+	for _, x := range out.Sessions {
+		onStage[x.ID] = true
+	}
+	var runs []*Run
+	for _, list := range runsBy {
+		var open, ended []*Run
+		for _, r := range list {
+			if r.EndedAt == "" {
+				open = append(open, r)
+			} else {
+				ended = append(ended, r)
+			}
+		}
+		sort.SliceStable(open, func(i, j int) bool {
+			if a, b := onStage[open[i].SessionID], onStage[open[j].SessionID]; a != b {
+				return a
+			}
+			return open[i].ID > open[j].ID
+		})
+		sort.SliceStable(ended, func(i, j int) bool {
+			if a, b := liveAt(ended[i].EndedAt), liveAt(ended[j].EndedAt); !a.Equal(b) {
+				return a.After(b)
+			}
+			return ended[i].ID > ended[j].ID
+		})
+		runs = append(runs, open[:min(len(open), liveMaxOpenRuns)]...)
+		runs = append(runs, ended[:min(len(ended), liveMaxEndedRuns)]...)
+	}
+	sort.Slice(runs, func(i, j int) bool { return runs[i].ID < runs[j].ID })
+	for _, r := range runs {
+		out.Runs = append(out.Runs, LiveRun{
 			ID: r.ID, WorkItemID: item(r.WorkItemID), SessionID: r.SessionID, Provider: liveProvider(r.Provider), Attempt: r.Attempt,
-			Binding: liveBinding(r.Binding), StartedAt: liveTime(r.StartedAt), EndedAt: liveTime(r.EndedAt), Outcome: liveOutcome(r.Outcome),
+			StartedAt: liveTime(r.StartedAt), EndedAt: liveTime(r.EndedAt), Outcome: liveOutcome(r.Outcome),
 		})
 	}
 	return out
