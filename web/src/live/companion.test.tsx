@@ -10,8 +10,8 @@ describe('陪伴与真实小镇的展示', () => {
  it('右上角信息与下方真实小镇同屏，无控制入口或私人字段；两种布局均可用', () => {
   const snap = { ...demoSnapshot, repos: demoSnapshot.repos!.map(r => ({ ...r, name: 'PRIVATE_PROJECT_CANARY', common_dir: '/Users/private/canary' })) }
   for (const layout of ['portrait', 'landscape'] as const) {
-   const html = renderToStaticMarkup(<LiveScreen snap={snap} note={{ doing: '公开主题', thinking: '公开思考', contact: '在直播间留言', presentation: 'companion', updated_at: '' }} stale={false} bubble={null} recent={{ key: 'synthetic', kind: 'started', repoId: 1, text: '一位助手开始干活' }} layout={layout} />)
-   for (const shown of ['小镇刚刚发生', '给团子留句话', '现有小镇实况', '一位助手开始干活', '公开主题', '公开思考', '在直播间留言', 'town-svg', '项目 A', '/residents/gpt/idle.webp']) expect(html).toContain(shown)
+   const html = renderToStaticMarkup(<LiveScreen snap={snap} note={{ doing: '公开主题', thinking: '公开思考', contact: '在直播间留言', presentation: 'companion', resident_control: { resident: 'gpt', mode: 'fixed', interval_seconds: 120, anchor: '2026-11-11T00:00:00Z' }, updated_at: '' }} stale={false} bubble={null} recent={{ key: 'synthetic', kind: 'started', repoId: 1, text: '一位助手开始干活' }} layout={layout} />)
+   for (const shown of ['小镇刚刚发生', '给 ChatGPT 留句话', '现有小镇实况', '一位助手开始干活', '公开主题', '公开思考', '在直播间留言', 'town-svg', '项目 A', '/residents/gpt/idle.webp']) expect(html).toContain(shown)
    for (const hidden of ['PRIVATE_PROJECT_CANARY', '/Users/private', '<button', '<a ', '<input', '<textarea', 'tabindex', '<iframe']) expect(html).not.toContain(hidden)
   }
   const town = renderToStaticMarkup(<LiveScreen snap={snap} note={{ doing: '', thinking: '', contact: '', presentation: 'town', updated_at: '' }} stale={false} bubble={null} layout="portrait" />)

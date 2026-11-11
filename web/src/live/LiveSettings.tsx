@@ -7,6 +7,7 @@ import { livePresentation } from './companion'
 import './liveSettings.css'
 import { useNativeDialog } from '../ui/useNativeDialog'
 import { ActionFeedback } from '../ui/ActionFeedback'
+import { LiveResidentsSettings } from './LiveResidentsSettings'
 
 export const LIVE_NOTE_MAX = 80
 
@@ -137,13 +138,13 @@ export function LiveSettings({ onClose }: { onClose: () => void }) {
         const box = event.currentTarget.getBoundingClientRect()
         if (event.clientX < box.left || event.clientX > box.right || event.clientY < box.top || event.clientY > box.bottom) requestClose()
       }}>
-        <header className="live-studio-heading"><div><p>工作小镇 · 展示工作台</p><h2>把小镇，留给路过的人。</h2></div><span>本地预览</span></header>
+        <header className="live-studio-heading"><div><p>工作小镇 · 展示工作台</p><h2>把小镇，留给路过的人。</h2></div><div className="live-studio-heading-tools"><span>本地预览</span><button className="btn small" data-live-close disabled={busy} onClick={requestClose}>关闭</button></div></header>
         <div className="live-studio-layout">
         <div className="live-studio-controls">
         {loading && <p role="status">正在读取直播说明…</p>}
         {loadError && <div role="alert"><p>{loadError}</p><p>原说明尚未读取，暂时不能编辑或保存。</p><button className="btn small" onClick={() => void load()}>重新读取说明</button></div>}
         <fieldset className="live-layout-picker" disabled={!loaded || busy}>
-          <legend>展示内容</legend><div>{([{ id: 'companion', label: '团子 + 小镇', hint: '上方陪伴，下方小镇实况' }, { id: 'town', label: '整座小镇', hint: '让原来的小镇占满画面' }] as const).map(p => <button type="button" key={p.id} aria-pressed={presentation === p.id} onClick={() => { if (!loaded || saving.current) return; setPresentation(p.id); setSaveFeedback(null); setConfirmClose(false) }}><b>{p.label}</b><small>{p.hint}</small></button>)}</div>
+          <legend>展示内容</legend><div>{([{ id: 'companion', label: '居民 + 小镇', hint: '七位轮流陪伴，下方小镇实况' }, { id: 'town', label: '整座小镇', hint: '让原来的小镇占满画面' }] as const).map(p => <button type="button" key={p.id} aria-pressed={presentation === p.id} onClick={() => { if (!loaded || saving.current) return; setPresentation(p.id); setSaveFeedback(null); setConfirmClose(false) }}><b>{p.label}</b><small>{p.hint}</small></button>)}</div>
         </fieldset>
         <fieldset className="live-style-picker" disabled={!loaded || busy}>
           <legend>画面风格</legend>
@@ -161,9 +162,10 @@ export function LiveSettings({ onClose }: { onClose: () => void }) {
             <small className={problems[f.key] ? 'is-error' : 'muted'}>{problems[f.key] || `${Array.from(values[f.key].trim()).length}/${LIVE_NOTE_MAX}`}</small>
           </label>
         ))}
-        <section className="live-owner-gestures" aria-label="团子的动作">
-          <div><strong>让团子回应一下</strong><small>由你手动触发 · 尚未接入直播间弹幕</small></div>
-          <div className="live-gesture-actions">{([{ kind: 'pat', label: '摸摸团子' }, { kind: 'walk', label: '去散步' }, { kind: 'home', label: '该回家啦' }] as const).map(a => <button type="button" key={a.kind} disabled={!loaded || gestureBusy || presentation !== 'companion'} onClick={() => void gesture(a.kind)}>{a.label}</button>)}</div>
+        {presentation === 'companion' && <LiveResidentsSettings />}
+        <section className="live-owner-gestures" aria-label="居民的动作">
+          <div><strong>让当前居民回应一下</strong><small>由你手动触发 · 尚未接入直播间弹幕</small></div>
+          <div className="live-gesture-actions">{([{ kind: 'pat', label: '摸摸' }, { kind: 'walk', label: '去散步' }, { kind: 'home', label: '该回家啦' }] as const).map(a => <button type="button" key={a.kind} disabled={!loaded || gestureBusy || presentation !== 'companion'} onClick={() => void gesture(a.kind)}>{a.label}</button>)}</div>
           {gestureBusy && <p role="status">正在发送动作…</p>}
           {gestureFeedback && <ActionFeedback tone={gestureFeedback.tone}><p>{gestureFeedback.text}</p></ActionFeedback>}
         </section>
@@ -176,7 +178,6 @@ export function LiveSettings({ onClose }: { onClose: () => void }) {
           <button className="btn small primary" disabled={!loaded || busy || invalid} onClick={() => void save()}>{busy ? '保存中…' : '保存'}</button>
           <button className="btn small" disabled={copyBusy} onClick={() => void copy()}>{copyBusy ? '取地址中…' : '复制展示地址'}</button>
           <button className="btn small" disabled={!loaded} onClick={() => window.open(preview, '_blank', 'noopener')}>预览所选风格</button>
-          <button className="btn small" data-live-close disabled={busy} onClick={requestClose}>关闭</button>
         </div>
         {confirmClose && <section ref={closeRegion} className="live-close-confirm" role="region" aria-label="关闭前确认">
           <strong>还有未保存的修改</strong><p>现在关闭会放弃本次草稿，已保存的展示画面保持原样。</p>

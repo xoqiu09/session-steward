@@ -7,14 +7,11 @@ import type { LiveEvent } from './events'
 import type { LiveSnapshot } from './scrub'
 import { activeCompanionAction, COMPANION_ACTION_MS } from './companion'
 import type { LiveLayout } from './LiveView'
+import { residentImage } from '../town/residents'
+import { liveResidentName, liveResidentSpeech } from './liveResidents'
+import { useLiveResident } from './useLiveResident'
 import './companion.css'
 
-const SPEECH = {
-  idle: '你忙你的，我就在这里陪你。',
-  pat: '唔……就再摸一下。',
-  walk: '去小院转一圈，一会儿就回来。',
-  home: '好啦，回家给你留一盏灯。',
-}
 const POSE = { idle: 'idle', pat: 'pat', walk: 'activity', home: 'greet' }
 
 function useGesture(action: LiveCompanionAction | undefined) {
@@ -35,9 +32,12 @@ export function CompanionScene({ snap, model, note, stale, bubble, recent, layou
   bubble: LiveEvent | null; recent: LiveEvent | null; layout: LiveLayout; style: LiveStyle; theme: TownThemeId
 }) {
   const gesture = useGesture(note?.companion)
+  const resident = useLiveResident(note?.resident_control, note?.companion)
+  const name = liveResidentName(resident)
+  const shownGesture = note?.companion?.resident && note.companion.resident !== resident ? 'idle' : gesture
   const working = model?.counts.working ?? 0
   return <main className={`live-view live-companion is-${layout}`} data-town-theme={theme} data-live-style={style} lang="zh-CN">
-    <section className="companion-hero" aria-label="团子的陪伴小院">
+    <section className="companion-hero" aria-label={`${name}的陪伴小院`}>
       <img className="companion-courtyard" src="/town/live/courtyard.png" alt="花园小院里亮着暖灯" />
       <div className="companion-shade" />
       <header className="companion-title">
@@ -50,18 +50,18 @@ export function CompanionScene({ snap, model, note, stale, bubble, recent, layou
           <span className="companion-card-label"><i />小镇刚刚发生</span>
           <p>{recent?.text || (snap ? `现在 ${working} 位助手在工作，小镇慢慢向前。` : '正在连接小镇…')}</p>
         </section>
-        <section className="companion-info companion-invitation" aria-label="给团子留句话">
-          <span className="companion-card-label">给团子留句话</span>
+        <section className="companion-info companion-invitation" aria-label={`给 ${name} 留句话`}>
+          <span className="companion-card-label">给 {name} 留句话</span>
           <p>{note?.contact?.trim() || '在直播间打个招呼，休息时回来聊。'}</p>
           <small>也可以只是安静陪伴</small>
         </section>
       </aside>
-      <div className={`companion-resident is-${gesture}`}>
-        <p className="companion-speech" role="status">{SPEECH[gesture]}</p>
-        <div className="companion-pet"><i className="companion-shadow" /><img src={`/residents/gpt/${POSE[gesture]}.webp`} alt={`团子 · ${gesture === 'walk' ? '在小院散步' : gesture === 'home' ? '回家休息' : gesture === 'pat' ? '开心地回应摸摸' : '在小院陪你'}`} />{gesture === 'pat' && <span className="companion-heart" aria-hidden="true">♡</span>}</div>
-        <p className="companion-name"><i />团子<span>小镇居民</span></p>
+      <div key={resident} className={`companion-resident is-${shownGesture}`} data-resident={resident}>
+        <p className="companion-speech" role="status">{liveResidentSpeech(resident, shownGesture)}</p>
+        <div className="companion-pet"><i className="companion-shadow" /><img src={residentImage(resident, POSE[shownGesture])} alt={`${name} · ${shownGesture === 'walk' ? '在小院散步' : shownGesture === 'home' ? '回家休息' : shownGesture === 'pat' ? '开心地回应摸摸' : '在小院陪你'}`} />{shownGesture === 'pat' && <span className="companion-heart" aria-hidden="true">♡</span>}</div>
+        <p className="companion-name"><i />{name}<span>小镇居民</span></p>
       </div>
-      <span className="companion-courtyard-caption">团子的小院</span>
+      <span className="companion-courtyard-caption">{name}的小院</span>
     </section>
     <section className="companion-town-panel" aria-label="现有小镇实况">
       <header className="companion-town-heading"><div><i /><h2>此刻的小镇</h2><span>现在 {working} 位在工作</span></div><small>建筑 = 项目 · 小人 = 一位 AI 助手</small></header>
