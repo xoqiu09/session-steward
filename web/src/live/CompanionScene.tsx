@@ -10,6 +10,7 @@ import type { LiveLayout } from './LiveView'
 import { residentImage } from '../town/residents'
 import { liveResidentName, liveResidentSpeech } from './liveResidents'
 import { useLiveResident } from './useLiveResident'
+import { TOPIC_HOUSES, TOPIC_SIGN_SCALE } from './topicTown'
 import './companion.css'
 
 const POSE = { idle: 'idle', pat: 'pat', walk: 'activity', home: 'greet' }
@@ -26,7 +27,7 @@ function useGesture(action: LiveCompanionAction | undefined) {
   return active?.kind ?? 'idle'
 }
 
-/** The companion is decoration. Only the lower map and recent event represent real work. */
+/** Theme houses and residents are scenery. The aggregate work count and events remain real. */
 export function CompanionScene({ snap, model, note, stale, bubble, recent, layout, style, theme }: {
   snap: LiveSnapshot | null; model: TownModel | null; note: LiveNote | null; stale: boolean
   bubble: LiveEvent | null; recent: LiveEvent | null; layout: LiveLayout; style: LiveStyle; theme: TownThemeId
@@ -63,12 +64,11 @@ export function CompanionScene({ snap, model, note, stale, bubble, recent, layou
       </div>
       <span className="companion-courtyard-caption">{name}的小院</span>
     </section>
-    <section className="companion-town-panel" aria-label="现有小镇实况">
-      <header className="companion-town-heading"><div><i /><h2>此刻的小镇</h2><span>现在 {working} 位在工作</span></div><small>建筑 = 项目 · 小人 = 一位 AI 助手</small></header>
+    <section className="companion-town-panel" aria-label="主题小镇">
+      <header className="companion-town-heading"><div><i /><h2>今晚的主题小镇</h2><span>{TOPIC_HOUSES.length} 间主题小屋</span></div><small>一间小屋，一个方向 · 七位居民自在散步</small></header>
       <div className={`town-view live-town companion-town${theme === 'storybook' ? ' is-storybook' : theme === 'miniature' ? ' is-miniature' : ''}`}>
-        {snap && model ? <LiveStage model={model} snap={snap} bubble={bubble} initialAspect={layout === 'portrait' ? 1.8 : 3.5} /> : <p className="live-loading">小镇加载中…</p>}
+        {snap && model ? <LiveStage model={model} snap={snap} bubble={bubble} residents maxBuildings={TOPIC_HOUSES.length} signScale={TOPIC_SIGN_SCALE} initialAspect={layout === 'portrait' ? 1.8 : 3.5} /> : <p className="live-loading">小镇加载中…</p>}
       </div>
-      {!!snap?.more && <p className="companion-more">另有 {snap.more} 个项目在休息</p>}
       {stale && <p className="companion-connection" role="status">小镇画面正在重连</p>}
     </section>
     <div className="companion-safe-area" aria-label="直播间评论预留区" />

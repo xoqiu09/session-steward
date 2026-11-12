@@ -11,6 +11,7 @@ import { contentAt, landscapeText, sourceName } from './content'
 import { LIVE_RESIDENT_IDS, liveResidentName, liveResidentSpeech } from './liveResidents'
 import { useLiveResident } from './useLiveResident'
 import { activeCompanionAction } from './companion'
+import { TOPIC_HOUSES, TOPIC_SIGN_SCALE } from './topicTown'
 import './studio.css'
 
 export function StudioScene({ snap, model, note, stale, bubble, recent, layout, style, theme }: {
@@ -31,10 +32,10 @@ export function StudioScene({ snap, model, note, stale, bubble, recent, layout, 
   return <main className={`live-view studio-scene is-${layout}${reading ? ' is-reading' : ''}`} data-town-theme={theme} data-live-style={style} lang="zh-CN">
     <header className="studio-heading"><div><p><i />工作小镇 · 安静陪伴</p><h1>{publicText(note?.doing?.trim() || '今天，也让小镇往前一点。')}</h1><span>{publicText(note?.thinking?.trim() || '一边认真做事，一边慢慢生活。')}</span></div><div className="studio-presence"><b>{String(working).padStart(2, '0')}</b><span>位助手<br />正在工作</span></div></header>
     <div className="studio-composition">
-      <section className={`studio-town town-view${theme === 'miniature' ? ' is-miniature' : theme === 'storybook' ? ' is-storybook' : ''}`} aria-label="此刻的小镇实况">
-        <header><span><i />此刻的小镇</span><small>房子是项目 · 小人是 AI 助手</small></header>
-        <div className="studio-town-canvas">{snap && model ? <LiveStage model={model} snap={snap} bubble={bubble} residents initialAspect={landscape ? 1.4 : 1.3} /> : <p className="live-loading">小镇正在亮灯…</p>}</div>
-        <p className="studio-town-caption">七位居民，自在走走。<span>展示最近 {Math.min(8, model?.buildings.filter(b => b.repo).length ?? 0)} 个项目</span></p>
+      <section className={`studio-town town-view${theme === 'miniature' ? ' is-miniature' : theme === 'storybook' ? ' is-storybook' : ''}`} aria-label="主题小镇">
+        <header><span><i />今晚的主题小镇</span><small>一间小屋，一个方向</small></header>
+        <div className="studio-town-canvas">{snap && model ? <LiveStage model={model} snap={snap} bubble={bubble} residents maxBuildings={TOPIC_HOUSES.length} signScale={TOPIC_SIGN_SCALE} initialAspect={landscape ? 1.4 : 1.3} /> : <p className="live-loading">小镇正在亮灯…</p>}</div>
+        <p className="studio-town-caption">七位居民，自在走走。<span>{TOPIC_HOUSES.length} 间主题小屋</span></p>
       </section>
       <aside className="studio-sidebar">
         <section className={`studio-reading${content.item ? ' has-content' : ''}`} aria-label="公开内容卡片">
@@ -46,7 +47,7 @@ export function StudioScene({ snap, model, note, stale, bubble, recent, layout, 
           </article> : <article className="studio-reading-card is-empty"><header><span>小镇的放映角</span><small>慢慢来</small></header><h2>把日子，过成<br />自己的作品。</h2><p>这里会放些想法、阅读和做好的小作品。现在，先陪小镇坐一会儿。</p><footer><span>留一点时间，给喜欢的事。</span><b>✦</b></footer></article>}
         </section>
         <section className={`studio-resident is-${gesture}`} aria-label={`${name}在这里陪你`}><div className="studio-resident-portrait" key={resident}><i /><img src={residentImage(resident, { idle: 'idle', pat: 'pat', walk: 'activity', home: 'greet' }[gesture])} alt={`${name} · 小镇居民`} /></div><div className="studio-resident-message"><p>{liveResidentSpeech(resident, gesture)}</p><span><i />{name}<small>今晚的陪伴</small></span></div></section>
-        <section className="studio-activity" aria-label="小镇刚刚发生"><span><i />小镇刚刚发生</span><p>{stale ? '小镇正在重新连接，先在这里歇一会儿。' : recent ? publicText(recent.text) : snap ? `此刻 ${working} 位助手在工作，灯光慢慢亮着。` : '正在连接小镇…'}</p><small>{publicText(note?.contact?.trim() || '在直播间打个招呼，休息时回来聊。')}</small></section>
+        <section className="studio-activity" aria-label="小镇刚刚发生"><span><i />小镇刚刚发生</span><p>{stale ? '小镇正在重新连接，先在这里歇一会儿。' : recent ? publicText(recent.text) : snap ? `后台 ${working} 位助手在工作，居民们自在散步。` : '正在连接小镇…'}</p><small>{publicText(note?.contact?.trim() || '在直播间打个招呼，休息时回来聊。')}</small></section>
       </aside>
     </div>
     <footer className="studio-footer"><div className="studio-roster" aria-label="七位小镇居民">{LIVE_RESIDENT_IDS.map(id => <div key={id} className={resident === id ? 'is-current' : undefined}><img src={residentImage(id, 'avatar')} alt="" /><span>{liveResidentName(id)}</span><i /></div>)}</div><p>做点喜欢的事，也欢迎你安静待一会儿。</p></footer>

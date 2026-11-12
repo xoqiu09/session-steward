@@ -148,7 +148,7 @@ export function LiveSettings({ onClose }: { onClose: () => void }) {
         {loading && <p role="status">正在读取直播说明…</p>}
         {loadError && <div role="alert"><p>{loadError}</p><p>原说明尚未读取，暂时不能编辑或保存。</p><button className="btn small" onClick={() => void load()}>重新读取说明</button></div>}
         <fieldset className="live-layout-picker" disabled={!loaded || busy}>
-          <legend>展示内容</legend><div>{([{ id: 'studio', label: '小镇 + 放映角', hint: '小镇实况、七位居民与公开内容' }, { id: 'companion', label: '居民 + 小镇', hint: '七位轮流陪伴，下方小镇实况' }, { id: 'town', label: '整座小镇', hint: '让原来的小镇占满画面' }] as const).map(p => <button type="button" key={p.id} aria-pressed={presentation === p.id} onClick={() => { if (!loaded || saving.current) return; setPresentation(p.id); setSaveFeedback(null); setConfirmClose(false) }}><b>{p.label}</b><small>{p.hint}</small></button>)}</div>
+          <legend>展示内容</legend><div>{([{ id: 'studio', label: '小镇 + 放映角', hint: '主题小镇、七位居民与公开内容' }, { id: 'companion', label: '居民 + 小镇', hint: '七位轮流陪伴，下方主题小镇' }, { id: 'town', label: '整座小镇', hint: '让主题小镇占满画面' }] as const).map(p => <button type="button" key={p.id} aria-pressed={presentation === p.id} onClick={() => { if (!loaded || saving.current) return; setPresentation(p.id); setSaveFeedback(null); setConfirmClose(false) }}><b>{p.label}</b><small>{p.hint}</small></button>)}</div>
         </fieldset>
         <fieldset className="live-style-picker" disabled={!loaded || busy}>
           <legend>画面风格</legend>
@@ -157,7 +157,7 @@ export function LiveSettings({ onClose }: { onClose: () => void }) {
             <b>{s.name}</b><small>{s.description}</small>
           </button>)}</div>
         </fieldset>
-        <p className="live-studio-privacy">小镇只展示通用项目名和数量。下面是你主动公开的文字，保存前请确认。</p>
+        <p className="live-studio-privacy">直播里是 13 间主题小屋，日常小镇仍保留你的项目。下面是你主动公开的文字，保存前请确认。</p>
         {FIELDS.map(f => (
           <label key={f.key} className="live-settings-field">
             <span>{f.label}</span>

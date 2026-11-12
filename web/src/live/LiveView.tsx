@@ -15,6 +15,7 @@ import { liveStyle, liveStyleArt, requestedLiveStyle } from './styles'
 import { livePresentation, requestedPresentation } from './companion'
 import { CompanionScene } from './CompanionScene'
 import { StudioScene } from './StudioScene'
+import { TOPIC_HOUSES, TOPIC_SIGN_SCALE, topicEvent, topicTown } from './topicTown'
 import './live.css'
 
 /** 三项说明都为空时显示的默认说明。 */
@@ -34,7 +35,7 @@ export function noteLines(note: LiveNote | null): { label: string; text: string 
 
 /** 卡片下方的自动说明：只用数量。 */
 export function countLine(working: number): string {
-  return `每栋房子是一个项目，小人是正在干活的 AI 助手 · 现在 ${working} 位在工作`
+  return `每栋房子是一个主题，七位居民在小镇散步 · 现在 ${working} 位在工作`
 }
 
 /** 没画出来的项目：只说数量。 */
@@ -46,20 +47,24 @@ export function moreLine(more: number): string {
 const LANDSCAPE_RESERVE = { top: 0.2, bottom: 0.1 }
 
 /** 纯展示：给定数据画一帧。会再脱敏一次快照，不渲染任何可交互元素。 */
-export function LiveScreen({ snap, note, stale, bubble, recent = null, layout }: { snap: LiveSnapshot | null; note: LiveNote | null; stale: boolean; bubble: LiveEvent | null; recent?: LiveEvent | null; layout: LiveLayout }) {
+export function LiveScreen({ snap, note, stale, bubble: rawBubble, recent: rawRecent = null, layout }: { snap: LiveSnapshot | null; note: LiveNote | null; stale: boolean; bubble: LiveEvent | null; recent?: LiveEvent | null; layout: LiveLayout }) {
   setSceneStill(true)
   const safe = useMemo(() => (snap ? liveScrub(snap) : null), [snap])
-  const model = useMemo(() => (safe ? buildTown(townSlice(hideInactive(safe, 'all').snap, 'all', 'all'), safe.now) : null), [safe])
+  const workModel = useMemo(() => (safe ? buildTown(townSlice(hideInactive(safe, 'all').snap, 'all', 'all'), safe.now) : null), [safe])
+  const town = useMemo(() => (safe ? topicTown(safe.now) : null), [safe?.now])
+  // Only the aggregate work count is shared. Public houses never carry real project work.
+  const model = town && workModel ? { ...town.model, counts: workModel.counts } : null
+  const bubble = topicEvent(rawBubble), recent = topicEvent(rawRecent)
   const lines = noteLines(note)
   const search = typeof window === 'undefined' ? '' : window.location?.search ?? ''
   const style = requestedLiveStyle(search) ?? liveStyle(note?.style)
   const theme = sceneArt(requestedTheme(search) ?? liveStyleArt(style))
   const working = model?.counts.working ?? 0
   if ((requestedPresentation(search) ?? livePresentation(note?.presentation)) === 'studio') return <TownArtProvider theme={theme}>
-    <StudioScene snap={safe} model={model} note={note} stale={stale} bubble={bubble} recent={recent} layout={layout} style={style} theme={theme} />
+    <StudioScene snap={town?.snap ?? null} model={model} note={note} stale={stale} bubble={bubble} recent={recent} layout={layout} style={style} theme={theme} />
   </TownArtProvider>
   if ((requestedPresentation(search) ?? livePresentation(note?.presentation)) === 'companion') return <TownArtProvider theme={theme}>
-    <CompanionScene snap={safe} model={model} note={note} stale={stale} bubble={bubble} recent={recent} layout={layout} style={style} theme={theme} />
+    <CompanionScene snap={town?.snap ?? null} model={model} note={note} stale={stale} bubble={bubble} recent={recent} layout={layout} style={style} theme={theme} />
   </TownArtProvider>
   return (
     <TownArtProvider theme={theme}>
@@ -76,12 +81,11 @@ export function LiveScreen({ snap, note, stale, bubble, recent = null, layout }:
         <p className="live-count">{countLine(working)}</p>
         {stale && <p className="live-stale" role="status">状态待更新</p>}
         <div className={`town-view live-town${theme === 'storybook' ? ' is-storybook' : theme === 'miniature' ? ' is-miniature' : ''}`}>
-          {safe && model ? <LiveStage model={model} snap={safe} bubble={bubble} initialAspect={layout === 'portrait' ? 1.25 : 1.78} reserve={layout === 'landscape' ? LANDSCAPE_RESERVE : undefined} />
+          {town && model ? <LiveStage model={model} snap={town.snap} bubble={bubble} residents maxBuildings={TOPIC_HOUSES.length} signScale={TOPIC_SIGN_SCALE} initialAspect={layout === 'portrait' ? 1.25 : 1.78} reserve={layout === 'landscape' ? LANDSCAPE_RESERVE : undefined} />
             : <p className="live-loading">小镇加载中…</p>}
           <ul className="live-legend" aria-label="图例">
-            <li><i className="lg-building" />建筑 = 项目</li>
-            <li><i className="lg-char" />小人 = 一位 AI 助手</li>
-            {moreLine(safe?.more ?? 0) && <li className="live-more">{moreLine(safe?.more ?? 0)}</li>}
+            <li><i className="lg-building" />房子 = 主题小屋</li>
+            <li><i className="lg-char" />七位居民，自在散步</li>
           </ul>
         </div>
       </div>
