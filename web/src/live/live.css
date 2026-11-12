@@ -45,7 +45,7 @@
 .live-topic-stage .town-building[data-repo-id="-1003"]{--topic-accent:#b8b4e1}
 .live-topic-stage .town-building[data-repo-id="-1002"]{--topic-accent:#b3c588}
 .live-topic-stage .town-building[data-repo-id="-1001"]{--topic-accent:#d3a2c1}
-.live-view .live-topic-stage .town-sign rect{stroke:var(--topic-accent);stroke-width:1.1}
+.live-view .live-topic-stage .town-building .town-sign rect{stroke:var(--topic-accent);stroke-width:1.1}
 .live-view[data-live-style="cozy-night"] .town-story-prop{filter:saturate(.75) brightness(.92)}.live-view[data-live-style="cozy-night"] .town-story-nature{filter:brightness(.6) saturate(.6)}.live-view[data-live-style="cozy-night"] .town-building[data-live-working="true"]{filter:drop-shadow(0 0 12px #f5c57255)}
 .live-view[data-live-style="storybook-day"] .town-world-roads{--road-edge:#b6b59b;--road-surface:#e7d9b8;opacity:.75}.live-view[data-live-style="storybook-day"] .town-sign rect{fill:#fffdf2f5;stroke:#748d70}.live-view[data-live-style="storybook-day"] .town-tag rect{fill:#fffdf2f5;stroke:#93a386}.live-view[data-live-style="storybook-day"] .town-tag text{fill:#384f43}
 .live-view[data-live-style="ai-studio"] .live-stage-scene{filter:saturate(.45)}.live-view[data-live-style="ai-studio"] .town-world-roads{--road-edge:#428e92;--road-surface:#76d3cc;opacity:.45}.live-view[data-live-style="ai-studio"] .town-sign rect{fill:#13282fec;stroke:#83d6cb;rx:3}.live-view[data-live-style="ai-studio"] .town-building[data-live-working="true"]{filter:drop-shadow(0 0 12px #75e6d14d)}
