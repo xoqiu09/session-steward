@@ -46,3 +46,23 @@ func TestLiveContentOwnerAndDisplayPermissions(t *testing.T) {
 		t.Fatal("owner cannot retrieve draft")
 	}
 }
+
+func TestLiveReadingTopicProjectionAndWriteGuard(t *testing.T) {
+	h := liveServer(t, "liv")
+	body := `{"action":"save","revision":"","items":[{"id":"public","source":"kuangye","title":"合成阅读","body":"合成正文","topic":"emotion","enabled":true,"approved":true},{"id":"draft","source":"kuangye","title":"DRAFT_CANARY","body":"PRIVATE_BODY","topic":"family","enabled":true,"approved":false}],"sources":["kuangye"],"interval_seconds":40,"focus":"town"}`
+	if w := liveDo(h, "PUT", local, "/api/live/content", liveCookie, "liv", body, true); w.Code != http.StatusUnauthorized {
+		t.Fatalf("display could write: %d", w.Code)
+	}
+	if w := liveDo(h, "PUT", local, "/api/live/content", cookieName, "pan", body, true); w.Code != http.StatusOK {
+		t.Fatalf("save: %d %s", w.Code, w.Body.String())
+	}
+	w := liveDo(h, "GET", local, "/api/live/note", liveCookie, "liv", "", false)
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"topic":"emotion"`) || strings.Contains(w.Body.String(), `"family"`) || strings.Contains(w.Body.String(), "DRAFT_CANARY") {
+		t.Fatalf("topic projection incorrect: %d %s", w.Code, w.Body.String())
+	}
+	bad := strings.ReplaceAll(body, `"emotion"`, `"/PRIVATE_TOPIC_CANARY"`)
+	w = liveDo(h, "PUT", local, "/api/live/content", cookieName, "pan", bad, true)
+	if w.Code != http.StatusBadRequest || strings.Contains(w.Body.String(), "PRIVATE_TOPIC_CANARY") {
+		t.Fatalf("invalid topic: %d %s", w.Code, w.Body.String())
+	}
+}

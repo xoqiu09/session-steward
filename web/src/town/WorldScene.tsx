@@ -107,7 +107,7 @@ interface SceneProps {
   liveDress?: LiveDress
 }
 
-export interface LiveDress { signK: number; signs: ReadonlyMap<string, Pt>; pillK: number; pills: ReadonlyMap<string, Pt> }
+export interface LiveDress { signK: number; signs: ReadonlyMap<string, Pt>; pillK: number; pills: ReadonlyMap<string, Pt>; readingKey?: string }
 
 /** 手动导航的目标：项目按稳定项目键（来源设备 + 原始项目编号），片区按片区键。 */
 export type NavTarget = { kind: 'project'; id: string } | { kind: 'area'; key: string }
@@ -323,7 +323,7 @@ export function WorldScene({ model, world, view, far, selected, highlight, onSel
         const h = hash(d.key)
         const lead = agents ? mainAgent(agentAt.get(d.key)!) : null
         return (
-          <g key={d.key} className={fadeDistrict(d.key) || undefined}>
+          <g key={d.key} className={fadeDistrict(d.key) || undefined} data-live-reading={live && liveDress?.readingKey === d.key ? 'true' : undefined}>
             {lead && <AgentYard d={d} color={AGENTS.find((a) => a.key === lead)!.color} />}
             {yardTreeClear(d, d.ox + 8.6, d.oy + 0.4, 1.1) && (terrainAt.get(`${d.cell.cx},${d.cell.cy}`) === 'forest' || terrainAt.get(`${d.cell.cx},${d.cell.cy}`) === 'hill'
               ? <Pine at={iso(d.ox + 8.6, d.oy + 0.4)} k={0.9 + (h % 3) * 0.1} />

@@ -1,4 +1,5 @@
 import type { LiveContentCard, LiveContentSource, PublicLiveContent } from '../api'
+import { liveTopic } from './topics'
 
 export const CONTENT_SOURCES: readonly LiveContentSource[] = ['compass', 'kuangye', 'shufang']
 export const sourceName = (source: LiveContentSource, landscape = false) => ({ compass: '罗盘', kuangye: landscape ? '想法便笺' : '旷野之心', shufang: '书房' })[source]
@@ -13,7 +14,8 @@ export function publicLiveContent(value: unknown): PublicLiveContent | undefined
   for (const item of c.items) {
     if (!item || !text(item.id, 64) || !item.id || ids.has(item.id) || !CONTENT_SOURCES.includes(item.source) || !text(item.title, 48) || !text(item.body, 240) || !text(item.credit, 80)) return undefined
     ids.add(item.id)
-    items.push({ id: item.id, source: item.source, title: item.title, body: item.body, credit: item.credit })
+    const topic = liveTopic(item.topic)?.id
+    items.push({ id: item.id, source: item.source, title: item.title, body: item.body, credit: item.credit, ...(topic ? { topic } : {}) })
   }
   return { items, playing: c.playing, interval_seconds: c.interval_seconds!, selected_id: c.selected_id!, anchor: c.anchor, focus: c.focus! }
 }

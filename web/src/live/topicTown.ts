@@ -2,12 +2,9 @@
 import { buildTown } from '../town/townModel'
 import { LIVE_PHRASES, type LiveEvent } from './events'
 import type { LiveSnapshot } from './scrub'
+import { LIVE_TOPICS } from './topics'
 
-export const TOPIC_HOUSES = [
-  '心理与情绪', '认知与思维', '主体性与自我', '成长与行动', '人性与关系',
-  '财富与金钱', '投资与交易', '商业与创业', '社会与权力', 'AI与未来',
-  '人生与意义', '身体与健康', '家庭与教育',
-] as const
+export const TOPIC_HOUSES = LIVE_TOPICS.map(topic => topic.name)
 export const TOPIC_SIGN_SCALE = 5.2
 
 /** Build a separate in-memory scene. No sessions, tasks or project identity enter its houses. */

@@ -178,7 +178,7 @@ export function tickResidentLife(before: ResidentLife, now: number, world?: Resi
 }
 
 function browserStorage(): ResidentStorage | undefined { try { return globalThis.localStorage } catch { return undefined } }
-export function createResidentStore(storage = browserStorage(), now = Date.now()) {
+export function createResidentStore(storage = browserStorage(), now = Date.now(), advance: typeof tickResidentLife = tickResidentLife) {
   let life: ResidentLife
   try { life = loadResidentLife(storage?.getItem(RESIDENT_STORAGE_KEY) ?? null, now) } catch { life = newResidentLife(now) }
   const listeners = new Set<() => void>()
@@ -190,7 +190,7 @@ export function createResidentStore(storage = browserStorage(), now = Date.now()
     getSnapshot: () => life,
     subscribe: (fn: () => void) => { listeners.add(fn); return () => { listeners.delete(fn) } },
     save,
-    tick: (at: number) => publish(tickResidentLife(life, at, world)),
+    tick: (at: number) => publish(advance(life, at, world)),
     setWorld: (value: ResidentWorld | undefined) => { world = value },
     resetClock: (at: number) => { life = { ...life, now: at } },
     configure: (key: 'enabled' | 'quiet' | 'paused' | 'autoVisit', value: boolean) => publish({ ...life, [key]: value, now: Date.now() }, true),

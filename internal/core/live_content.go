@@ -25,6 +25,7 @@ type LiveContentItem struct {
 	Title    string `json:"title"`
 	Body     string `json:"body"`
 	Credit   string `json:"credit"`
+	Topic    string `json:"topic,omitempty"`
 	Enabled  bool   `json:"enabled"`
 	Approved bool   `json:"approved"`
 }
@@ -48,6 +49,7 @@ type PublicLiveContentItem struct {
 	Title  string `json:"title"`
 	Body   string `json:"body"`
 	Credit string `json:"credit"`
+	Topic  string `json:"topic,omitempty"`
 }
 type PublicLiveContent struct {
 	Items    []PublicLiveContentItem `json:"items"`
@@ -64,6 +66,9 @@ func emptyLiveContent() LiveContent {
 func contentText(value string, max int) bool {
 	return utf8.ValidString(value) && utf8.RuneCountInString(value) <= max && strings.IndexFunc(value, unicode.IsControl) < 0
 }
+func liveContentTopic(topic string) bool {
+	return topic == "" || slices.Contains([]string{"emotion", "thinking", "self", "growth", "relationships", "wealth", "investing", "business", "society", "ai", "meaning", "health", "family"}, topic)
+}
 func validateLiveContent(in LiveContent) error {
 	if len(in.Items) > LiveContentMax || !slices.Contains([]int{20, 40, 60}, in.Interval) || !slices.Contains([]string{"town", "reading"}, in.Focus) || len(in.Sources) > 3 {
 		return fmt.Errorf("%w: 最多 24 张卡片，请选择已有的播放时长和画面重心", ErrBadRequest)
@@ -76,6 +81,9 @@ func validateLiveContent(in LiveContent) error {
 		sources[source] = true
 	}
 	for _, item := range in.Items {
+		if !liveContentTopic(item.Topic) {
+			return fmt.Errorf("%w: 请选择已有的联动小屋，或选择不联动", ErrBadRequest)
+		}
 		if item.ID == "" || !contentText(item.ID, 64) || ids[item.ID] || oneOf(item.Source, "compass", "kuangye", "shufang") == "" ||
 			!contentText(item.Title, 48) || !contentText(item.Body, 240) || !contentText(item.Credit, 80) ||
 			(item.Approved && (strings.TrimSpace(item.Title) == "" || strings.TrimSpace(item.Body) == "")) {
@@ -105,7 +113,7 @@ func publicLiveContent(in LiveContent) PublicLiveContent {
 		if !item.Approved || !item.Enabled || !slices.Contains(in.Sources, item.Source) {
 			continue
 		}
-		out.Items = append(out.Items, PublicLiveContentItem{ID: item.ID, Source: item.Source, Title: item.Title, Body: item.Body, Credit: item.Credit})
+		out.Items = append(out.Items, PublicLiveContentItem{ID: item.ID, Source: item.Source, Title: item.Title, Body: item.Body, Credit: item.Credit, Topic: item.Topic})
 	}
 	if len(out.Items) == 0 {
 		out.Selected = ""

@@ -20,6 +20,51 @@ func contentFixture() LiveContent {
 	}
 	return c
 }
+
+func TestLiveContentReadingTopics(t *testing.T) {
+	for _, topic := range []string{"", "emotion", "thinking", "self", "growth", "relationships", "wealth", "investing", "business", "society", "ai", "meaning", "health", "family"} {
+		in := contentFixture()
+		in.Items[0].Topic = topic
+		if err := validateLiveContent(in); err != nil {
+			t.Fatalf("valid topic %q: %v", topic, err)
+		}
+		if got := publicLiveContent(in).Items[0].Topic; got != topic {
+			t.Fatalf("public topic: got %q want %q", got, topic)
+		}
+	}
+	for _, topic := range []string{"__proto__", "emotion ", "Emotion", "/PRIVATE_TOPIC_CANARY"} {
+		in := contentFixture()
+		in.Items[0].Topic = topic
+		if err := validateLiveContent(in); !errors.Is(err, ErrBadRequest) {
+			t.Fatalf("invalid topic %q accepted: %v", topic, err)
+		}
+	}
+	legacy := contentFixture()
+	b, _ := json.Marshal(publicLiveContent(legacy))
+	if strings.Contains(string(b), `"topic"`) {
+		t.Fatal("legacy cards unexpectedly gained a topic")
+	}
+	ctx := context.Background()
+	c := newCore(t, nil)
+	in := contentFixture()
+	in.Items[0].Topic = "emotion"
+	saved, err := c.SetLiveContent(ctx, LiveContentUpdate{LiveContent: in, Action: "save"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	read, err := c.LiveContent(ctx)
+	if err != nil || read.Items[0].Topic != "emotion" {
+		t.Fatalf("topic not retained: %+v %v", read, err)
+	}
+	saved.Items[0].Topic = "PRIVATE_TOPIC_CANARY"
+	if _, err := c.SetLiveContent(ctx, LiveContentUpdate{LiveContent: saved, Action: "save"}); !errors.Is(err, ErrBadRequest) {
+		t.Fatalf("bad update accepted: %v", err)
+	}
+	read, _ = c.LiveContent(ctx)
+	if read.Items[0].Topic != "emotion" {
+		t.Fatal("failed validation changed saved topic")
+	}
+}
 func TestLiveContentDraftBoundary(t *testing.T) {
 	ctx := context.Background()
 	c := newCore(t, nil)

@@ -2,10 +2,12 @@ import { useEffect, useRef, useState } from 'react'
 import { api, ApiError, type LiveContent, type LiveContentAction } from '../api'
 import { ActionFeedback } from '../ui/ActionFeedback'
 import { CONTENT_SOURCES, sourceName } from './content'
+import { LIVE_TOPICS, liveTopic } from './topics'
 import './contentSettings.css'
 
 export function contentProblem(draft: LiveContent): string {
   for (const [index, item] of draft.items.entries()) {
+    if (item.topic && !liveTopic(item.topic)) return `内容 ${index + 1} 请选择已有的联动小屋。`
     for (const [label, text, max] of [['标题', item.title, 48], ['正文', item.body, 240], ['出处', item.credit, 80]] as const) {
       if (Array.from(text).length > max || /[\u0000-\u001f\u007f-\u009f]/.test(text)) return `内容 ${index + 1} 的${label}最多 ${max} 字，不能包含换行或控制字符。`
     }
@@ -71,6 +73,7 @@ export function LiveContentSettings({ onDirty, onBusy }: { onDirty: (dirty: bool
           return <article className="live-content-edit" key={item.id}>
             <header><span>内容 {String(index + 1).padStart(2, '0')}</span><button className="btn small" type="button" onClick={() => edit({ ...draft, items: draft.items.filter(card => card.id !== item.id) })} aria-label={`移除内容 ${index + 1}`}>移除</button></header>
             <label>来源<select value={item.source} onChange={e => patch({ source: e.target.value as typeof item.source }, true)}>{CONTENT_SOURCES.map(source => <option key={source} value={source}>{sourceName(source, true)}</option>)}</select></label>
+            <label>联动小屋<select aria-label={`内容 ${index + 1} 的联动小屋`} value={item.topic ?? ''} onChange={e => patch({ topic: liveTopic(e.target.value)?.id }, true)}><option value="">不联动</option>{LIVE_TOPICS.map(topic => <option key={topic.id} value={topic.id}>{topic.name}</option>)}</select><small>播放时这间小屋亮灯，一位居民沿小路过去陪读。</small></label>
             <label>标题<input value={item.title} maxLength={96} placeholder="用一句话把观众带进来" onChange={e => patch({ title: e.target.value }, true)} /><small>{Array.from(item.title).length} / 48 字</small></label>
             <label>正文<textarea rows={3} value={item.body} maxLength={480} placeholder="一张卡片只讲一个想法，最多 240 字；不填写私人信息" onChange={e => patch({ body: e.target.value.replace(/[\r\n]+/g, ' ') }, true)} /><small>{Array.from(item.body).length} / 240 字</small></label>
             <label>出处或说明<input value={item.credit} maxLength={160} placeholder="例如：自己的随笔 · 2026.11" onChange={e => patch({ credit: e.target.value }, true)} /></label>
@@ -83,7 +86,7 @@ export function LiveContentSettings({ onDirty, onBusy }: { onDirty: (dirty: bool
       {problem && <p role="alert" className="live-content-private">{problem}</p>}
       <div className="live-content-actions"><button className="btn small primary" disabled={busy || uncertain || !dirty || !!problem} onClick={() => void update('save')}>保存公开清单</button><button className="btn small" disabled={busy || uncertain || dirty || !count} onClick={() => void update(draft.playing ? 'pause' : 'play')}>{draft.playing ? '暂停轮播' : '开始轮播'}</button><button className="btn small" disabled={busy || uncertain || dirty || !count} onClick={() => void update('next')}>下一张</button></div>
       {dirty && <p className="live-content-private">清单有未保存的修改。保存后再控制播放。</p>}
-      <p className="live-content-hint">横屏使用中性来源名“想法便笺”。每次平缓切换，不闪烁；轮播与居民轮换各自运行。</p>
+      <p className="live-content-hint">公开画面不带阅读来源名称。选好联动小屋后，灯光与卡片同步；暂停时留在当前小屋，同主题连续播放时继续停留。</p>
     </>}
     {feedback && <ActionFeedback tone="success"><p>{feedback}</p></ActionFeedback>}
   </section>
