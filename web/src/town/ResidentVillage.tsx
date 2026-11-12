@@ -13,8 +13,8 @@ import { useTownArt } from './appearance'
 import { ResidentSprite, residentDisplayPositions } from './ResidentSprite'
 
 /** 岛内的物件按脚下深度排序；立绘能被小屋、树和桌子自然遮挡。 */
-export function ResidentsVillage({ cell, store, far, selected, onSelect }: {
-  cell: Cell; store: ResidentStore; far: boolean; active: boolean; selected: ResidentId | null; onSelect: (id: ResidentId) => void
+export function ResidentsVillage({ cell, store, far, selected, onSelect, readOnly = false }: {
+  cell: Cell; store: ResidentStore; far: boolean; active: boolean; selected: ResidentId | null; onSelect: (id: ResidentId) => void; readOnly?: boolean
 }) {
   const { illustrated, miniature } = useTownArt()
   const life = useLife(store)
@@ -34,7 +34,7 @@ export function ResidentsVillage({ cell, store, far, selected, onSelect }: {
     return { id, at, locked: !!actor.trip || !!actor.wander || dragged?.id === id || !life.paused && actor.route.length > 0 && actor.holdUntil <= life.now }
   })) : null
   const objects = [
-    { key: 'house', depth: illustrated ? 5.2 : 6.5, content: <g className="town-resident-house" aria-label="七只的小屋，查看七位居民" {...activate(() => onSelect('deepseek'))} onPointerDown={(e) => e.stopPropagation()}>
+    { key: 'house', depth: illustrated ? 5.2 : 6.5, content: <g className="town-resident-house" aria-label={readOnly ? '七位居民的小屋' : '七只的小屋，查看七位居民'} {...(readOnly ? {} : activate(() => onSelect('deepseek')))} onPointerDown={(e) => e.stopPropagation()}>
       {illustrated ? <><rect className="town-story-house-hit" x="-114" y={miniature ? -135 : -110} width="220" height={miniature ? 230 : 205} /><StoryProp kind="cottage" at={iso(2.4,2.65)} width={miniature ? 188 : 210} /></> : <>
       <IsoBox gx={0.7} gy={0.35} w={3.45} d={2.4} h={57} top="#f1e7d1" left="#f4e7cc" right="#dfcdb0" stroke="#9b7b55" />
       <HipRoof gx={0.7} gy={0.35} w={3.45} d={2.4} z={57} rise={30} front="#c77d68" side="#a95f50" stroke="#825242" />
@@ -42,7 +42,7 @@ export function ResidentsVillage({ cell, store, far, selected, onSelect }: {
       <IsoBox gx={2.55} gy={2.78} w={0.78} d={0.04} h={18} z={20} top="#fff3b8" left="#ffe4a0" right="#ffe4a0" stroke="#a98760" />
       </>}
       <Tag at={iso(2.5, 0.6, miniature ? 190 : illustrated ? 145 : 100)} text="七只的小屋" bg="#fffaf0" fg="#694d3a" />
-      <title>七位常住居民的家；生活记录只保存在本机。</title>
+      <title>{readOnly ? '七位常住居民的家，沿小镇道路自在散步。' : '七位常住居民的家；生活记录只保存在本机。'}</title>
     </g> },
     { key: 'tea-table', depth: 7.9, content: <g aria-hidden>
       {illustrated ? <StoryProp kind="tea" at={iso(.8,7.05)} width={79} /> : <>
@@ -69,7 +69,7 @@ export function ResidentsVillage({ cell, store, far, selected, onSelect }: {
     ...(life.enabled ? visibleIds.map((id) => {
       const actor = life.actors[id], at = positions?.get(id) ?? (dragged?.id === id ? dragged.at : actor.trip || actor.wander ? localTripPoint((actor.trip??actor.wander)!) : actor)
       return { key: id, depth: at.x + at.y, content: <ResidentFigure actor={actor} at={at} now={life.now} quiet={life.quiet} far={far}
-        selected={selected === id} draggable={!actor.trip && !actor.wander} moving={!life.paused && ((actor.trip??actor.wander)?.path.length ?? actor.route.length) > 0 && actor.holdUntil <= life.now && dragged?.id !== id}
+        selected={selected === id} readOnly={readOnly} draggable={!readOnly && !actor.trip && !actor.wander} moving={!life.paused && ((actor.trip??actor.wander)?.path.length ?? actor.route.length) > 0 && actor.holdUntil <= life.now && dragged?.id !== id}
         onSelect={() => onSelect(id)} onDrag={(e) => { const p = localPoint(e); if (p) setDragged({ id, at: p }) }}
         onDrop={(e) => { const p = localPoint(e); if (p) store.drop(id, p); setDragged(null) }} onCancel={() => setDragged(null)} /> }
     }) : []),
@@ -98,17 +98,17 @@ export function ResidentsVillage({ cell, store, far, selected, onSelect }: {
   )
 }
 
-export function ResidentFigure({ actor, at, now, quiet, far, selected, moving, onSelect, onDrag, onDrop, onCancel, draggable = true }: {
+export function ResidentFigure({ actor, at, now, quiet, far, selected, moving, onSelect, onDrag, onDrop, onCancel, draggable = true, readOnly = false }: {
   actor: ResidentActor; at: GardenPoint; now: number; quiet: boolean; far: boolean; selected: boolean; moving: boolean
-  onSelect: () => void; onDrag?: (e: RPointerEvent<SVGGElement>) => void; onDrop?: (e: RPointerEvent<SVGGElement>) => void; onCancel?: () => void; draggable?: boolean
+  onSelect: () => void; onDrag?: (e: RPointerEvent<SVGGElement>) => void; onDrop?: (e: RPointerEvent<SVGGElement>) => void; onCancel?: () => void; draggable?: boolean; readOnly?: boolean
 }) {
   const pointer = useRef<{ x: number; y: number; moved: boolean } | null>(null)
   const spec = residentSpec(actor.id), p = iso(at.x, at.y)
   const bubble = !quiet && !far && actor.bubble && actor.bubble.from <= now && actor.bubble.until > now ? actor.bubble.text : null
   return <g transform={`translate(${p[0]},${p[1]})`} className={`town-resident-figure${moving ? ' is-walking' : ''}${selected ? ' is-selected' : ''}${draggable ? '' : ' is-travelling'}`}
-    data-resident-id={actor.id} data-resident-status={residentStatus(actor)} role="button" tabIndex={0} aria-label={`${spec.name}，${residentStatus(actor)}，查看居民`}
-    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); onSelect() } }}
-    onPointerDown={(e) => { if (e.button !== 0) return; e.stopPropagation(); pointer.current = { x: e.clientX, y: e.clientY, moved: false }; e.currentTarget.setPointerCapture(e.pointerId) }}
+    data-resident-id={actor.id} data-resident-status={residentStatus(actor)} role={readOnly ? 'img' : 'button'} tabIndex={readOnly ? undefined : 0} aria-label={`${spec.name}，${residentStatus(actor)}${readOnly ? '' : '，查看居民'}`}
+    onKeyDown={(e) => { if (!readOnly && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); e.stopPropagation(); onSelect() } }}
+    onPointerDown={(e) => { if (readOnly || e.button !== 0) return; e.stopPropagation(); pointer.current = { x: e.clientX, y: e.clientY, moved: false }; e.currentTarget.setPointerCapture(e.pointerId) }}
     onPointerMove={(e) => { const d = pointer.current; if (!d) return; e.stopPropagation(); if (Math.hypot(e.clientX - d.x, e.clientY - d.y) > 5) d.moved = true; if (d.moved && draggable) onDrag?.(e) }}
     onPointerUp={(e) => { const d = pointer.current; if (!d) return; e.stopPropagation(); pointer.current = null; if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId); if (d.moved && draggable) onDrop?.(e); else if (!d.moved) onSelect() }}
     onPointerCancel={(e) => { e.stopPropagation(); pointer.current = null; onCancel?.() }}>
@@ -120,7 +120,7 @@ export function ResidentFigure({ actor, at, now, quiet, far, selected, moving, o
     {!far && <text className="town-resident-name" y="17" textAnchor="middle">{spec.name}</text>}
     <rect x={far ? -18 : -33} y={far ? -34 : -83} width={far ? 36 : 66} height={far ? 40 : 107} fill="transparent" />
     {bubble && <foreignObject x="-100" y="-150" width="200" height="68" pointerEvents="none"><div className="town-resident-bubble">{bubble}</div></foreignObject>}
-    <title>{spec.name} · {residentStatus(actor)}。{draggable ? '可以拖到花园小路上。' : '点开查看串门情况。'}</title>
+    <title>{spec.name} · {residentStatus(actor)}。{readOnly ? '' : draggable ? '可以拖到花园小路上。' : '点开查看串门情况。'}</title>
   </g>
 }
 

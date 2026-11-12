@@ -14,6 +14,7 @@ import { liveScrub, type LiveSnapshot } from './scrub'
 import { liveStyle, liveStyleArt, requestedLiveStyle } from './styles'
 import { livePresentation, requestedPresentation } from './companion'
 import { CompanionScene } from './CompanionScene'
+import { StudioScene } from './StudioScene'
 import './live.css'
 
 /** 三项说明都为空时显示的默认说明。 */
@@ -54,6 +55,9 @@ export function LiveScreen({ snap, note, stale, bubble, recent = null, layout }:
   const style = requestedLiveStyle(search) ?? liveStyle(note?.style)
   const theme = sceneArt(requestedTheme(search) ?? liveStyleArt(style))
   const working = model?.counts.working ?? 0
+  if ((requestedPresentation(search) ?? livePresentation(note?.presentation)) === 'studio') return <TownArtProvider theme={theme}>
+    <StudioScene snap={safe} model={model} note={note} stale={stale} bubble={bubble} recent={recent} layout={layout} style={style} theme={theme} />
+  </TownArtProvider>
   if ((requestedPresentation(search) ?? livePresentation(note?.presentation)) === 'companion') return <TownArtProvider theme={theme}>
     <CompanionScene snap={safe} model={model} note={note} stale={stale} bubble={bubble} recent={recent} layout={layout} style={style} theme={theme} />
   </TownArtProvider>

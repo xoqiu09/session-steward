@@ -48,6 +48,30 @@ func (s *Server) liveRead(h http.HandlerFunc) http.HandlerFunc {
 }
 
 func (s *Server) liveRoutes(mux *http.ServeMux) {
+	// Drafts and playback controls are owner-only; the display receives the approved subset in /note.
+	mux.HandleFunc("GET /api/live/content", s.liveLocal(s.panel(func(w http.ResponseWriter, r *http.Request) {
+		out, err := s.Core.LiveContent(r.Context())
+		if err != nil {
+			writeErr(w, err)
+			return
+		}
+		w.Header().Set("Cache-Control", "no-store")
+		writeJSON(w, 200, out)
+	})))
+	mux.HandleFunc("PUT /api/live/content", s.liveLocal(s.panel(func(w http.ResponseWriter, r *http.Request) {
+		var in core.LiveContentUpdate
+		if err := readJSON(r, &in); err != nil {
+			writeErr(w, err)
+			return
+		}
+		out, err := s.Core.SetLiveContent(r.Context(), in)
+		if err != nil {
+			writeErr(w, err)
+			return
+		}
+		w.Header().Set("Cache-Control", "no-store")
+		writeJSON(w, 200, out)
+	})))
 	mux.HandleFunc("GET /live", s.liveLocal(s.handleLiveLogin))
 	mux.HandleFunc("GET /api/live/snapshot", s.liveRead(func(w http.ResponseWriter, r *http.Request) {
 		snap, err := s.Core.Snapshot(r.Context())

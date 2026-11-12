@@ -2,10 +2,10 @@ import type { LiveCompanionAction, LivePresentation } from '../api'
 import { validLiveResident } from './liveResidents'
 
 export const COMPANION_ACTION_MS = 8_000
-export function livePresentation(value: unknown): LivePresentation { return value === 'town' ? 'town' : 'companion' }
+export function livePresentation(value: unknown): LivePresentation { return value === 'studio' || value === 'town' ? value : 'companion' }
 export function requestedPresentation(search: string): LivePresentation | null {
   const value = new URLSearchParams(search).get('live-layout')
-  return value === 'town' || value === 'companion' ? value : null
+  return value === 'town' || value === 'companion' || value === 'studio' ? value : null
 }
 
 /** The display only accepts a short enum and opaque identifier, never arbitrary chat text. */

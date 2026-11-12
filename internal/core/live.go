@@ -46,6 +46,7 @@ type LiveNote struct {
 	Presentation string               `json:"presentation,omitempty"`
 	Companion    *LiveCompanionAction `json:"companion,omitempty"`
 	Residents    *LiveResidents       `json:"resident_control,omitempty"`
+	Content      *PublicLiveContent   `json:"content,omitempty"`
 	UpdatedAt    string               `json:"updated_at"`
 }
 
@@ -61,6 +62,15 @@ func (c *Core) LiveNote(ctx context.Context) (LiveNote, error) {
 	}
 	// Gestures live under a separate key: saving a note cannot replay/overwrite one.
 	n.Companion = nil
+	n.Content = nil
+	content, err := c.LiveContent(ctx)
+	if err != nil {
+		return n, err
+	}
+	if content.Revision != "" {
+		public := publicLiveContent(content)
+		n.Content = &public
+	}
 	n.Residents, err = c.liveResidents(ctx)
 	if err != nil {
 		return n, err
@@ -101,7 +111,7 @@ func (c *Core) SetLiveCompanion(ctx context.Context, kind string) (LiveCompanion
 func (c *Core) SetLiveNote(ctx context.Context, in LiveNote) (LiveNote, error) {
 	out := LiveNote{}
 	switch in.Presentation {
-	case "", "companion", "town":
+	case "", "companion", "town", "studio":
 		out.Presentation = in.Presentation
 	default:
 		return LiveNote{}, fmt.Errorf("%w: 请选择已有的展示布局", ErrBadRequest)
