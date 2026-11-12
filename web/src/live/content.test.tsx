@@ -14,6 +14,15 @@ const content: PublicLiveContent = { playing: true, interval_seconds: 20, select
 ] }
 afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers() })
 describe('小镇放映角', () => {
+  it('阅读来源在横竖屏和两种重心中都只显示中性标题，不附带书名或来源提示', () => {
+    vi.useFakeTimers(); vi.setSystemTime(new Date(anchor))
+    const reading: PublicLiveContent = { ...content, items: [{ id: 'reading', source: 'kuangye', title: '合成阅读标题', body: '合成阅读摘意', credit: '阅读摘意 · 非逐字原文' }], selected_id: 'reading' }
+    for (const layout of ['portrait', 'landscape'] as const) for (const focus of ['town', 'reading'] as const) {
+      const html = renderToStaticMarkup(<LiveScreen snap={demoSnapshot} note={{ doing: '', thinking: '', contact: '', presentation: 'studio', content: { ...reading, focus }, updated_at: '' }} stale={false} bubble={null} layout={layout} />)
+      expect(html).toContain('随读片段'); expect(html).toContain('合成阅读标题'); expect(html).toContain('阅读摘意 · 非逐字原文')
+      for (const hidden of ['旷野之心', '想法便笺', 'Morris', '来源：']) expect(html).not.toContain(hidden)
+    }
+  })
   it('编辑器按字符校验，允许空草稿，不能把未填好的卡片确认为公开', () => {
     const draft = { ...content, revision: '', sources: ['compass'] as const, items: [{ ...content.items[0], enabled: true, approved: false }] }
     expect(contentProblem({ ...draft, sources: [...draft.sources], items: [{ ...draft.items[0], title: '', body: '' }] })).toBe('')

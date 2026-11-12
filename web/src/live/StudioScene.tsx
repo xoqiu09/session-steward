@@ -39,7 +39,7 @@ export function StudioScene({ snap, model, note, stale, bubble, recent, layout, 
       <aside className="studio-sidebar">
         <section className={`studio-reading${content.item ? ' has-content' : ''}`} aria-label="公开内容卡片">
           {content.item ? <article className="studio-reading-card" key={content.item.id}>
-            <header><span>{sourceName(content.item.source, landscape)}</span><small>{reading ? '今晚，读到这里' : '小镇的放映角'}</small></header>
+            <header><span>{content.item.source === 'kuangye' ? '随读片段' : sourceName(content.item.source, landscape)}</span><small>{reading ? '今晚，读到这里' : '小镇的放映角'}</small></header>
             <h2>{publicText(content.item.title)}</h2><p>{publicText(content.item.body)}</p>
             <footer><span>{publicText(content.item.credit) || '一张公开的内容卡'}</span><b>{String(content.index + 1).padStart(2, '0')} / {String(content.total).padStart(2, '0')}</b></footer>
             <div className="studio-reading-progress" aria-hidden="true"><i style={{ transform: `scaleX(${content.progress})` }} /></div>
