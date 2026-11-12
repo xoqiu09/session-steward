@@ -56,7 +56,8 @@ describe('直播展示视图', () => {
       const html = screen(raw, note({ doing: '写合成测试' }), layout)
       expect(html).toContain('town-svg')
       for (const s of SECRETS) expect(html, `不应出现「${s}」`).not.toContain(s)
-      expect(html).toContain('项目 A')
+      expect(html).toContain('心理与情绪')
+      expect(html).not.toMatch(/项目 (?:[A-Z]|\d+)/)
     }
   })
 
@@ -68,8 +69,8 @@ describe('直播展示视图', () => {
     // Illustrated scenery loads local sprite sheets with SVG image href, not links.
     expect(html).not.toMatch(/<a\b[^>]*href=/)
     expect(html).not.toContain('等你决定')
-    expect(html).toContain('建筑 = 项目')
-    expect(html).toContain('小人 = 一位 AI 助手')
+    expect(html).toContain('房子 = 主题小屋')
+    expect(html).toContain('七位居民，自在散步')
     expect(html).not.toContain('包裹')
   })
 
@@ -111,11 +112,11 @@ describe('直播展示视图', () => {
   })
 
   it('数量说明只用数量', () => {
-    expect(countLine(3)).toBe('每栋房子是一个项目，小人是正在干活的 AI 助手 · 现在 3 位在工作')
+    expect(countLine(3)).toBe('每栋房子是一个主题，七位居民在小镇散步 · 现在 3 位在工作')
     expect(text(screen(raw))).toMatch(/现在 \d+ 位在工作/)
   })
 
-  it('项目多于 12 个时最多画 12 栋，没画出来的只说数量', () => {
+  it('真实项目很多时仍只展示13间固定主题小屋，不暴露项目数量', () => {
     const many: LiveSnapshot = {
       ...raw, more: 112,
       repos: Array.from({ length: 15 }, (_, i) => ({ id: 100 + i, name: `项目 ${i + 30}`, common_dir: '', is_git: true, target_ref: '', activity: 'active' as const })),
@@ -124,8 +125,9 @@ describe('直播展示视图', () => {
     }
     for (const layout of ['portrait', 'landscape'] as const) {
       const html = screen(many, null, layout)
-      expect(new Set([...html.matchAll(/data-repo-id="(\d+)"/g)].map((m) => m[1])).size).toBe(12)
-      expect(text(html)).toContain('另有 112 个项目在休息')
+      expect(new Set([...html.matchAll(/data-repo-id="(-\d+)"/g)].map((m) => m[1])).size).toBe(13)
+      expect(text(html)).not.toContain('112')
+      expect(text(html)).not.toContain('个项目在休息')
     }
     expect(moreLine(0)).toBe('')
     expect(text(screen(raw))).not.toContain('个项目在休息')

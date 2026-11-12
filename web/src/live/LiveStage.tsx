@@ -8,7 +8,7 @@ import { useTownArt } from '../town/appearance'
 import { planWorld } from '../town/clusters'
 import { iso } from '../town/iso'
 import { INNER_D, INNER_W, fitCamera, type Box, type WorldLayout } from '../town/world'
-import { LIVE_MAX, liveOrder, liveWorld } from './layout'
+import { LIVE_MAX, LIVE_SIGN_K, liveOrder, liveWorld } from './layout'
 import type { LiveEvent } from './events'
 import { createResidentStore } from '../town/residentLife'
 import { residentWorld } from '../town/residentTrips'
@@ -40,15 +40,16 @@ export function liveView(frame: Box, aspect: number, reserve: LiveReserve = NO_R
 }
 
 /** 要画的房子：只画有项目的；超过上限时按快照里的项目顺序（服务端已按最近活跃排好）取前面的。 */
-export function liveBuildings(model: TownModel, snap: Snapshot): BuildingView[] {
+export function liveBuildings(model: TownModel, snap: Snapshot, limit = LIVE_MAX): BuildingView[] {
   const pos = new Map((snap.repos ?? []).map((r, i) => [r.id, i]))
   const list = model.buildings.filter((b) => b.repo)
-  return list.length <= LIVE_MAX ? list
-    : list.slice().sort((a, b) => (pos.get(a.repo!.id) ?? 1e9) - (pos.get(b.repo!.id) ?? 1e9) || a.repo!.id - b.repo!.id).slice(0, LIVE_MAX)
+  return list.length <= limit ? list
+    : list.slice().sort((a, b) => (pos.get(a.repo!.id) ?? 1e9) - (pos.get(b.repo!.id) ?? 1e9) || a.repo!.id - b.repo!.id).slice(0, limit)
 }
 
 const memoryOnly = { getItem: () => null, setItem: () => {} }
-export const LiveStage = memo(function LiveStage({ model, snap, bubble, initialAspect = 1.2, reserve = NO_RESERVE, residents = false }: { model: TownModel; snap: Snapshot; bubble: LiveEvent | null; initialAspect?: number; reserve?: LiveReserve; residents?: boolean }) {
+export const LiveStage = memo(function LiveStage({ model, snap, bubble, initialAspect = 1.2, reserve = NO_RESERVE, residents = false, maxBuildings, signScale = LIVE_SIGN_K }: { model: TownModel; snap: Snapshot; bubble: LiveEvent | null; initialAspect?: number; reserve?: LiveReserve; residents?: boolean; maxBuildings?: number; signScale?: number }) {
+  const limit = maxBuildings ?? (residents ? 8 : LIVE_MAX)
   // 排布顺序只记在这一页的内存里：同一批项目刷新后位置不变，有项目进出时其他房子尽量不动。
   const order = useRef<string[]>([])
   const instance = useId()
@@ -69,15 +70,15 @@ export const LiveStage = memo(function LiveStage({ model, snap, bubble, initialA
     return () => ro.disconnect()
   }, [])
   const buildings = useMemo(() => {
-    const list = liveBuildings(model, snap).slice(0, residents ? 8 : LIVE_MAX)
+    const list = liveBuildings(model, snap, limit)
     const byKey = new Map(list.map((b) => [b.key, b]))
     order.current = liveOrder(order.current, list.map((b) => b.key), (k) => byKey.get(k)!.repo!.id)
     return order.current.map((k) => byKey.get(k)!)
-  }, [model, snap, residents])
+  }, [model, snap, limit])
   const plan = useMemo(() => planWorld(buildings.map((b) => b.repo!), snap, Date.parse(snap.now) || Date.now()), [buildings, snap])
   const { theme } = useTownArt()
   const free = Math.max(0.3, 1 - reserve.top - reserve.bottom)
-  const live = useMemo(() => liveWorld(buildings, plan, aspect / free, theme, residents), [buildings, plan, aspect, free, theme, residents])
+  const live = useMemo(() => liveWorld(buildings, plan, aspect / free, theme, residents, { limit, signScale }), [buildings, plan, aspect, free, theme, residents, limit, signScale])
   useEffect(() => { residentStore.setWorld(residents ? residentWorld(live.world) : undefined) }, [residentStore, residents, live.world])
   useEffect(() => {
     if (!residents) return
@@ -105,7 +106,7 @@ export const LiveStage = memo(function LiveStage({ model, snap, bubble, initialA
     return () => ro.disconnect()
   }, [bubble?.key, anchor?.left, anchor?.top])
   return (
-    <div className="live-stage" ref={box} data-stage-instance={instance}>
+    <div className="live-stage live-topic-stage" ref={box} data-stage-instance={instance}>
       <div className="live-stage-scene" inert aria-hidden="true">
         <WorldScene model={model} world={live.world} view={view} far={false} selected={null} highlight={null} onSelect={noop} needsYou={nobody} live liveDress={live.dress} sceneRef={scene} residents={residents ? { store: residentStore, active: true, selected: null, onSelect: noop, readOnly: true } : undefined} />
       </div>

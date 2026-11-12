@@ -143,7 +143,9 @@ export function WorldScene({ model, world, view, far, selected, highlight, onSel
   for (let gx = gx0; gx < gx1; gx += CELL_W) cxs.add(Math.floor(gx / CELL_W))
   for (let gy = gy0; gy < gy1; gy += CELL_D) cys.add(Math.floor(gy / CELL_D))
   const used = new Set(['0,0', ...world.districts.map((d) => `${d.cell.cx},${d.cell.cy}`), ...world.villages.map((v) => `${v.square.cx},${v.square.cy}`), ...(world.residential ? [`${world.residential.cx},${world.residential.cy}`] : [])])
-  const streetCells: Cell[] = [{ cx: 0, cy: 0 }, ...world.districts.filter((d) => d.kind !== 'wild').map((d) => d.cell), ...world.villages.map((v) => v.square), ...(world.residential ? [world.residential] : [])]
+  // In the broadcast scene the residents share the hidden central plaza: draw its ground once.
+  const sharedLivePlaza = live && world.residential?.cx === 0 && world.residential.cy === 0
+  const streetCells: Cell[] = [{ cx: 0, cy: 0 }, ...world.districts.filter((d) => d.kind !== 'wild').map((d) => d.cell), ...world.villages.map((v) => v.square), ...(world.residential && !sharedLivePlaza ? [world.residential] : [])]
   // 地形：中央是草地；村庄和野外小屋按名字固定一种。
   const terrainAt = new Map<string, Terrain>([['0,0', 'meadow']])
   for (const v of world.villages) for (const c of v.cells) terrainAt.set(`${c.cx},${c.cy}`, terrainOf(v.key))
