@@ -124,7 +124,7 @@ export const LiveStage = memo(function LiveStage({ model, snap, bubble, initialA
         const [x, y] = iso(d.ox + INNER_W / 2, d.oy + INNER_D / 2)
         return <i key={d.key} style={{ left: `${(x - view.x) / view.w * 100}%`, top: `${(y - view.y) / view.h * 100}%` }} />
       })}</div>
-      {reading && <ReadingStatus store={residentStore} reading={reading} door={door ? { left: `${(door[0] - view.x) / view.w * 100}%`, top: `${(door[1] - view.y) / view.h * 100}%` } : undefined} />}
+      {reading && <ReadingStatus store={residentStore} reading={reading} door={door ? { left: `${(door[0] - view.x) / view.w * 100}%`, top: `${(door[1] - view.y) / view.h * 100}%`, width: `${140 / view.w * 100}%` } : undefined} />}
       {bubble && (
         <div ref={bubbleBox} key={bubble.key} className="live-bubble" role="status" style={bubblePosition ? { left: bubblePosition.left, top: bubblePosition.top } : { left: `${anchor?.left ?? 50}%`, top: `${anchor?.top ?? 18}%` }}>
           {bubble.text}

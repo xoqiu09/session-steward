@@ -19,4 +19,5 @@
 .live-topic-stage .town-resident-body{scale:var(--reading-body-scale,1)}
 .live-topic-stage .town-resident-guest{opacity:var(--reading-guest-opacity,1)}
 .studio-reading-topic{color:#e9d49a!important;border:1px solid #cab17466;padding:.2em .65em;border-radius:20px}
+.studio-scene.is-reading.is-landscape .live-reading-status{display:none}
 @media(max-width:500px){.live-reading-status{padding:5px 7px;gap:5px;border-radius:8px}.live-reading-status>img{width:22px;height:27px}.live-reading-status b{font-size:10px}.live-reading-status small{font-size:9px}}
