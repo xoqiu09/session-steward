@@ -7,6 +7,7 @@ import { townSlice } from '../town/TownView'
 import { hideInactive } from '../town/activity'
 import { TownArtProvider, requestedTheme, sceneArt } from '../town/appearance'
 import { setSceneStill } from '../town/TownScene'
+import { LiveClockProvider } from './LiveClock'
 import { ReadingStage } from './ReadingStage'
 import { createLiveFeed, type LiveFeedState } from './feed'
 import { diffLiveEvents, emptyBubbles, nextBubbleAt, pushBubbles, stepBubbles, type BubbleState, type LiveEvent } from './events'
@@ -47,7 +48,7 @@ export function moreLine(more: number): string {
 const LANDSCAPE_RESERVE = { top: 0.2, bottom: 0.1 }
 
 /** 纯展示：给定数据画一帧。会再脱敏一次快照，不渲染任何可交互元素。 */
-export function LiveScreen({ snap, note, stale, bubble: rawBubble, recent: rawRecent = null, layout }: { snap: LiveSnapshot | null; note: LiveNote | null; stale: boolean; bubble: LiveEvent | null; recent?: LiveEvent | null; layout: LiveLayout }) {
+function LiveScreenContent({ snap, note, stale, bubble: rawBubble, recent: rawRecent = null, layout }: { snap: LiveSnapshot | null; note: LiveNote | null; stale: boolean; bubble: LiveEvent | null; recent?: LiveEvent | null; layout: LiveLayout }) {
   setSceneStill(true)
   const safe = useMemo(() => (snap ? liveScrub(snap) : null), [snap])
   const workModel = useMemo(() => (safe ? buildTown(townSlice(hideInactive(safe, 'all').snap, 'all', 'all'), safe.now) : null), [safe])
@@ -91,6 +92,10 @@ export function LiveScreen({ snap, note, stale, bubble: rawBubble, recent: rawRe
       </div>
     </TownArtProvider>
   )
+}
+
+export function LiveScreen(props: Parameters<typeof LiveScreenContent>[0]) {
+  return <LiveClockProvider><LiveScreenContent {...props} /></LiveClockProvider>
 }
 
 function useLayout(): LiveLayout {

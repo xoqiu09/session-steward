@@ -14,6 +14,27 @@ const content: PublicLiveContent = { playing: true, interval_seconds: 20, select
 ] }
 afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers() })
 describe('小镇放映角', () => {
+  it('随机窗口断网后停在最后一句，重新读取无缝接上；手动清单仍循环', () => {
+    const random: PublicLiveContent = { ...content, mode: 'random' }
+    const now = Date.parse(anchor)
+    expect(contentAt(random, now + 60_000).item?.id).toBe('b')
+    expect(contentAt(random, now + 86400_000).item?.id).toBe('b')
+    expect(contentAt(random, now + 86400_000).progress).toBe(1)
+    expect(contentAt(content, now + 40_000).item?.id).toBe('a')
+    expect(publicLiveContent({ ...random, random_seed: 'SECRET', pool: ['PRIVATE'] })).toEqual(random)
+    expect(publicLiveContent({ ...random, mode: 'other' })).toBeUndefined()
+    const nextWindow = { ...random, anchor: '2026-11-12T00:00:20Z', selected_id: 'b', items: [content.items[1]] }
+    expect(contentAt(nextWindow, now + 20_000).item).toEqual(contentAt(random, now + 20_000).item)
+  })
+  it('随机摘句在横竖屏都只呈现短句与主题，没有原库名字和误导的窗口页码', () => {
+    vi.useFakeTimers(); vi.setSystemTime(new Date(anchor))
+    const random: PublicLiveContent = { ...content, mode: 'random', items: [{ id: 'synthetic', source: 'kuangye', title: '合成的思考：选择的边界，在哪里？', body: '', credit: '摘句', topic: 'thinking' }], selected_id: 'synthetic' }
+    for (const layout of ['portrait', 'landscape'] as const) {
+      const html = renderToStaticMarkup(<LiveScreen snap={demoSnapshot} note={{ doing: '', thinking: '', contact: '', presentation: 'studio', content: random, updated_at: '' }} stale={false} bubble={null} layout={layout} />)
+      expect(html).toContain('合成的思考'); expect(html).toContain('偶然读到'); expect(html).toContain('认知与思维')
+      for (const hidden of ['旷野之心', 'Morris', '01 /', '<button', '<input']) expect(html).not.toContain(hidden)
+    }
+  })
   it('阅读来源在横竖屏和两种重心中都只显示中性标题，不附带书名或来源提示', () => {
     vi.useFakeTimers(); vi.setSystemTime(new Date(anchor))
     const reading: PublicLiveContent = { ...content, items: [{ id: 'reading', source: 'kuangye', title: '合成阅读标题', body: '合成阅读摘意', credit: '阅读摘意 · 非逐字原文' }], selected_id: 'reading' }

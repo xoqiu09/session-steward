@@ -69,6 +69,13 @@ func (c *Core) LiveNote(ctx context.Context) (LiveNote, error) {
 	}
 	if content.Revision != "" {
 		public := publicLiveContent(content)
+		if content.Mode == "random" {
+			raw, err := c.St.Meta(ctx, liveReadingPoolKey)
+			if err != nil {
+				return n, err
+			}
+			public = randomPublicContent(content, readReadingPool(raw), liveAt(c.St.NowTS()))
+		}
 		n.Content = &public
 	}
 	n.Residents, err = c.liveResidents(ctx)

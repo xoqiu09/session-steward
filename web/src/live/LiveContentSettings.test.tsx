@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest'
 import type { ReactElement } from 'react'
 import type { LiveContent } from '../api'
 
@@ -23,9 +23,23 @@ const nodes = (node: any): ReactElement<any>[] => Array.isArray(node) ? node.fla
 const render = () => { host.begin(); const tree = LiveContentSettings({ onDirty: () => {}, onBusy: () => {} }); host.commit(); return tree }
 const flush = async () => { for (let i = 0; i < 8; i++) await Promise.resolve() }
 const fixture: LiveContent = { revision: 'synthetic', playing: true, interval_seconds: 40, focus: 'town', selected_id: 'a', anchor: '', sources: ['kuangye'], items: [{ id: 'a', source: 'kuangye', title: '合成标题', body: '合成正文', credit: '合成出处', enabled: true, approved: true }] }
+beforeEach(() => { vi.spyOn(api, 'liveReadingPool').mockResolvedValue({ revision: '', count: 0, source_count: 0, topics: {} }) })
 afterEach(() => { host.reset(); vi.restoreAllMocks() })
 
 describe('公开卡片的主题选择', () => {
+  it('切换随机模式保留手动卡片，不生成几千个编辑框；未导入时不能选择', async () => {
+    vi.spyOn(api, 'liveContent').mockResolvedValue(structuredClone(fixture))
+    vi.mocked(api.liveReadingPool).mockResolvedValue({ revision: 'library', count: 3000, source_count: 11000, topics: { emotion: 3000 } })
+    const write = vi.spyOn(api, 'saveLiveContent').mockImplementation(async input => input)
+    render(); await flush()
+    let tree = render()
+    const mode = nodes(tree).find(n => n.type === 'select' && nodes(n).some(o => o.type === 'option' && o.props.value === 'random'))!
+    mode.props.onChange({ target: { value: 'random' } }); tree = render()
+    expect(nodes(tree).filter(n => n.type === 'textarea')).toHaveLength(0)
+    nodes(tree).find(n => n.type === 'button' && n.props.children === '保存公开清单')!.props.onClick(); await flush()
+    expect(write).toHaveBeenCalledWith({ ...fixture, mode: 'random' }, 'save')
+    expect(write.mock.calls[0][0].items).toEqual(fixture.items)
+  })
   it('改联动小屋后需要重新确认，保存保留原文案、来源过滤和播放节奏', async () => {
     vi.spyOn(api, 'liveContent').mockResolvedValue(structuredClone(fixture))
     const write = vi.spyOn(api, 'saveLiveContent').mockImplementation(async input => input)

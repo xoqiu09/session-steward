@@ -10,12 +10,12 @@ const host = vi.hoisted(() => {
     begin() { index = 0 },
     commit() { if (!mounted) { mounted = true; effects.forEach(fn => { const cleanup = fn(); if (cleanup) cleanups.push(cleanup) }) } },
     reset() { cleanups.forEach(fn => fn()); slots.length = 0; effects.length = 0; cleanups.length = 0; mounted = false },
-    state(initial: any) { const i = index++; if (!(i in slots)) slots[i] = initial; return [slots[i], (value: any) => { slots[i] = typeof value === 'function' ? value(slots[i]) : value }] },
+    state(initial: any) { const i = index++; if (!(i in slots)) slots[i] = typeof initial === 'function' ? initial() : initial; return [slots[i], (value: any) => { slots[i] = typeof value === 'function' ? value(slots[i]) : value }] },
     ref(value: any) { const i = index++; if (!(i in slots)) slots[i] = { current: value }; return slots[i] },
     effect(fn: () => void | (() => void)) { if (!mounted) effects.push(fn) },
   }
 })
-vi.mock('react', async original => ({ ...await original<typeof import('react')>(), useState: host.state, useRef: host.ref, useEffect: host.effect, useCallback: (fn: unknown) => fn }))
+vi.mock('react', async original => ({ ...await original<typeof import('react')>(), useContext: () => undefined, useState: host.state, useRef: host.ref, useEffect: host.effect, useCallback: (fn: unknown) => fn }))
 import { beforeEach } from 'vitest'
 import { api } from '../api'
 import { LiveResidentsSettings } from './LiveResidentsSettings'

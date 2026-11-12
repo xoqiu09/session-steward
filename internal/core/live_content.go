@@ -30,14 +30,17 @@ type LiveContentItem struct {
 	Approved bool   `json:"approved"`
 }
 type LiveContent struct {
-	Revision string            `json:"revision"`
-	Items    []LiveContentItem `json:"items"`
-	Sources  []string          `json:"sources"`
-	Playing  bool              `json:"playing"`
-	Interval int               `json:"interval_seconds"`
-	Selected string            `json:"selected_id"`
-	Anchor   string            `json:"anchor"`
-	Focus    string            `json:"focus"`
+	Revision     string            `json:"revision"`
+	Mode         string            `json:"mode,omitempty"`
+	RandomSeed   string            `json:"random_seed,omitempty"`
+	RandomOffset int64             `json:"random_offset,omitempty"`
+	Items        []LiveContentItem `json:"items"`
+	Sources      []string          `json:"sources"`
+	Playing      bool              `json:"playing"`
+	Interval     int               `json:"interval_seconds"`
+	Selected     string            `json:"selected_id"`
+	Anchor       string            `json:"anchor"`
+	Focus        string            `json:"focus"`
 }
 type LiveContentUpdate struct {
 	LiveContent
@@ -52,6 +55,7 @@ type PublicLiveContentItem struct {
 	Topic  string `json:"topic,omitempty"`
 }
 type PublicLiveContent struct {
+	Mode     string                  `json:"mode,omitempty"`
 	Items    []PublicLiveContentItem `json:"items"`
 	Playing  bool                    `json:"playing"`
 	Interval int                     `json:"interval_seconds"`
@@ -70,7 +74,7 @@ func liveContentTopic(topic string) bool {
 	return topic == "" || slices.Contains([]string{"emotion", "thinking", "self", "growth", "relationships", "wealth", "investing", "business", "society", "ai", "meaning", "health", "family"}, topic)
 }
 func validateLiveContent(in LiveContent) error {
-	if len(in.Items) > LiveContentMax || !slices.Contains([]int{20, 40, 60}, in.Interval) || !slices.Contains([]string{"town", "reading"}, in.Focus) || len(in.Sources) > 3 {
+	if (in.Mode != "" && in.Mode != "random") || len(in.Items) > LiveContentMax || !slices.Contains([]int{20, 40, 60}, in.Interval) || !slices.Contains([]string{"town", "reading"}, in.Focus) || len(in.Sources) > 3 {
 		return fmt.Errorf("%w: 最多 24 张卡片，请选择已有的播放时长和画面重心", ErrBadRequest)
 	}
 	sources, ids := map[string]bool{}, map[string]bool{}
@@ -100,6 +104,12 @@ func readLiveContent(raw string) LiveContent {
 	var out LiveContent
 	if json.Unmarshal([]byte(raw), &out) != nil || validateLiveContent(out) != nil {
 		return emptyLiveContent()
+	}
+	if out.Mode == "random" {
+		seed, err := hex.DecodeString(out.RandomSeed)
+		if err != nil || len(seed) != 16 || out.RandomOffset < 0 || out.RandomOffset > 1000000000 {
+			return emptyLiveContent()
+		}
 	}
 	return out
 }
@@ -171,6 +181,51 @@ func (c *Core) SetLiveContent(ctx context.Context, in LiveContentUpdate) (LiveCo
 			out = in.LiveContent
 			// Playback is controlled separately so editing copy never starts a stopped show.
 			out.Playing = before.Playing
+		}
+		if out.Mode == "random" {
+			rawPool, err := liveMetaTx(ctx, tx, liveReadingPoolKey)
+			if err != nil {
+				return err
+			}
+			pool := readReadingPool(rawPool)
+			if len(pool.Items) == 0 || !slices.Contains(out.Sources, "kuangye") {
+				return fmt.Errorf("%w: 请先导入公开摘句，并勾选想法便笺来源", ErrBadRequest)
+			}
+			if in.Action == "select" {
+				return fmt.Errorf("%w: 随机模式请使用下一张", ErrBadRequest)
+			}
+			if before.Mode == "random" {
+				out.RandomSeed = before.RandomSeed
+				out.RandomOffset = readingPosition(before, liveAt(now))
+			} else {
+				out.RandomSeed, err = randomLiveRevision()
+				if err != nil {
+					return err
+				}
+				out.RandomOffset = 0
+			}
+			// The manual selection is retained while a separate random cursor is active.
+			out.Selected = before.Selected
+			if in.Action == "next" {
+				out.RandomOffset++
+			}
+			if in.Action == "play" {
+				out.Playing = true
+			}
+			if in.Action == "pause" {
+				out.Playing = false
+			}
+			out.Anchor = now
+			out.Revision, err = randomLiveRevision()
+			if err != nil {
+				return err
+			}
+			return writeLiveMetaTx(ctx, tx, liveContentKey, out)
+		}
+		out.RandomSeed = ""
+		out.RandomOffset = 0
+		if before.Mode == "random" {
+			current = before.Selected
 		}
 		pub := publicLiveContent(out)
 		index := slices.IndexFunc(pub.Items, func(item PublicLiveContentItem) bool { return item.ID == current })
