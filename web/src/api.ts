@@ -53,7 +53,7 @@ export type LiveGesture = 'pat' | 'walk' | 'home'
 export interface LiveCompanionAction { id: string; kind: LiveGesture; at: string; resident?: ResidentId }
 export interface LiveResidents { resident: ResidentId; mode: 'auto' | 'fixed'; interval_seconds: 60 | 120 | 300; anchor: string }
 export type LiveContentSource = 'compass' | 'kuangye' | 'shufang'
-export interface LiveContentCard { id: string; source: LiveContentSource; title: string; body: string; credit: string }
+export interface LiveContentCard { id: string; source: LiveContentSource; title: string; body: string; credit: string; topic?: import('./live/topics').LiveTopicId }
 export interface PublicLiveContent { items: LiveContentCard[]; playing: boolean; interval_seconds: 20 | 40 | 60; selected_id: string; anchor: string; focus: 'town' | 'reading' }
 export interface LiveContent extends Omit<PublicLiveContent, 'items'> { revision: string; sources: LiveContentSource[]; items: (LiveContentCard & { enabled: boolean; approved: boolean })[] }
 export type LiveContentAction = 'save' | 'play' | 'pause' | 'next' | 'select'

@@ -3,7 +3,7 @@ import type { LiveNote, LiveStyle } from '../api'
 import type { TownModel } from '../town/townModel'
 import type { TownThemeId } from '../town/appearance'
 import { residentImage } from '../town/residents'
-import { LiveStage } from './LiveStage'
+import { ReadingStage } from './ReadingStage'
 import type { LiveEvent } from './events'
 import type { LiveSnapshot } from './scrub'
 import type { LiveLayout } from './LiveView'
@@ -12,6 +12,7 @@ import { LIVE_RESIDENT_IDS, liveResidentName, liveResidentSpeech } from './liveR
 import { useLiveResident } from './useLiveResident'
 import { activeCompanionAction } from './companion'
 import { TOPIC_HOUSES, TOPIC_SIGN_SCALE } from './topicTown'
+import { liveTopic } from './topics'
 import './studio.css'
 
 export function StudioScene({ snap, model, note, stale, bubble, recent, layout, style, theme }: {
@@ -34,13 +35,13 @@ export function StudioScene({ snap, model, note, stale, bubble, recent, layout, 
     <div className="studio-composition">
       <section className={`studio-town town-view${theme === 'miniature' ? ' is-miniature' : theme === 'storybook' ? ' is-storybook' : ''}`} aria-label="主题小镇">
         <header><span><i />今晚的主题小镇</span><small>一间小屋，一个方向</small></header>
-        <div className="studio-town-canvas">{snap && model ? <LiveStage model={model} snap={snap} bubble={bubble} residents maxBuildings={TOPIC_HOUSES.length} signScale={TOPIC_SIGN_SCALE} initialAspect={landscape ? 1.4 : 1.3} /> : <p className="live-loading">小镇正在亮灯…</p>}</div>
+        <div className="studio-town-canvas">{snap && model ? <ReadingStage model={model} snap={snap} bubble={bubble} note={note} residents maxBuildings={TOPIC_HOUSES.length} signScale={TOPIC_SIGN_SCALE} initialAspect={landscape ? 1.4 : 1.3} /> : <p className="live-loading">小镇正在亮灯…</p>}</div>
         <p className="studio-town-caption">七位居民，自在走走。<span>{TOPIC_HOUSES.length} 间主题小屋</span></p>
       </section>
       <aside className="studio-sidebar">
         <section className={`studio-reading${content.item ? ' has-content' : ''}`} aria-label="公开内容卡片">
           {content.item ? <article className="studio-reading-card" key={content.item.id}>
-            <header><span>{content.item.source === 'kuangye' ? '随读片段' : sourceName(content.item.source, landscape)}</span><small>{reading ? '今晚，读到这里' : '小镇的放映角'}</small></header>
+            <header><span>{content.item.source === 'kuangye' ? '随读片段' : sourceName(content.item.source, landscape)}</span><small className={content.item.topic ? 'studio-reading-topic' : undefined}>{liveTopic(content.item.topic)?.name ?? (reading ? '今晚，读到这里' : '小镇的放映角')}</small></header>
             <h2>{publicText(content.item.title)}</h2><p>{publicText(content.item.body)}</p>
             <footer><span>{publicText(content.item.credit) || '一张公开的内容卡'}</span><b>{String(content.index + 1).padStart(2, '0')} / {String(content.total).padStart(2, '0')}</b></footer>
             <div className="studio-reading-progress" aria-hidden="true"><i style={{ transform: `scaleX(${content.progress})` }} /></div>

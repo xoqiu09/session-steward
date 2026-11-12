@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import type { LiveCompanionAction, LiveNote, LiveStyle } from '../api'
 import type { TownModel } from '../town/townModel'
 import type { TownThemeId } from '../town/appearance'
-import { LiveStage } from './LiveStage'
+import { ReadingStage } from './ReadingStage'
 import type { LiveEvent } from './events'
 import type { LiveSnapshot } from './scrub'
 import { activeCompanionAction, COMPANION_ACTION_MS } from './companion'
@@ -67,7 +67,7 @@ export function CompanionScene({ snap, model, note, stale, bubble, recent, layou
     <section className="companion-town-panel" aria-label="主题小镇">
       <header className="companion-town-heading"><div><i /><h2>今晚的主题小镇</h2><span>{TOPIC_HOUSES.length} 间主题小屋</span></div><small>一间小屋，一个方向 · 七位居民自在散步</small></header>
       <div className={`town-view live-town companion-town${theme === 'storybook' ? ' is-storybook' : theme === 'miniature' ? ' is-miniature' : ''}`}>
-        {snap && model ? <LiveStage model={model} snap={snap} bubble={bubble} residents maxBuildings={TOPIC_HOUSES.length} signScale={TOPIC_SIGN_SCALE} initialAspect={layout === 'portrait' ? 1.8 : 3.5} /> : <p className="live-loading">小镇加载中…</p>}
+        {snap && model ? <ReadingStage model={model} snap={snap} bubble={bubble} note={note} residents maxBuildings={TOPIC_HOUSES.length} signScale={TOPIC_SIGN_SCALE} initialAspect={layout === 'portrait' ? 1.8 : 3.5} /> : <p className="live-loading">小镇加载中…</p>}
       </div>
       {stale && <p className="companion-connection" role="status">小镇画面正在重连</p>}
     </section>

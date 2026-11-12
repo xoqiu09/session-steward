@@ -7,7 +7,7 @@ import { townSlice } from '../town/TownView'
 import { hideInactive } from '../town/activity'
 import { TownArtProvider, requestedTheme, sceneArt } from '../town/appearance'
 import { setSceneStill } from '../town/TownScene'
-import { LiveStage } from './LiveStage'
+import { ReadingStage } from './ReadingStage'
 import { createLiveFeed, type LiveFeedState } from './feed'
 import { diffLiveEvents, emptyBubbles, nextBubbleAt, pushBubbles, stepBubbles, type BubbleState, type LiveEvent } from './events'
 import { liveScrub, type LiveSnapshot } from './scrub'
@@ -53,7 +53,7 @@ export function LiveScreen({ snap, note, stale, bubble: rawBubble, recent: rawRe
   const workModel = useMemo(() => (safe ? buildTown(townSlice(hideInactive(safe, 'all').snap, 'all', 'all'), safe.now) : null), [safe])
   const town = useMemo(() => (safe ? topicTown(safe.now) : null), [safe?.now])
   // Only the aggregate work count is shared. Public houses never carry real project work.
-  const model = town && workModel ? { ...town.model, counts: workModel.counts } : null
+  const model = useMemo(() => town && workModel ? { ...town.model, counts: { ...town.model.counts, working: workModel.counts.working } } : null, [town, workModel])
   const bubble = topicEvent(rawBubble), recent = topicEvent(rawRecent)
   const lines = noteLines(note)
   const search = typeof window === 'undefined' ? '' : window.location?.search ?? ''
@@ -81,7 +81,7 @@ export function LiveScreen({ snap, note, stale, bubble: rawBubble, recent: rawRe
         <p className="live-count">{countLine(working)}</p>
         {stale && <p className="live-stale" role="status">状态待更新</p>}
         <div className={`town-view live-town${theme === 'storybook' ? ' is-storybook' : theme === 'miniature' ? ' is-miniature' : ''}`}>
-          {town && model ? <LiveStage model={model} snap={town.snap} bubble={bubble} residents maxBuildings={TOPIC_HOUSES.length} signScale={TOPIC_SIGN_SCALE} initialAspect={layout === 'portrait' ? 1.25 : 1.78} reserve={layout === 'landscape' ? LANDSCAPE_RESERVE : undefined} />
+          {town && model ? <ReadingStage model={model} snap={town.snap} bubble={bubble} note={note} residents maxBuildings={TOPIC_HOUSES.length} signScale={TOPIC_SIGN_SCALE} initialAspect={layout === 'portrait' ? 1.25 : 1.78} reserve={layout === 'landscape' ? LANDSCAPE_RESERVE : undefined} />
             : <p className="live-loading">小镇加载中…</p>}
           <ul className="live-legend" aria-label="图例">
             <li><i className="lg-building" />房子 = 主题小屋</li>

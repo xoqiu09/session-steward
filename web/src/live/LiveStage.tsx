@@ -12,6 +12,10 @@ import { LIVE_MAX, LIVE_SIGN_K, liveOrder, liveWorld } from './layout'
 import type { LiveEvent } from './events'
 import { createResidentStore } from '../town/residentLife'
 import { residentWorld } from '../town/residentTrips'
+import { createReadingTour, type ReadingLink } from './readingTour'
+import { topicHouseKey } from './topics'
+import { ReadingStatus } from './ReadingStatus'
+import './readingTour.css'
 
 const noop = () => {}
 const nobody = () => false
@@ -48,14 +52,15 @@ export function liveBuildings(model: TownModel, snap: Snapshot, limit = LIVE_MAX
 }
 
 const memoryOnly = { getItem: () => null, setItem: () => {} }
-export const LiveStage = memo(function LiveStage({ model, snap, bubble, initialAspect = 1.2, reserve = NO_RESERVE, residents = false, maxBuildings, signScale = LIVE_SIGN_K }: { model: TownModel; snap: Snapshot; bubble: LiveEvent | null; initialAspect?: number; reserve?: LiveReserve; residents?: boolean; maxBuildings?: number; signScale?: number }) {
+export const LiveStage = memo(function LiveStage({ model, snap, bubble, initialAspect = 1.2, reserve = NO_RESERVE, residents = false, maxBuildings, signScale = LIVE_SIGN_K, reading = null }: { model: TownModel; snap: Snapshot; bubble: LiveEvent | null; initialAspect?: number; reserve?: LiveReserve; residents?: boolean; maxBuildings?: number; signScale?: number; reading?: ReadingLink | null }) {
   const limit = maxBuildings ?? (residents ? 8 : LIVE_MAX)
   // 排布顺序只记在这一页的内存里：同一批项目刷新后位置不变，有项目进出时其他房子尽量不动。
   const order = useRef<string[]>([])
   const instance = useId()
   const box = useRef<HTMLDivElement>(null)
   const scene = useRef<SVGSVGElement>(null)
-  const [residentStore] = useState(() => createResidentStore(memoryOnly))
+  const [tour] = useState(createReadingTour)
+  const [residentStore] = useState(() => createResidentStore(memoryOnly, Date.now(), tour.advance))
   const bubbleBox = useRef<HTMLDivElement>(null)
   const [bubblePosition, setBubblePosition] = useState<{ left: number; top: number } | null>(null)
   const [aspect, setAspect] = useState(initialAspect)
@@ -79,7 +84,9 @@ export const LiveStage = memo(function LiveStage({ model, snap, bubble, initialA
   const { theme } = useTownArt()
   const free = Math.max(0.3, 1 - reserve.top - reserve.bottom)
   const live = useMemo(() => liveWorld(buildings, plan, aspect / free, theme, residents, { limit, signScale }), [buildings, plan, aspect, free, theme, residents, limit, signScale])
-  useEffect(() => { residentStore.setWorld(residents ? residentWorld(live.world) : undefined) }, [residentStore, residents, live.world])
+  const residentMap = useMemo(() => residents ? residentWorld(live.world) : undefined, [residents, live.world])
+  useEffect(() => { residentStore.setWorld(residentMap) }, [residentStore, residentMap])
+  useEffect(() => { tour.setReading(residents ? reading : null) }, [tour, residents, reading])
   useEffect(() => {
     if (!residents) return
     // OBS can mark a browser source hidden. Keep this memory-only visual clock running there too.
@@ -88,6 +95,9 @@ export const LiveStage = memo(function LiveStage({ model, snap, bubble, initialA
     return () => window.clearInterval(timer)
   }, [residentStore, residents])
   const view = liveView(live.frame, aspect, reserve)
+  const readingKey = reading ? topicHouseKey(reading.topic) : undefined
+  const destination = residentMap?.destinations.find(d => d.id === readingKey)
+  const door = destination ? iso(destination.door.x, destination.door.y + 0.25) : null
   const anchor = bubble ? bubbleAnchor(live.world, view, bubble.repoId) : null
   useLayoutEffect(() => {
     const el = box.current, message = bubbleBox.current
@@ -106,14 +116,15 @@ export const LiveStage = memo(function LiveStage({ model, snap, bubble, initialA
     return () => ro.disconnect()
   }, [bubble?.key, anchor?.left, anchor?.top])
   return (
-    <div className="live-stage live-topic-stage" ref={box} data-stage-instance={instance}>
+    <div className="live-stage live-topic-stage" ref={box} data-stage-instance={instance} data-reading-topic={reading?.topic} data-reading-resident={reading?.resident}>
       <div className="live-stage-scene" inert aria-hidden="true">
-        <WorldScene model={model} world={live.world} view={view} far={false} selected={null} highlight={null} onSelect={noop} needsYou={nobody} live liveDress={live.dress} sceneRef={scene} residents={residents ? { store: residentStore, active: true, selected: null, onSelect: noop, readOnly: true } : undefined} />
+        <WorldScene model={model} world={live.world} view={view} far={false} selected={null} highlight={null} onSelect={noop} needsYou={nobody} live liveDress={{ ...live.dress, readingKey }} sceneRef={scene} residents={residents ? { store: residentStore, active: true, selected: null, onSelect: noop, readOnly: true } : undefined} />
       </div>
-      <div className="live-lights" aria-hidden="true">{live.world.districts.filter(d => d.b.characters.some(c => c.status === 'working')).map(d => {
+      <div className="live-lights" aria-hidden="true">{live.world.districts.filter(d => d.key === readingKey || d.b.characters.some(c => c.status === 'working')).map(d => {
         const [x, y] = iso(d.ox + INNER_W / 2, d.oy + INNER_D / 2)
         return <i key={d.key} style={{ left: `${(x - view.x) / view.w * 100}%`, top: `${(y - view.y) / view.h * 100}%` }} />
       })}</div>
+      {reading && <ReadingStatus store={residentStore} reading={reading} door={door ? { left: `${(door[0] - view.x) / view.w * 100}%`, top: `${(door[1] - view.y) / view.h * 100}%` } : undefined} />}
       {bubble && (
         <div ref={bubbleBox} key={bubble.key} className="live-bubble" role="status" style={bubblePosition ? { left: bubblePosition.left, top: bubblePosition.top } : { left: `${anchor?.left ?? 50}%`, top: `${anchor?.top ?? 18}%` }}>
           {bubble.text}
