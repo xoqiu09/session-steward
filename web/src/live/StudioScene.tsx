@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useLiveNow } from './LiveClock'
 import type { LiveNote, LiveStyle } from '../api'
 import type { TownModel } from '../town/townModel'
 import type { TownThemeId } from '../town/appearance'
@@ -19,8 +19,7 @@ export function StudioScene({ snap, model, note, stale, bubble, recent, layout, 
   snap: LiveSnapshot | null; model: TownModel | null; note: LiveNote | null; stale: boolean
   bubble: LiveEvent | null; recent: LiveEvent | null; layout: LiveLayout; style: LiveStyle; theme: TownThemeId
 }) {
-  const [now, setNow] = useState(Date.now)
-  useEffect(() => { const timer = window.setInterval(() => setNow(Date.now()), 1000); return () => window.clearInterval(timer) }, [])
+  const now = useLiveNow()
   const resident = useLiveResident(note?.resident_control, note?.companion)
   const action = activeCompanionAction(note?.companion, now)
   const gesture = action && (!action.resident || action.resident === resident) ? action.kind : 'idle'
@@ -43,7 +42,7 @@ export function StudioScene({ snap, model, note, stale, bubble, recent, layout, 
           {content.item ? <article className="studio-reading-card" key={content.item.id}>
             <header><span>{content.item.source === 'kuangye' ? '随读片段' : sourceName(content.item.source, landscape)}</span><small className={content.item.topic ? 'studio-reading-topic' : undefined}>{liveTopic(content.item.topic)?.name ?? (reading ? '今晚，读到这里' : '小镇的放映角')}</small></header>
             <h2>{publicText(content.item.title)}</h2><p>{publicText(content.item.body)}</p>
-            <footer><span>{publicText(content.item.credit) || '一张公开的内容卡'}</span><b>{String(content.index + 1).padStart(2, '0')} / {String(content.total).padStart(2, '0')}</b></footer>
+            <footer><span>{publicText(content.item.credit) || '一张公开的内容卡'}</span><b>{note?.content?.mode === 'random' ? '偶然读到' : `${String(content.index + 1).padStart(2, '0')} / ${String(content.total).padStart(2, '0')}`}</b></footer>
             <div className="studio-reading-progress" aria-hidden="true"><i style={{ transform: `scaleX(${content.progress})` }} /></div>
           </article> : <article className="studio-reading-card is-empty"><header><span>小镇的放映角</span><small>慢慢来</small></header><h2>把日子，过成<br />自己的作品。</h2><p>这里会放些想法、阅读和做好的小作品。现在，先陪小镇坐一会儿。</p><footer><span>留一点时间，给喜欢的事。</span><b>✦</b></footer></article>}
         </section>

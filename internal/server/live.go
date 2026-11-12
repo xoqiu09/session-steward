@@ -1,6 +1,9 @@
 package server
 
 import (
+	"encoding/json"
+	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 
@@ -65,6 +68,35 @@ func (s *Server) liveRoutes(mux *http.ServeMux) {
 			return
 		}
 		out, err := s.Core.SetLiveContent(r.Context(), in)
+		if err != nil {
+			writeErr(w, err)
+			return
+		}
+		w.Header().Set("Cache-Control", "no-store")
+		writeJSON(w, 200, out)
+	})))
+	mux.HandleFunc("GET /api/live/reading-pool", s.liveLocal(s.panel(func(w http.ResponseWriter, r *http.Request) {
+		out, err := s.Core.LiveReadingPool(r.Context())
+		if err != nil {
+			writeErr(w, err)
+			return
+		}
+		w.Header().Set("Cache-Control", "no-store")
+		writeJSON(w, 200, out)
+	})))
+	mux.HandleFunc("PUT /api/live/reading-pool", s.liveLocal(s.panel(func(w http.ResponseWriter, r *http.Request) {
+		var in core.LiveReadingPoolUpdate
+		decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<20))
+		decoder.DisallowUnknownFields()
+		if err := decoder.Decode(&in); err != nil {
+			writeErr(w, fmt.Errorf("%w: 摘句文件无法读取或超过4 MB", core.ErrBadRequest))
+			return
+		}
+		if err := decoder.Decode(new(any)); err != io.EOF {
+			writeErr(w, fmt.Errorf("%w: 摘句文件只能包含一个清单", core.ErrBadRequest))
+			return
+		}
+		out, err := s.Core.SetLiveReadingPool(r.Context(), in)
 		if err != nil {
 			writeErr(w, err)
 			return
