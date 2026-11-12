@@ -6,6 +6,7 @@ import { liveScrub, type LiveSnapshot } from './scrub'
 import { liveStyle } from './styles'
 import { livePresentation, publicCompanionAction } from './companion'
 import { publicLiveResidents } from './liveResidents'
+import { publicLiveContent } from './content'
 
 export const SNAPSHOT_MS = 5_000
 export const NOTE_MS = 2_000
@@ -70,7 +71,7 @@ export function createLiveFeed(opts: {
   const pullNote = async () => {
     try {
       const n = await fetchNote()
-      if (!stopped) publish({ note: { doing: str(n?.doing), thinking: str(n?.thinking), contact: str(n?.contact), style: liveStyle(n?.style), presentation: livePresentation(n?.presentation), companion: publicCompanionAction(n?.companion), resident_control: publicLiveResidents(n?.resident_control), updated_at: str(n?.updated_at) } })
+      if (!stopped) publish({ note: { doing: str(n?.doing), thinking: str(n?.thinking), contact: str(n?.contact), style: liveStyle(n?.style), presentation: livePresentation(n?.presentation), companion: publicCompanionAction(n?.companion), resident_control: publicLiveResidents(n?.resident_control), content: publicLiveContent(n?.content), updated_at: str(n?.updated_at) } })
     } catch { /* 说明失败时保留上一份；画面状态只看快照 */ } finally { later('note', () => void pullNote(), NOTE_MS) }
   }
   return {

@@ -302,6 +302,7 @@ function PanelApp() {
           </details>}
           <div className="toolbar-actions">
             <button ref={workPanelTrigger} className={`btn small panel-toggle${workPanelVisible ? ' is-open' : ''}`} aria-expanded={workPanelVisible} aria-controls={workPanelVisible ? 'work-panel' : undefined} onClick={() => workPanelVisible ? closeWorkPanel() : openSideTab(tab)}>{workPanelVisible ? '收起面板' : '工作面板'}</button>
+            {view === 'town' && !isRemote() && <button className="btn small" aria-haspopup="dialog" onClick={() => setLiveOpen(true)} title="小镇放映角与直播预览">放映角</button>}
             <button className="btn small tools-trigger" aria-haspopup="dialog" aria-expanded={toolsOpen} onClick={() => setToolsOpen(true)}>工具 <span aria-hidden="true">⌄</span></button>
           </div>
         </header>

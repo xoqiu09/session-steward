@@ -8,6 +8,7 @@ import './liveSettings.css'
 import { useNativeDialog } from '../ui/useNativeDialog'
 import { ActionFeedback } from '../ui/ActionFeedback'
 import { LiveResidentsSettings } from './LiveResidentsSettings'
+import { LiveContentSettings } from './LiveContentSettings'
 
 export const LIVE_NOTE_MAX = 80
 
@@ -29,6 +30,9 @@ export function LiveSettings({ onClose }: { onClose: () => void }) {
   const [values, setValues] = useState<Record<Key, string>>({ doing: '', thinking: '', contact: '' })
   const [style, setStyle] = useState<LiveStyle>('cozy-night')
   const [presentation, setPresentation] = useState<LivePresentation>('companion')
+  const [contentDirty, setContentDirty] = useState(false)
+  const [contentBusy, setContentBusy] = useState(false)
+  const [previewFormat, setPreviewFormat] = useState<'landscape' | 'portrait'>('landscape')
   const [gestureBusy, setGestureBusy] = useState(false)
   const [gestureFeedback, setGestureFeedback] = useState<Feedback | null>(null)
   const [previewScale, setPreviewScale] = useState(1 / 3)
@@ -51,9 +55,9 @@ export function LiveSettings({ onClose }: { onClose: () => void }) {
   const closeRegion = useRef<HTMLElement>(null)
   const dirty = loaded && JSON.stringify({ ...values, style, presentation }) !== saved
   const requestClose = () => {
-    if (saving.current) return
+    if (saving.current || contentBusy) return
     if (confirmClose) { setConfirmClose(false); return }
-    if (dirty) setConfirmClose(true)
+    if (dirty || contentDirty) setConfirmClose(true)
     else onClose()
   }
   const dialog = useNativeDialog(requestClose, '[data-live-close]')
@@ -75,12 +79,12 @@ export function LiveSettings({ onClose }: { onClose: () => void }) {
   useEffect(() => {
     const el = previewBox.current
     if (!el) return
-    const measure = () => setPreviewScale(el.clientWidth / 1080)
+    const measure = () => setPreviewScale(el.clientWidth / (previewFormat === 'portrait' ? 1080 : 1920))
     measure()
     if (typeof ResizeObserver === 'undefined') return
     const ro = new ResizeObserver(measure); ro.observe(el)
     return () => ro.disconnect()
-  }, [])
+  }, [previewFormat])
   useEffect(() => {
     if (confirmClose) { closeRegion.current?.scrollIntoView({ block: 'nearest' }); keepEditing.current?.focus() }
   }, [confirmClose])
@@ -138,13 +142,13 @@ export function LiveSettings({ onClose }: { onClose: () => void }) {
         const box = event.currentTarget.getBoundingClientRect()
         if (event.clientX < box.left || event.clientX > box.right || event.clientY < box.top || event.clientY > box.bottom) requestClose()
       }}>
-        <header className="live-studio-heading"><div><p>工作小镇 · 展示工作台</p><h2>把小镇，留给路过的人。</h2></div><div className="live-studio-heading-tools"><span>本地预览</span><button className="btn small" data-live-close disabled={busy} onClick={requestClose}>关闭</button></div></header>
+        <header className="live-studio-heading"><div><p>工作小镇 · 展示工作台</p><h2>把小镇，留给路过的人。</h2></div><div className="live-studio-heading-tools"><span>本地预览</span><button className="btn small" data-live-close disabled={busy || contentBusy} onClick={requestClose}>关闭</button></div></header>
         <div className="live-studio-layout">
         <div className="live-studio-controls">
         {loading && <p role="status">正在读取直播说明…</p>}
         {loadError && <div role="alert"><p>{loadError}</p><p>原说明尚未读取，暂时不能编辑或保存。</p><button className="btn small" onClick={() => void load()}>重新读取说明</button></div>}
         <fieldset className="live-layout-picker" disabled={!loaded || busy}>
-          <legend>展示内容</legend><div>{([{ id: 'companion', label: '居民 + 小镇', hint: '七位轮流陪伴，下方小镇实况' }, { id: 'town', label: '整座小镇', hint: '让原来的小镇占满画面' }] as const).map(p => <button type="button" key={p.id} aria-pressed={presentation === p.id} onClick={() => { if (!loaded || saving.current) return; setPresentation(p.id); setSaveFeedback(null); setConfirmClose(false) }}><b>{p.label}</b><small>{p.hint}</small></button>)}</div>
+          <legend>展示内容</legend><div>{([{ id: 'studio', label: '小镇 + 放映角', hint: '小镇实况、七位居民与公开内容' }, { id: 'companion', label: '居民 + 小镇', hint: '七位轮流陪伴，下方小镇实况' }, { id: 'town', label: '整座小镇', hint: '让原来的小镇占满画面' }] as const).map(p => <button type="button" key={p.id} aria-pressed={presentation === p.id} onClick={() => { if (!loaded || saving.current) return; setPresentation(p.id); setSaveFeedback(null); setConfirmClose(false) }}><b>{p.label}</b><small>{p.hint}</small></button>)}</div>
         </fieldset>
         <fieldset className="live-style-picker" disabled={!loaded || busy}>
           <legend>画面风格</legend>
@@ -162,10 +166,11 @@ export function LiveSettings({ onClose }: { onClose: () => void }) {
             <small className={problems[f.key] ? 'is-error' : 'muted'}>{problems[f.key] || `${Array.from(values[f.key].trim()).length}/${LIVE_NOTE_MAX}`}</small>
           </label>
         ))}
-        {presentation === 'companion' && <LiveResidentsSettings />}
+        <LiveContentSettings onDirty={setContentDirty} onBusy={setContentBusy} />
+        {presentation !== 'town' && <LiveResidentsSettings />}
         <section className="live-owner-gestures" aria-label="居民的动作">
           <div><strong>让当前居民回应一下</strong><small>由你手动触发 · 尚未接入直播间弹幕</small></div>
-          <div className="live-gesture-actions">{([{ kind: 'pat', label: '摸摸' }, { kind: 'walk', label: '去散步' }, { kind: 'home', label: '该回家啦' }] as const).map(a => <button type="button" key={a.kind} disabled={!loaded || gestureBusy || presentation !== 'companion'} onClick={() => void gesture(a.kind)}>{a.label}</button>)}</div>
+          <div className="live-gesture-actions">{([{ kind: 'pat', label: '摸摸' }, { kind: 'walk', label: '去散步' }, { kind: 'home', label: '该回家啦' }] as const).map(a => <button type="button" key={a.kind} disabled={!loaded || gestureBusy || presentation === 'town'} onClick={() => void gesture(a.kind)}>{a.label}</button>)}</div>
           {gestureBusy && <p role="status">正在发送动作…</p>}
           {gestureFeedback && <ActionFeedback tone={gestureFeedback.tone}><p>{gestureFeedback.text}</p></ActionFeedback>}
         </section>
@@ -181,13 +186,13 @@ export function LiveSettings({ onClose }: { onClose: () => void }) {
         </div>
         {confirmClose && <section ref={closeRegion} className="live-close-confirm" role="region" aria-label="关闭前确认">
           <strong>还有未保存的修改</strong><p>现在关闭会放弃本次草稿，已保存的展示画面保持原样。</p>
-          <div><button ref={keepEditing} className="btn small primary" disabled={busy} onClick={() => { setConfirmClose(false); dialog.ref.current?.querySelector<HTMLInputElement>('input:not([readonly])')?.focus() }}>继续编辑</button><button className="btn small" disabled={busy} onClick={() => { if (!saving.current) onClose() }}>放弃修改并关闭</button></div>
+          <div><button ref={keepEditing} className="btn small primary" disabled={busy} onClick={() => { setConfirmClose(false); dialog.ref.current?.querySelector<HTMLInputElement>('input:not([readonly])')?.focus() }}>继续编辑</button><button className="btn small" disabled={busy || contentBusy} onClick={() => { if (!saving.current && !contentBusy) onClose() }}>放弃修改并关闭</button></div>
         </section>}
         </div>
         <aside className="live-studio-preview" aria-label="直播画面预览">
-          <div><strong>观众看到的画面</strong><span>9 : 16</span></div>
-          <div className="live-preview-frame" ref={previewBox}>{loaded && <iframe title="脱敏小镇直播预览" src={preview} tabIndex={-1} style={{ transform: `scale(${previewScale})` }} />}</div>
-          <p>{dirty ? '布局与画风可先试看；文字与 OBS 画面在保存后更新。' : '这是脱敏展示页。复制地址到 OBS 浏览器源，尺寸设为 1080 × 1920。'}</p>
+          <div><strong>观众看到的画面</strong><div className="live-preview-formats">{(['landscape', 'portrait'] as const).map(format => <button type="button" key={format} aria-pressed={previewFormat === format} onClick={() => setPreviewFormat(format)}>{format === 'landscape' ? '横屏 16:9' : '竖屏 9:16'}</button>)}</div></div>
+          <div className={`live-preview-frame is-${previewFormat}`} ref={previewBox}>{loaded && <iframe title="脱敏小镇直播预览" src={preview} tabIndex={-1} style={{ width: previewFormat === 'portrait' ? 1080 : 1920, height: previewFormat === 'portrait' ? 1920 : 1080, transform: `scale(${previewScale})` }} />}</div>
+          <p>{dirty ? '布局与画风可先试看；文字与 OBS 画面在保存后更新。' : `这是脱敏展示页。OBS 浏览器源尺寸设为 ${previewFormat === 'portrait' ? '1080 × 1920' : '1920 × 1080'}。`}</p>
         </aside>
         </div>
       </dialog>

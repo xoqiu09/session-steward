@@ -13,9 +13,9 @@ interface Anchors { ground: Map<string, SVGGElement>; doors: Map<string, SVGGEle
 const equalMap = (a: Map<string, SVGGElement>, b: Map<string, SVGGElement>) => a.size === b.size && [...a].every(([k, v]) => b.get(k) === v)
 
 /** 动态立绘放进地图已有的深度层。只有七只的组件订阅生活时钟，整座工作地图不跟着每拍重画。 */
-export function ResidentWorldVisitors({ store, world, svgRef, far, selected, onSelect, onEnter }: {
+export function ResidentWorldVisitors({ store, world, svgRef, far, selected, onSelect, onEnter, readOnly = false }: {
   store: ResidentStore; world: WorldLayout; svgRef?: RefObject<SVGSVGElement | null>; far: boolean
-  selected: ResidentId | null; onSelect: (id: ResidentId) => void; onEnter: (projectId: string) => void
+  selected: ResidentId | null; onSelect: (id: ResidentId) => void; onEnter: (projectId: string) => void; readOnly?: boolean
 }) {
   const life = useResidentLife(store), context = useMemo(() => residentWorld(world), [world])
   const [anchors, setAnchors] = useState<Anchors>(() => ({ ground: new Map(), doors: new Map() }))
@@ -35,9 +35,9 @@ export function ResidentWorldVisitors({ store, world, svgRef, far, selected, onS
       if (!door || !destination) return null
       const guests = RESIDENT_IDS.filter((other) => life.actors[other].trip?.phase === 'inside' && life.actors[other].trip?.projectId === trip.projectId)
       const index = guests.indexOf(id), p = iso(destination.door.x, destination.door.y + 0.25)
-      return createPortal(<g transform={`translate(${p[0] + index * 28},${p[1]})`} role="button" tabIndex={0} data-resident-id={id}
-        aria-label={`${residentSpec(id).name} 在 ${trip.projectName} 屋里串门，进去看看`} className="town-resident-guest"
-        onPointerDown={(e) => e.stopPropagation()} onClick={() => onEnter(trip.projectId)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onEnter(trip.projectId) } }}>
+      return createPortal(<g transform={`translate(${p[0] + index * 28},${p[1]})`} role={readOnly ? 'img' : 'button'} tabIndex={readOnly ? undefined : 0} data-resident-id={id}
+        aria-label={`${residentSpec(id).name} 在 ${trip.projectName} 屋里串门${readOnly ? '' : '，进去看看'}`} className="town-resident-guest"
+        onPointerDown={(e) => e.stopPropagation()} onClick={() => { if (!readOnly) onEnter(trip.projectId) }} onKeyDown={(e) => { if (!readOnly && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); onEnter(trip.projectId) } }}>
         <rect x="-15" y="-32" width="28" height="31" rx="8" fill="#fffaf0" stroke="#b88e78" />
         <image href={residentImage(id, 'avatar')} x="-13" y="-30" width="24" height="28" />
         {!far && index === 0 && <text y="12" className="town-resident-name" textAnchor="middle">居民来访 {guests.length}</text>}
@@ -47,7 +47,7 @@ export function ResidentWorldVisitors({ store, world, svgRef, far, selected, onS
     if (cellKey(cell) === cellKey(context.home)) return null
     const anchor = anchors.ground.get(cellKey(cell))
     return anchor ? createPortal(<ResidentFigure actor={actor} at={walk} now={life.now} quiet={life.quiet} far={far} selected={selected === id}
-      moving={!life.paused && walk.path.length > 0 && actor.holdUntil <= life.now} draggable={false} onSelect={() => onSelect(id)} />, anchor, id) : null
+      moving={!life.paused && walk.path.length > 0 && actor.holdUntil <= life.now} draggable={false} readOnly={readOnly} onSelect={() => onSelect(id)} />, anchor, id) : null
   })}</>
 }
 

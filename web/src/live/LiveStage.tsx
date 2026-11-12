@@ -1,6 +1,6 @@
 // 展示用的小镇舞台：复用世界地图的画法（WorldScene），但房子按展示布局紧凑重排（见 layout.ts），
 // 镜头固定框住这些房子和名牌；不巡游、不跟随、不响应指针；排布顺序只放在内存里，不读写浏览器存储。
-import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { memo, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { Snapshot } from '../types'
 import type { BuildingView, TownModel } from '../town/townModel'
 import { WorldScene } from '../town/WorldScene'
@@ -10,6 +10,8 @@ import { iso } from '../town/iso'
 import { INNER_D, INNER_W, fitCamera, type Box, type WorldLayout } from '../town/world'
 import { LIVE_MAX, liveOrder, liveWorld } from './layout'
 import type { LiveEvent } from './events'
+import { createResidentStore } from '../town/residentLife'
+import { residentWorld } from '../town/residentTrips'
 
 const noop = () => {}
 const nobody = () => false
@@ -45,10 +47,14 @@ export function liveBuildings(model: TownModel, snap: Snapshot): BuildingView[] 
     : list.slice().sort((a, b) => (pos.get(a.repo!.id) ?? 1e9) - (pos.get(b.repo!.id) ?? 1e9) || a.repo!.id - b.repo!.id).slice(0, LIVE_MAX)
 }
 
-export const LiveStage = memo(function LiveStage({ model, snap, bubble, initialAspect = 1.2, reserve = NO_RESERVE }: { model: TownModel; snap: Snapshot; bubble: LiveEvent | null; initialAspect?: number; reserve?: LiveReserve }) {
+const memoryOnly = { getItem: () => null, setItem: () => {} }
+export const LiveStage = memo(function LiveStage({ model, snap, bubble, initialAspect = 1.2, reserve = NO_RESERVE, residents = false }: { model: TownModel; snap: Snapshot; bubble: LiveEvent | null; initialAspect?: number; reserve?: LiveReserve; residents?: boolean }) {
   // 排布顺序只记在这一页的内存里：同一批项目刷新后位置不变，有项目进出时其他房子尽量不动。
   const order = useRef<string[]>([])
+  const instance = useId()
   const box = useRef<HTMLDivElement>(null)
+  const scene = useRef<SVGSVGElement>(null)
+  const [residentStore] = useState(() => createResidentStore(memoryOnly))
   const bubbleBox = useRef<HTMLDivElement>(null)
   const [bubblePosition, setBubblePosition] = useState<{ left: number; top: number } | null>(null)
   const [aspect, setAspect] = useState(initialAspect)
@@ -63,15 +69,23 @@ export const LiveStage = memo(function LiveStage({ model, snap, bubble, initialA
     return () => ro.disconnect()
   }, [])
   const buildings = useMemo(() => {
-    const list = liveBuildings(model, snap)
+    const list = liveBuildings(model, snap).slice(0, residents ? 8 : LIVE_MAX)
     const byKey = new Map(list.map((b) => [b.key, b]))
     order.current = liveOrder(order.current, list.map((b) => b.key), (k) => byKey.get(k)!.repo!.id)
     return order.current.map((k) => byKey.get(k)!)
-  }, [model, snap])
+  }, [model, snap, residents])
   const plan = useMemo(() => planWorld(buildings.map((b) => b.repo!), snap, Date.parse(snap.now) || Date.now()), [buildings, snap])
   const { theme } = useTownArt()
   const free = Math.max(0.3, 1 - reserve.top - reserve.bottom)
-  const live = useMemo(() => liveWorld(buildings, plan, aspect / free, theme), [buildings, plan, aspect, free, theme])
+  const live = useMemo(() => liveWorld(buildings, plan, aspect / free, theme, residents), [buildings, plan, aspect, free, theme, residents])
+  useEffect(() => { residentStore.setWorld(residents ? residentWorld(live.world) : undefined) }, [residentStore, residents, live.world])
+  useEffect(() => {
+    if (!residents) return
+    // OBS can mark a browser source hidden. Keep this memory-only visual clock running there too.
+    residentStore.resetClock(Date.now())
+    const timer = window.setInterval(() => residentStore.tick(Date.now()), 500)
+    return () => window.clearInterval(timer)
+  }, [residentStore, residents])
   const view = liveView(live.frame, aspect, reserve)
   const anchor = bubble ? bubbleAnchor(live.world, view, bubble.repoId) : null
   useLayoutEffect(() => {
@@ -91,9 +105,9 @@ export const LiveStage = memo(function LiveStage({ model, snap, bubble, initialA
     return () => ro.disconnect()
   }, [bubble?.key, anchor?.left, anchor?.top])
   return (
-    <div className="live-stage" ref={box}>
+    <div className="live-stage" ref={box} data-stage-instance={instance}>
       <div className="live-stage-scene" inert aria-hidden="true">
-        <WorldScene model={model} world={live.world} view={view} far={false} selected={null} highlight={null} onSelect={noop} needsYou={nobody} live liveDress={live.dress} />
+        <WorldScene model={model} world={live.world} view={view} far={false} selected={null} highlight={null} onSelect={noop} needsYou={nobody} live liveDress={live.dress} sceneRef={scene} residents={residents ? { store: residentStore, active: true, selected: null, onSelect: noop, readOnly: true } : undefined} />
       </div>
       <div className="live-lights" aria-hidden="true">{live.world.districts.filter(d => d.b.characters.some(c => c.status === 'working')).map(d => {
         const [x, y] = iso(d.ox + INNER_W / 2, d.oy + INNER_D / 2)

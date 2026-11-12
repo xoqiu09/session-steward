@@ -99,7 +99,7 @@ interface SceneProps {
   onNavigate?: (t: NavTarget) => void
   /** 刚按片区取景的片区：地图远景下也显示它每个成员的名牌，村名牌让位。 */
   focusArea?: string | null
-  residents?: { store: ResidentStore; active: boolean; selected: ResidentId | null; onSelect: (id: ResidentId) => void; onEnter?: (projectId: string) => void }
+  residents?: { store: ResidentStore; active: boolean; selected: ResidentId | null; onSelect: (id: ResidentId) => void; onEnter?: (projectId: string) => void; readOnly?: boolean }
   sceneRef?: RefObject<SVGSVGElement | null>
   /** 直播展示：只画房子、作坊、小人和项目名牌；不画告示栏、验收台、退件架、菜地、包裹、路障和各种待办计数。默认照常画。 */
   live?: boolean
@@ -458,7 +458,7 @@ export function WorldScene({ model, world, view, far, selected, highlight, onSel
         {/* 广场名牌最后画：全镇合计，不被村庄名牌盖住 */}
         <FarPlate k={plazaPlate.k} at={plazaPlate.at} title={plazaPlate.title} tone="plaza" chips={plazaPlate.chips} note={plazaPlate.note} />
       </g>}
-      {residents && <ResidentWorldVisitors store={residents.store} world={world} svgRef={sceneRef} far={far} selected={residents.selected}
+      {residents && <ResidentWorldVisitors store={residents.store} world={world} svgRef={sceneRef} far={far} selected={residents.selected} readOnly={residents.readOnly}
         onSelect={residents.onSelect} onEnter={(id) => residents.onEnter?.(id)} />}
     </svg>
   )

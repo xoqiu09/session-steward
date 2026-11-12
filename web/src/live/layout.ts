@@ -7,7 +7,7 @@ import { iso, type Pt } from '../town/iso'
 import { liveCharacterName, liveCharacterStatus, measure, buildingArt, SIGN_MAX } from '../town/TownScene'
 import { clip } from '../town/townModel'
 import { districtPlot, TIERS, type LiveDress } from '../town/WorldScene'
-import { CELL_D, CELL_W, INNER_D, INNER_W, buildingTier, finish, type Box, type Cell, type District, type Tier, type WorldLayout } from '../town/world'
+import { CELL_D, CELL_W, INNER_D, INNER_W, buildingTier, cellBox, finish, type Box, type Cell, type District, type Tier, type WorldLayout } from '../town/world'
 import { AGENTS, agentOf } from '../town/agents'
 import { shedSeat, shedSpots } from '../town/workshop'
 import type { BuildingView } from '../town/townModel'
@@ -149,7 +149,7 @@ function yardBox(d: District): Box {
 
 export interface LiveWorld { world: WorldLayout; dress: LiveDress; frame: Box; cols: number }
 
-function build(buildings: readonly BuildingView[], plan: WorldPlan | undefined, cols: number, art: LiveArt | undefined): LiveWorld {
+function build(buildings: readonly BuildingView[], plan: WorldPlan | undefined, cols: number, art: LiveArt | undefined, residents = false): LiveWorld {
   const districts: District[] = buildings.map((b, i) => {
     const cell = liveSlot(i, buildings.length, cols)
     const tier = Math.min(LIVE_TIER_MAX, buildingTier(b, b.repo ? plan?.activity.get(b.repo.id) ?? 0 : 0)) as Tier
@@ -164,22 +164,23 @@ function build(buildings: readonly BuildingView[], plan: WorldPlan | undefined, 
     boxes.push(yardBox(d), liveBodyBox(d, art), liveSignBox(d, at))
     for (const p of livePills(d)) { pills.set(p.key, p.at); boxes.push(p.box) }
   }
+  if (residents) boxes.push(cellBox(0, 0))
   const frame = boxes.length ? unionBox(boxes) : { x: -400, y: -300, w: 800, h: 600 }
-  return { world: finish(districts, [], []), dress: { signK: LIVE_SIGN_K, signs, pillK: LIVE_PILL_K, pills }, frame, cols }
+  return { world: finish(districts, [], [], residents ? { cx: 0, cy: 0 } : undefined), dress: { signK: LIVE_SIGN_K, signs, pillK: LIVE_PILL_K, pills }, frame, cols }
 }
 
 /**
  * 展示用的世界：buildings 已按 liveOrder 排好、最多 LIVE_MAX 栋。列数按画面比例选，
  * 让房子在画面里尽量大（取景后视野最窄的那种）。aspect 是镜头可用区域的宽高比；art 是当前画风（招牌贴着该画风的屋顶）。
  */
-export function liveWorld(buildings: readonly BuildingView[], plan: WorldPlan | undefined, aspect: number, art?: LiveArt): LiveWorld {
+export function liveWorld(buildings: readonly BuildingView[], plan: WorldPlan | undefined, aspect: number, art?: LiveArt, residents = false): LiveWorld {
   const list = buildings.slice(0, LIVE_MAX)
   let best: LiveWorld | null = null
   let bestW = Infinity
   for (let cols = 1; cols <= Math.max(1, Math.min(COLS_MAX, list.length)); cols++) {
-    const lw = build(list, plan, cols, art)
+    const lw = build(list, plan, cols, art, residents)
     const w = Math.max(lw.frame.w, lw.frame.h * aspect)
     if (w < bestW - 1) { best = lw; bestW = w }
   }
-  return best ?? build(list, plan, 1, art)
+  return best ?? build(list, plan, 1, art, residents)
 }
