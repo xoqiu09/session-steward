@@ -83,6 +83,8 @@ export function PermissionCard({ a, snap }: { a: Approval; snap: Snapshot }) {
   const act = useAction()
   const left = a.deadline ? Math.max(0, Math.round((Date.parse(a.deadline) - Date.parse(snap.now)) / 60000)) : null
   const expired = !!a.deadline && Date.parse(a.deadline) <= Date.parse(snap.now)
+  const dispatch = snap.dispatch?.find(d => d.work_item_id === (a.work_item_id || s?.work_item_id))
+  const dispatchHref = `/?view=dispatch${dispatch ? `&task=${encodeURIComponent(dispatch.managed_id)}` : ''}`
   return (
     <div className="q-card">
       <div className="q-meta">
@@ -94,7 +96,9 @@ export function PermissionCard({ a, snap }: { a: Approval; snap: Snapshot }) {
       <WorkName a={a} snap={snap} />
       <Context a={a} snap={snap} />
       <pre className="preview">{a.preview || a.tool_name || '权限请求'}</pre>
-      {isRemote() && a.status === 'pending' ? <p className="hint">{remoteReadOnlyMessage}</p> : expired ? <p className="hint">请求已过期，等待状态同步；请回原界面处理。</p> : a.handleable ? (
+      {isRemote() && a.status === 'pending' ? <p className="hint">{remoteReadOnlyMessage}</p> : expired ? <p className="hint">请求已过期，等待状态同步；请回原界面处理。</p> : a.tool_name === 'NativeCodexControl' && a.status === 'pending' ? (
+        <div className="row"><span className="muted">请在派活台查看完整操作后决定。</span><a className="btn primary" href={dispatchHref}>去派活台查看并处理</a></div>
+      ) : a.handleable ? (
         a.status === 'pending' ? (
           <div className="row">
             <button className="btn primary" disabled={isRemote() || act.busy} onClick={() => act.run(() => api.decide(a.id, a.fingerprint, 'allow'))}>允许本次</button>

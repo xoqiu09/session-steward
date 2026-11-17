@@ -29,7 +29,7 @@ export function relaysOf(snap: Snapshot, now: number): Relay[] {
   const out: Relay[] = []
   for (const h of snap.handoffs ?? []) {
     const w = items.get(h.work_item_id)
-    if (!w || w.repo_id == null || now - Date.parse(h.created_at) > RELAY_WINDOW_MS) continue
+    if (h.state !== 'launched' || !w || w.repo_id == null || now - Date.parse(h.created_at) > RELAY_WINDOW_MS) continue
     const from = agentOf({ provider: h.from_provider as never }), to = agentNamed(h.to_agent)
     if (from === to) continue
     out.push({ key: `h-${h.id}`, repoId: w.repo_id, itemId: w.id, title: w.title, from, to, at: h.created_at, kind: 'handoff' })

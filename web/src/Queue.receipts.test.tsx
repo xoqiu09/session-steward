@@ -61,6 +61,18 @@ describe('关注队列的原会话回执文案与既有请求契约', () => {
     expect(api.decide).not.toHaveBeenCalled()
   })
 
+  it('派活审批跳到派活台，不提供服务端会拒绝的普通批准按钮', () => {
+    const a = { ...question, kind: 'permission' as const, handleable: true, tool_name: 'NativeCodexControl' }
+    const snap = { ...synthSnapshot, dispatch: [{ managed_id: 'synthetic-task', work_item_id: a.work_item_id!, repo_id: 1, status: 'running' }] }
+    const tree = PermissionCard({ a, snap })
+    const html = renderToStaticMarkup(tree)
+    expect(html).toContain('/?view=dispatch&amp;task=synthetic-task')
+    expect(html).toContain('去派活台查看并处理')
+    expect(button(tree, '允许本次')).toBeUndefined()
+    expect(button(tree, '拒绝')).toBeUndefined()
+    expect(api.decide).not.toHaveBeenCalled()
+  })
+
   it('真正可面板批准的权限仍走allow/deny，不改为原会话回执', async () => {
     const a = { ...question, kind: 'permission' as const, handleable: true }
     const tree = PermissionCard({ a, snap: synthSnapshot })
