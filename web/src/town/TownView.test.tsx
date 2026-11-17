@@ -119,7 +119,7 @@ describe('TownView 分页与版式', () => {
 
   it('桌面模式带上 is-kiosk，并且仍是只读场景：没有批准或验收按钮', () => {
     const html = render({ kiosk: true, layout: 'wide' })
-    expect(html).toContain('town-view is-kiosk')
+    expect(html).toMatch(/class="town-view[^"]* is-kiosk/)
     expect(html).not.toMatch(/允许本次|批准合并|标记完成/)
   })
 
