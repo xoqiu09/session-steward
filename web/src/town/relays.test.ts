@@ -33,6 +33,13 @@ describe('小推车：交接和接力', () => {
     expect(r.filter((x) => x.itemId === 'A-3').map((x) => [x.kind, x.from, x.to])).toEqual([['handoff', 'claude', 'codex']])
   })
 
+  it('失败交接不画推车，也不遮掉实际发生的接力', () => {
+    const failed = { ...snap, handoffs: snap.handoffs!.map(h => ({ ...h, state: 'failed' })) }
+    const actual = relaysOf(failed, Date.parse(now)).filter(x => x.itemId === 'A-3')
+    expect(actual.map(x => x.kind)).toEqual(['relay'])
+    expect(relaysOf({ ...failed, runs: [] }, Date.parse(now))).toEqual([])
+  })
+
   it('最新的排在前面，带项目编号', () => {
     expect(r[0].itemId).toBe('A-3')
     expect(r.every((x) => x.repoId > 0)).toBe(true)

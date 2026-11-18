@@ -1,68 +1,83 @@
-# Session Steward
+# Session Steward · SS 小镇
 
-给 Claude Code 和 Codex 用的本机项目进展台。几个 Agent 同时在几个项目里工作时，你可以在一座小镇里看清：**项目是做什么的、功能怎样配合、工作推进到哪里、下一步该谁处理。**
+**同时开着好几个 Claude Code 和 Codex？把它们放进一座小镇。**
 
-[首次使用](docs/FIRST-USE.zh-CN.md) · [合成演示](docs/DEMO.zh-CN.md) · [试用反馈](docs/TRYOUT.zh-CN.md) · [完整手册](docs/GUIDE.zh-CN.md) · [安全策略](SECURITY.md) · MIT · [English](#english-summary)
+每个项目是一栋房子，每个 Agent 会话是门口干活的小人；等你批准的事钉在广场告示栏上，做完的交付长成菜地里熟了的菜。你不用在十几个终端之间来回翻，抬头看一眼就知道：**谁在干什么、卡在哪、下一步该谁动手。**
 
-> **v0.3.0-rc.9 试用预发布。** 本版支持按名称或目录搜索项目、快速切换最近使用；新建会话先确认目标项目，地图常用按钮也适配实际窗口宽度，安装包在 [v0.3.0-rc.9 Release](https://github.com/xoqiu09/session-steward/releases/tag/v0.3.0-rc.9)。它是预发布，可能还会调整；上一个正式版是 [v0.2.0](https://github.com/xoqiu09/session-steward/releases/tag/v0.2.0)。
->
-> App 支持 macOS 13+（Apple 芯片 / Intel），界面为中文。默认资料留在本机，无遥测，不需要 SS 账号；首次接入需要你已有 Claude Code 或 Codex。
+[下载 App](https://github.com/xoqiu09/session-steward/releases/tag/v0.3.0-rc.17) · [先看演示](#先用演示数据看一眼) · [首次使用](docs/FIRST-USE.zh-CN.md) · [完整手册](docs/GUIDE.zh-CN.md) · [English](README.en.md) · MIT
 
-**这一版还包含七位常住居民、沿路串门与镜头跟随，以及首页的“小镇画风”。** 更新内容见 [CHANGELOG](CHANGELOG.md)。从源码构建的方法见下方。
+![微缩庭园画风下的小镇全景：七栋房子是七个项目，中央广场上有告示栏、验收台和派活台；全部为合成演示数据](docs/images/town.jpg)
 
-![小镇世界地图：每栋房子是一个项目，常一起开发的项目聚成村庄，中央广场上是告示栏（等你决定）和验收台（演示数据）](docs/images/town.jpg)
+> **v0.3.0-rc.17 公开试用版** · macOS 13+（Apple 芯片 / Intel）· 中文界面 · 数据只留在本机、无遥测、不需要账号 · 需要你已经在用 Claude Code 或 Codex。这是预发布，欢迎在 [Issues](https://github.com/xoqiu09/session-steward/issues) 告诉我哪里卡住了。
 
-## 先看懂一个项目，再看进展
+## 为什么做它
 
-房子代表项目，进入房间后按四个入口阅读：
+AI 编程已经从“一个助手陪你写”变成“好几个 Agent 同时在好几个项目里干活”。人反而成了瓶颈：哪个窗口在等你批权限？哪个说做完了其实没验证？哪个已经停了半小时没人管？
 
-| 入口 | 帮你回答 |
+SS 不替你写代码，也不替你做决定。它只做一件事：**把多 Agent 并行工作的状态摆到一张地图上，把需要人的注意力的事情收拢到一处。**
+
+## 它能做什么
+
+| | |
 | --- | --- |
-| 项目概况 | 项目解决什么问题，给谁用，主要能力怎样配合？ |
-| 功能地图 | 功能按什么用途分类？展开后，每项实现和验证到哪里？ |
-| 当前推进 | 正在做哪项工作，谁在推进，卡在哪，下一步是什么？ |
-| 验证依据 | 结论来自哪次回报、哪个版本？哪些仍待你确认？ |
+| 🏘 **一张地图看全部** | 房子 = 项目，小人 = 会话（Claude 小姐 / ChatGPT 小姐），常一起开发的项目聚成村庄。房子位置固定，不会因为状态变化乱跑。 |
+| 📌 **等你的事集中在告示栏** | 工具权限请求、Agent 的提问、等合并的分支都在广场和右侧队列里，直接允许、拒绝或回到原会话处理。 |
+| 🥬 **“Agent 说做完了” ≠ 你点了头** | 交付会长成熟了的菜，“收菜”时逐个看交付了什么、在哪看、怎么验证。只有你能点“已处理”；会话停止、沉默都不算完成。 |
+| 🏠 **进屋看懂一个项目** | 每个房间四个入口：项目概况、功能地图、当前推进、验证依据。Agent 回报的功能进度和你的验收分开记录。 |
+| 🔔 **忘了的事会再提醒** | 菜单栏和顶部“灵动岛”提醒：交付 30 分钟没收、工作停在你手上、你在原会话里已经处理掉的事会自动收起。 |
+| 🎨 **六种画风，七位居民** | 微缩庭园、柔和手绘、温暖夜景、清新绘本、经典小镇、AI 工作室；七位居民在路上散步、串门、陪你干活。纯本地，不调用模型。 |
 
-**结构资料和工作进度分开。** 目录由你或当前开发 Agent 整理；SS 不会安装后自动读完所有源码、生成整齐的项目房间。没有资料时显示“尚未整理”，没有登记功能也不等于项目未开发。保存目录不改变任务或验收。
+![近景：Claude 小姐和 ChatGPT 小姐在各自的作坊门口干活，头顶标着“工作中 / 等你决定”，告示栏列出两件等你决定的事（合成数据）](docs/images/town-close.jpg)
 
-![新版房间：阅读目标、用途和功能关系；项目、进度和证据均为合成样例](docs/images/structure-room.png)
+## 多 Agent 协作
+
+SS 的出发点就是多 Agent 并行：
+
+- **多个 Agent、多个项目同屏。** Claude Code 和 Codex（桌面版或命令行版）通过 hooks 自己登记任务、回报进展、交付结果；同一个项目里不同 Agent 各有一间作坊，工作在两者之间交接时，会有小推车载着工作编号从一间推到另一间。
+- **派活台（本机 Codex）。** 在小镇广场的派活台把任务交给这台电脑上的 Codex：每件任务自动新建分支和独立 worktree，Codex 要执行的操作仍在面板里等你决定。详见 [派活台](#派活台本机-codex)。
+- **按授权在后台推进（实验中，默认关闭）。** 你给某项工作划定目标、回合数和期限后，SS 可以在边界内把后续输入排队交给负责的 Codex，并做只读巡检；它不会替你批准工具权限，也不会把“Agent 说做完了”当成验收。设计与边界见 [本机编排说明](docs/orchestration/README.zh-CN.md)。
+- **人只在需要时介入。** 所有“要你处理”的事情用同一套口径计数：正式请求、Agent 交给你的事、待验收交付、卡住的工作，不多打扰，也不漏掉。
+
+![项目房间：右侧“功能地图”按用途分组，左侧 Claude 区和 Codex 区各自的工作台；项目与进度均为合成样例](docs/images/structure-room.jpg)
 
 <details>
-<summary>继续了解进度、提醒与审批</summary>
+<summary>更多：项目简报、核心功能进度、结构整理</summary>
 
-- **一张地图看全部工作。** 房子是项目，小人是正在干活的会话，熟了的菜是等你看的交付，广场上的告示栏是等你决定的事。房子的位置固定，不会因为状态变化跑来跑去。
-- **有新进展时带你去看。** 某个项目交付了，镜头会飞到那栋房子；你正在拖地图或读东西时不会抢镜头，看完点“回到刚才的位置”。
-- **忘了的事会再提醒。** 小镇顶部的“灵动岛”会提醒你：交付熟了 30 分钟还没收、工作停了 30 分钟没人推而下一步该你、交付后你已经回到对话接着推进（问你这件算不算处理了）。适合挂在副屏上常开。
-- **项目有自己的说明与功能目录。** 每个房间都能整理目标、用途与功能关系，资料可导入导出；[项目结构整理说明](docs/project-structure.md)。
-- **看得到每个项目的核心功能。** Agent 按功能回报“已完成 / 开发中 / 未开始”和验证情况；鼠标移到房子上就能看到，进入房子能看全部。这些是 Agent 自述，你验收过的才标“你已验收”。
-- **等你的事集中在一处。** 工具权限请求、Agent 的提问、等批准的合并、等你看的交付，都在面板右侧的队列里，可以直接允许、拒绝或处理。
-- **“Agent 说做完了”不等于你点了头。** 进展和交付由 Agent 自己回报，只有你能把工作标为“已处理”。会话停止、沉默或空闲都不算完成。
 - **按项目看简报。** 每个项目显示阶段、一句话结论、卡点、下一步和该谁动手，而不是一长串会话。
-
-</details>
+- **看得到每个项目的核心功能。** Agent 按功能回报“已完成 / 开发中 / 未开始”和验证情况；鼠标移到房子上就能看到。这些是 Agent 自述，你验收过的才标“你已验收”。
+- **结构资料和工作进度分开。** 房间目录由你或当前开发 Agent 整理，SS 不会自动读完所有源码。没有资料时显示“尚未整理”；保存目录不改变任务或验收。[项目结构整理说明](docs/project-structure.md)
 
 ![项目简报：按项目列出进展、卡点和下一步，右侧是需要你处理的请求（演示数据）](docs/images/brief.jpg)
 
-## 给小镇换个场景
+</details>
 
-小镇上方常显 **“小镇画风”**。宽屏直接展示 **微缩庭园、柔和手绘、经典小镇** 三项缩略图；窄屏显示当前画风和 **“更换画风”** 入口，展开后选择三种画风。点任一画风先预览，再点“使用并记住”保存；当前显示、正在预览和正在准备会分别标明。取消、点菜单外或按 Esc，会恢复打开菜单前的选择。进屋后也能切换，当前房间、镜头、居民路线和跟随目标会保留。
+## 画风与居民
 
-![宽屏的小镇画风入口：微缩庭园、柔和手绘、经典小镇同时可见，当前画风有标记；项目与进度均为合成数据](docs/images/town-scenes-switcher.jpg)
+点小镇左上角的 **“画风”** 打开场景菜单：先点一个预览，满意再点“使用并记住”；取消或按 Esc 恢复原样。没有选过时默认是微缩庭园。换画风不改变项目、工作或验收状态，选择只保存在当前 App／浏览器。
 
-选择只保存在当前 App／浏览器及来源地址中；不同浏览器、端口和设备各自记忆，不会通过“全部设备”视图同步。换场景不会修改项目、工作项、会话或验收状态，也不需要模型 API。
+| 柔和手绘 | 温暖夜景 |
+| --- | --- |
+| ![柔和手绘画风的小镇全景（合成数据）](docs/images/town-storybook.jpg) | ![温暖夜景画风的小镇全景（合成数据）](docs/images/town-night.jpg) |
 
-七位居民可以在花园散步、聚会、被摸摸头，也能沿道路拜访项目、进屋参观并回家。点击“去串门”时镜头会跟随；拖动或缩放可以接管镜头，再点“继续跟随”重新跟上。居民是生活伙伴，工作小人代表实际会话：手绘和微缩场景使用 Claude 小姐／ChatGPT 小姐的立绘，仍保留 Claude／Codex 来源、会话编号和状态。
+七位居民（大肥鱼、Claude、GPT/Codex、Gemini、GLM、Grok、Qwen）住在“七只的小屋”，会在花园散步、聚会、被摸摸头，也会沿路去项目里串门，点“去串门”镜头会跟着走。居民是生活伙伴，不算工作会话，也不会改变任何项目数据。画风细节见[场景说明](docs/town-scenes.zh-CN.md)。
 
-柔和手绘与微缩庭园均覆盖全部项目的四档建筑：小木屋、住宅、工坊和高楼，并适配植物、道路、湖岸及室内家具。画风、保存规则和验证范围见[场景说明](docs/town-scenes.zh-CN.md)。
+![七位居民在小屋前聚会，左侧是居民面板（合成数据）](docs/images/residents.jpg)
 
 ## 三步装好
 
-需要：macOS 13 或更新版本，以及 Claude Code 或 Codex（任一即可，桌面版和命令行版都行）。以下以 v0.3.0-rc.9 预发布为准；它在 Releases 页面里标为 Pre-release。
+需要：macOS 13 或更新版本，以及 Claude Code 或 Codex（任一即可，桌面版和命令行版都行）。以下以 v0.3.0-rc.17 预发布为准；它在 Releases 页面里标为 Pre-release。
 
-1. **下载。** 打开 [v0.3.0-rc.9 Release](https://github.com/xoqiu09/session-steward/releases/tag/v0.3.0-rc.9)，下载对应芯片的 `Session-Steward_v0.3.0-rc.9_macOS_arm64.app.zip`（Apple 芯片）或 `…_amd64.app.zip`（Intel）。解压后把 **Session Steward** 拖进“应用程序”。
+1. **下载。** 打开 [v0.3.0-rc.17 Release](https://github.com/xoqiu09/session-steward/releases/tag/v0.3.0-rc.17)，下载对应芯片的 `Session-Steward_v0.3.0-rc.17_macOS_arm64.app.zip`（Apple 芯片）或 `…_amd64.app.zip`（Intel）。解压后把 **Session Steward** 拖进“应用程序”。
 2. **第一次打开。** 这个版本没有 Apple 签名和公证，macOS 会拦一下：
    - 在“应用程序”里**右键 Session Steward → 打开 → 打开**；
    - 如果没有“打开”按钮（较新的 macOS）：先双击一次，再到“系统设置 → 隐私与安全性”，在下方找到 Session Steward，点“仍要打开”。
+   - 习惯用终端的话，也可以去掉下载时附带的“隔离”标记再双击打开（只对这个 App 生效，不改系统设置）：
+
+     ```sh
+     xattr -dr com.apple.quarantine "/Applications/Session Steward.app"
+     ```
+
+   为什么会被拦：签名和公证需要付费的 Apple 开发者账号。试用的人多起来后会补上，届时也会开放 App 内升级。
 3. **按引导点“安装 hooks 并开始”。** 引导会先说明要改哪两个文件（`~/.claude/settings.json` 和 `~/.codex/hooks.json`），改之前会备份，只添加 Steward 自己的条目。用 Codex 的话，还要在 Codex 里信任新加的 hooks。
 
 > 项目放在外置盘或“文稿”“桌面”等位置时，macOS 可能要求允许 steward 访问；每次升级换了程序签名后可能再问一次。没允许时面板底部会提示，到 系统设置 → 隐私与安全性 → 文件与文件夹 打开即可。
@@ -85,7 +100,7 @@ sh scripts/build-app.sh
 
 ## 先用演示数据看一眼
 
-装好 v0.3.0-rc.9 的 App 并完成第一次打开（上面第 2 步）后，不安装 hooks 也可以在终端直接运行：
+装好 v0.3.0-rc.17 的 App 并完成第一次打开（上面第 2 步）后，不安装 hooks 也可以在终端直接运行：
 
 ```sh
 "/Applications/Session Steward.app/Contents/MacOS/steward" demo
@@ -204,6 +219,7 @@ Agent 用 `steward-hook features` 按稳定的功能 ID 回报每项核心功能
 试用不需要这些，按需开启：
 
 - **命令行版**：不想用 App 时，`go build -o bin/ ./cmd/...` 后运行 `bin/steward install`、`bin/steward service install`、`bin/steward open`。仓库要放在一个长期不动的位置，不要放在“文稿”“桌面”“下载”里。已经装过命令行版再装 App 时，App 会问你“接管”还是“共用”。
+- **放映角（直播展示）**：给 OBS 用的只读小镇页面，项目用固定主题小屋代替、不显示真实项目名，只允许本机访问。见[小镇直播展示](docs/town-live.zh-CN.md)。
 - **多台电脑合成一座小镇**、**在手机上只读查看**：需要 Tailscale，见[使用手册](docs/GUIDE.zh-CN.md#在其他设备上查看小镇只读)。只在你的 tailnet 内转发，**不要**用 `tailscale funnel` 或公网代理暴露面板。
 
 ## 更新与卸载
@@ -258,10 +274,6 @@ sh scripts/build-app.sh   # 打包 App 到 dist-app/
 
 源代码采用 [MIT](LICENSE)。七位居民的立绘单独采用 CC BY-NC-SA 4.0，来自 CrossPet；本机非商业使用的素材、来源和原作者说明见 [角色立绘致谢](web/public/residents/ATTRIBUTION.md) 与 [素材许可](web/public/residents/LICENSE.md)，不随代码重新授予 MIT 许可。
 
-## English summary
+## English
 
-Session Steward is a local project progress desk for Claude Code and Codex. Projects appear as houses in a town. Each room explains the project's purpose, feature groups and relationships, current work, and reported evidence. Descriptions require explicit input from the user or their existing development Agent; SS does not automatically scan every source repository. Agent reports and user acceptance remain separate.
-
-This release also includes seven local companion residents, project visits with camera follow, and a Scenes menu for miniature, storybook, and classic environments. Preview, cancel, or save a scene without resetting the room, camera, residents, or work state. Preferences stay in the current App/browser origin; they do not sync across devices. Companions require no model API and remain distinct from work sessions. These source features should be checked against the commit and notes of any downloaded Release. Character artwork has its own license; see the resident attribution and license above.
-
-v0.3.0-rc.9 is a trial pre-release; download it from the [v0.3.0-rc.9 release](https://github.com/xoqiu09/session-steward/releases/tag/v0.3.0-rc.9). After opening the App once, run `"/Applications/Session Steward.app/Contents/MacOS/steward" demo`, or build `cmd/steward` with Go 1.26.5+ and run `bin/steward demo`, for fictional projects in a fresh isolated directory, without hooks, history scanning, models, or real Agent execution. App trials target macOS 13+, Apple Silicon and Intel, with a Chinese UI. There is no SS account or telemetry; optional integrations and the coding agents have their own network boundaries. See the [first-use walkthrough](docs/FIRST-USE.zh-CN.md) and [trial checklist](docs/TRYOUT.zh-CN.md).
+See [README.en.md](README.en.md). The App UI is currently Chinese-only; an English UI for the first screens is planned.

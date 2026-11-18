@@ -18,11 +18,14 @@ export const sceneArt = (id: TownSceneId): TownThemeId => TOWN_THEMES.find(t => 
 const isTheme = (id: unknown): id is TownSceneId => TOWN_THEMES.some(t => t.id === id)
 type AppearanceStorage = Pick<Storage, 'getItem' | 'setItem'>
 
+// 没有保存过画风时显示微缩庭园；已经“使用并记住”的选择（包括经典小镇）照旧。
+export const DEFAULT_SCENE: TownSceneId = 'miniature'
+
 export function readAppearance(storage?: AppearanceStorage): TownSceneId {
   try {
     const raw = JSON.parse(storage?.getItem(APPEARANCE_KEY) ?? 'null')
-    return raw?.version === 1 && isTheme(raw.theme) ? raw.theme : 'original'
-  } catch { return 'original' }
+    return raw?.version === 1 && isTheme(raw.theme) ? raw.theme : DEFAULT_SCENE
+  } catch { return DEFAULT_SCENE }
 }
 
 export function requestedTheme(search: string): TownSceneId | null {

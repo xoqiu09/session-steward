@@ -145,7 +145,7 @@ export function DispatchDesk() {
       <h1>任务在 {desk.host} 上执行</h1>
       <p className="muted">{desk.codex_version || 'Codex'} · 用这台电脑上你自己的 Codex 设置。关掉页面任务照常跑，回来能看到进展。</p>
       <p className={`dd-control${other ? ' is-other' : ''}`}>
-        {owns ? '这个页面正在控制' : other ? '另一个页面正在控制，这里只能看' : desk.background_control ? '后台正在按授权推进，你随时可以接过来' : '正在取得控制…'}
+        {owns ? '这个页面正在控制' : other ? '另一个页面正在控制任务；这里可查看任务、管理项目清单' : desk.background_control ? '后台正在按授权推进，你随时可以接过来' : '正在取得控制…'}
         {(other || desk.background_control && !desk.owner) && <button className="btn small" disabled={busy} onClick={() => void takeOver()}>接过来</button>}
         {owns && desk.background_control && <button className="btn small" disabled={busy} onClick={async () => { setBusy(true); try { const next = await req<DispatchDeskState>('/api/dispatch/release-background', { client, epoch: desk.epoch }); deskRef.current = next; setDesk(next) } catch (e) { setError((e as Error).message) } finally { setBusy(false) } }}>交回后台</button>}
       </p>

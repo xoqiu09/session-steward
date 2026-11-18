@@ -34,9 +34,10 @@ describe('整镇外观偏好', () => {
     expect(storage.getItem('ss.town.residents.v1')).toBe('synthetic-residents')
     expect(requestedTheme(`?town-art=${theme}`)).toBe(theme)
   })
-  it('旧用户保留经典主题，未知和损坏的偏好可以恢复', () => {
-    for (const raw of [undefined, '{', '{}', '{"version":2,"theme":"miniature"}', '{"version":1,"theme":"future"}']) expect(readAppearance(memory(raw))).toBe('original')
-    expect(readAppearance(memory('{"version":1,"theme":"miniature"}'))).toBe('miniature')
+  it('没保存过画风时默认微缩庭园，已保存的经典小镇保留，未知和损坏的偏好可以恢复', () => {
+    for (const raw of [undefined, '{', '{}', '{"version":2,"theme":"original"}', '{"version":1,"theme":"future"}']) expect(readAppearance(memory(raw))).toBe('miniature')
+    expect(readAppearance(memory('{"version":1,"theme":"original"}'))).toBe('original')
+    expect(readAppearance(memory('{"version":1,"theme":"storybook"}'))).toBe('storybook')
     for (const theme of ['original','storybook','miniature']) expect(requestedTheme(`?world=1&town-art=${theme}`)).toBe(theme)
     expect(requestedTheme('?town-art=future')).toBeNull()
   })
@@ -65,11 +66,12 @@ describe('整镇外观偏好', () => {
   it('取消后迟到的素材不改变画面，加载中不能保存', async () => {
     const pending=deferred(), storage=memory()
     const store=createAppearanceStore(storage,'',()=>pending.promise)
-    const changing=store.preview('miniature')
+    const changing=store.preview('storybook')
     expect(store.apply()).toBe(false)
-    store.cancel('original'); pending.resolve(); await changing
-    expect(store.getSnapshot()).toMatchObject({theme:'original',loading:null,error:''})
-    expect(readAppearance(storage)).toBe('original')
+    store.cancel('miniature'); pending.resolve(); await changing
+    expect(store.getSnapshot()).toMatchObject({theme:'miniature',loading:null,error:''})
+    expect(storage.getItem(APPEARANCE_KEY)).toBeNull()
+    expect(readAppearance(storage)).toBe('miniature')
   })
   it('连续切换只采用最后选择，失败时保留原场景并支持重试', async () => {
     const first=deferred(), second=deferred()
@@ -145,6 +147,8 @@ describe('两套美术共享世界与角色身份', () => {
     expect(html).toContain('data-resident-door=')
     expect(html).toContain('data-work-companion="claude"')
     expect(html).toContain('data-work-companion="gpt"')
+    expect(html).toContain(`data-workshop-art="${theme}"`)
+    expect(html).toMatch(/aria-label="Claude 作坊"[^>]*data-workshop-art/)
     for (const id of RESIDENT_IDS) expect(html).toContain(`data-resident-id="${id}"`)
     expect(html).not.toMatch(/NaN|Infinity/)
     expect(JSON.stringify({model,world,life:residents.getSnapshot()})).toBe(before)

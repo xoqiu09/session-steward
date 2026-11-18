@@ -5,6 +5,8 @@ import { IsoBox, iso, pts, type Pt } from './iso'
 import { activate, type Selection } from './TownScene'
 import { AGENTS, type Agent } from './agents'
 import type { Relay } from './relays'
+import { useTownArt } from './appearance'
+import { StoryProp, storyPropBox } from './storybook'
 
 export const SHED_D = 1.35
 const SHED_H = 40
@@ -29,7 +31,37 @@ export const SHED_MAX = 1
 const colorOf = (a: Agent) => AGENTS.find((x) => x.key === a)!.color
 const labelOf = (a: Agent) => AGENTS.find((x) => x.key === a)!.label
 
+/** 插画画风里的作坊：沿用同一套手绘小屋素材，缩小后放在原来的占地上，招牌和“+N 位”照旧。 */
+function IllustratedWorkshop({ s, more, miniature }: { s: ShedSpot; more: number; miniature: boolean }) {
+  const color = colorOf(s.agent)
+  const { gx, gy, w } = s
+  const foot = iso(gx + w / 2, gy + SHED_D - 0.1)
+  const width = Math.min(112, (w + SHED_D) * 27)
+  const box = storyPropBox('cottage', foot, width, miniature)
+  // 小人站在作坊左前方，头顶的状态气泡在左侧；招牌挂在屋顶右上，互不遮挡。
+  const sign: Pt = [foot[0] + width * 0.34, box.y + 4]
+  return (
+    <g aria-label={`${labelOf(s.agent)} 作坊`} data-workshop-art={miniature ? 'miniature' : 'storybook'}>
+      <ellipse cx={foot[0]} cy={foot[1] - 2} rx={width * 0.42} ry={width * 0.12} fill="#5f6f48" opacity={0.16} />
+      <StoryProp kind="cottage" at={foot} width={width} />
+      <g transform={`translate(${sign[0]},${sign[1]})`}>
+        <rect x={-30} y={-10} width={60} height={17} rx={8.5} fill="#fffaf0" stroke={color} strokeWidth={1.6} />
+        <circle cx={-21} cy={-1.5} r={3} fill={color} />
+        <text x={4} y={3} textAnchor="middle" fontSize={11.5} fontWeight={800} fill="#3a2a1c">{labelOf(s.agent)}</text>
+      </g>
+      {more > 0 && (
+        <g transform={`translate(${sign[0] + 36},${sign[1]})`}>
+          <rect x={-2} y={-9} width={38} height={15} rx={7} fill="#f2ede3" stroke="#c9b896" />
+          <text x={17} y={2} textAnchor="middle" fontSize={10} fontWeight={700} fill="#6b5a44">+{more} 位</text>
+        </g>
+      )}
+    </g>
+  )
+}
+
 export function Workshop({ s, more }: { s: ShedSpot; more: number }) {
+  const { illustrated, miniature } = useTownArt()
+  if (illustrated) return <IllustratedWorkshop s={s} more={more} miniature={miniature} />
   const color = colorOf(s.agent)
   const { gx, gy, w } = s
   const d = SHED_D
