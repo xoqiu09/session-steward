@@ -1,10 +1,12 @@
 # Session Steward · SS 小镇
 
+> **项目状态**　小镇已完成，进入维护状态，今后不再新增功能，仍可[下载使用](https://github.com/xoqiu09/session-steward/releases/tag/v0.3.0-rc.17)。
+
 **同时开着好几个 Claude Code 和 Codex？把它们放进一座小镇。**
 
 每个项目是一栋房子，每个 Agent 会话是门口干活的小人；等你批准的事钉在广场告示栏上，做完的交付长成菜地里熟了的菜。你不用在十几个终端之间来回翻，抬头看一眼就知道：**谁在干什么、卡在哪、下一步该谁动手。**
 
-[下载 App](https://github.com/xoqiu09/session-steward/releases/tag/v0.3.0-rc.17) · [先看演示](#先用演示数据看一眼) · [首次使用](docs/FIRST-USE.zh-CN.md) · [完整手册](docs/GUIDE.zh-CN.md) · [English](README.en.md) · MIT
+[下载 App](https://github.com/xoqiu09/session-steward/releases/tag/v0.3.0-rc.17) · [先看演示](#先用演示数据看一眼) · [首次使用](docs/FIRST-USE.zh-CN.md) · [完整手册](docs/GUIDE.zh-CN.md) · [设计笔记](docs/DESIGN-NOTES.zh-CN.md) · [演示视频分镜](docs/DEMO-VIDEO.zh-CN.md) · [English](README.en.md) · MIT
 
 ![微缩庭园画风下的小镇全景：七栋房子是七个项目，中央广场上有告示栏、验收台和派活台；全部为合成演示数据](docs/images/town.jpg)
 

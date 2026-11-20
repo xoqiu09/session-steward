@@ -1,10 +1,12 @@
 # Session Steward · SS Town
 
+> **Project status**　Session Steward is complete and in maintenance mode. Feature development has ended, and the app remains [available to download and use](https://github.com/xoqiu09/session-steward/releases/tag/v0.3.0-rc.17).
+
 **Running several Claude Code and Codex sessions at once? Put them in a little town.**
 
 Every project is a house. Every agent session is a worker at its door. Permission requests and questions get pinned to the board in the town square, and finished deliveries grow into ripe vegetables in the garden. Instead of flipping through a dozen terminals, one glance tells you **who is doing what, what is stuck, and whose move it is next.**
 
-[Download the App](https://github.com/xoqiu09/session-steward/releases/tag/v0.3.0-rc.17) · [Try the demo](#try-the-demo-first) · [中文说明](README.md) · MIT
+[Download the App](https://github.com/xoqiu09/session-steward/releases/tag/v0.3.0-rc.17) · [Try the demo](#try-the-demo-first) · [Design notes (Chinese)](docs/DESIGN-NOTES.zh-CN.md) · [Video storyboard (Chinese)](docs/DEMO-VIDEO.zh-CN.md) · [中文说明](README.md) · MIT
 
 ![The town in the Miniature Garden style: seven houses are seven projects; the central square holds the decision board, the acceptance desk and the dispatch desk. All data is synthetic.](docs/images/town.jpg)
 
