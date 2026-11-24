@@ -1,0 +1,48 @@
+name: 问题报告 / Bug report
+description: 安装、打开或使用时出错 · Something is broken
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        项目已进入维护状态，不再新增功能，但会修问题。谢谢报告！
+        The project is in maintenance mode: no new features, but bugs get fixed.
+
+        **请勿粘贴登录链接、token、`~/.steward` 下的文件或对话全文。截图前确认没有不想公开的项目名或路径。**
+        **Do not paste login links, tokens, files from `~/.steward` or conversation text. Check screenshots for private project names or paths.**
+  - type: input
+    id: version
+    attributes:
+      label: SS 版本 / SS version
+      description: App 菜单“关于 Session Steward”，或 `steward version`
+      placeholder: v0.3.0-rc.17
+    validations:
+      required: true
+  - type: input
+    id: env
+    attributes:
+      label: 环境 / Environment
+      description: macOS 版本、芯片，以及 Claude Code / Codex 的形态和版本
+      placeholder: macOS 15.2, Apple silicon, Claude Code CLI 2.x
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: 发生了什么 / What happened
+      description: 怎么操作的、看到了什么、你期望看到什么
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤 / Steps to reproduce
+      placeholder: |
+        1.
+        2.
+        3.
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: 截图 / Screenshots
+      description: 可选。能用 `steward demo` 的合成数据复现更好。Optional; reproducing with `steward demo` is even better.

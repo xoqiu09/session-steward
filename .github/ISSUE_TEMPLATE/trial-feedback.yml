@@ -1,0 +1,45 @@
+name: 试用反馈 / Trial feedback
+description: 走完一遍试用后的感受，哪里卡住、哪里看不懂 · How the trial went
+labels: [feedback]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        谢谢试用！照着 [试用说明](https://github.com/xoqiu09/session-steward/blob/main/docs/TRYOUT.zh-CN.md) 走一遍后填这张表就好，不用写得很完整。
+        Thanks for trying SS! A few lines are enough.
+
+        **请勿粘贴 token、登录链接或对话全文。** **Do not paste tokens, login links or conversation text.**
+  - type: input
+    id: version
+    attributes:
+      label: SS 版本 / SS version
+      placeholder: v0.3.0-rc.17
+  - type: dropdown
+    id: how
+    attributes:
+      label: 怎么试的 / How did you try it
+      multiple: true
+      options:
+        - 只看了合成演示（steward demo）/ Demo only
+        - 接入了 Claude Code / Connected Claude Code
+        - 接入了 Codex / Connected Codex
+        - 用了派活台 / Used the dispatch desk
+  - type: dropdown
+    id: got-through
+    attributes:
+      label: 走完“看到工作 → 收菜 → 已处理”了吗？ / Did you get from a work item to a handled delivery?
+      options:
+        - 走完了 / Yes
+        - 卡在安装或第一次打开 / Stuck at install or first launch
+        - 装好了但小镇是空的 / Installed, but the town stayed empty
+        - 卡在别的地方 / Stuck somewhere else
+    validations:
+      required: true
+  - type: textarea
+    id: stuck
+    attributes:
+      label: 哪里卡住或看不懂 / Where you got stuck or confused
+  - type: textarea
+    id: useful
+    attributes:
+      label: 哪里有用、哪里多余 / What was useful, what was noise

@@ -1,0 +1,23 @@
+name: 想要签名版 / Want a signed build
+description: 希望 App 有 Apple 签名和公证，双击就能打开 · Vote for a notarized App
+labels: [signed-build]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        签名和公证需要付费的 Apple 开发者账号，想要的人够多就会办。**请先搜一下有没有同类 Issue，有的话给它点 👍 就行，不用重复开。**
+        Signing needs a paid Apple Developer account; it happens once enough people want it. **If an issue like this already exists, just add a 👍 there.**
+  - type: dropdown
+    id: blocked
+    attributes:
+      label: 现在的情况 / Where you are
+      options:
+        - 被 macOS 拦住，没打开 / macOS blocked it, I gave up
+        - 按 README 放行后能用，但希望更省事 / It works after allowing it, but I'd like it simpler
+        - 还没试，看到要手动放行就没装 / Didn't install because of the manual step
+    validations:
+      required: true
+  - type: textarea
+    id: note
+    attributes:
+      label: 补充 / Anything else
