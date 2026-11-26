@@ -1179,7 +1179,7 @@ export function WorldStage(props: Omit<SceneProps, 'world' | 'view' | 'far' | 'o
           onResolve={visibleMoment.itemId ? (status) => {
             const m = visibleMoment
             setResolving({ busy: true, error: '' })
-            api.patchItem(m.itemId!, { status }).then(() => {
+            api.patchItem(m.itemId!, { status, expected_review_revision: m.reviewRevision }).then(() => {
               feed.acknowledge(m.key); setMoment(null); setResolving({ busy: false, error: '' })
               setDoneMs(4000); setDoneNote(status === 'done' ? `已收下 ${m.itemId}` : `已退回 ${m.itemId}，等 Agent 接着改`)
             }, (e) => setResolving({ busy: false, error: e instanceof Error ? e.message : '没有保存成功' }))

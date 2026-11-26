@@ -35,7 +35,14 @@ func TestWorkManagementPanelAuthAndRoundTrip(t *testing.T) {
 		}
 	}
 	for _, state := range []string{"paused", "active", "accepted"} {
-		code, b := panelReq(t, ts, "PATCH", "/api/work-items/MG-1", map[string]any{"management": map[string]any{"state": state}})
+		patch := map[string]any{"management": map[string]any{"state": state}}
+		if state == "active" {
+			patch["expected_status"] = "todo"
+		}
+		if state == "accepted" {
+			patch["expected_status"] = "in_progress"
+		}
+		code, b := panelReq(t, ts, "PATCH", "/api/work-items/MG-1", patch)
 		if code != 200 {
 			t.Fatal(code, string(b))
 		}

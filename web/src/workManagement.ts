@@ -1,5 +1,12 @@
 import type { WorkItem } from './types'
 
+/** Pin a status change to the delivery or non-review status shown to the user. */
+export function workStatusPrecondition(item: WorkItem) {
+  return item.status === 'review'
+    ? { expected_review_revision: item.review_revision ?? '' }
+    : { expected_status: item.status }
+}
+
 /** A user's reminder disposition never substitutes for a formal approval. */
 export function attentionManaged(item: WorkItem) {
   return item.management?.state === 'paused' || item.management?.state === 'delegated'

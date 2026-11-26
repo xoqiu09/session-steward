@@ -100,16 +100,39 @@ func (c *Core) CreateWorkItem(ctx context.Context, in WorkItemInput) error {
 }
 
 type WorkItemPatch struct {
-	Management *WorkManagement `json:"management"`
-	Title      *string         `json:"title"`
-	Acceptance *string         `json:"acceptance"`
-	Branch     *string         `json:"branch"`
-	Status     *string         `json:"status"`
-	RepoID     *int64          `json:"repo_id"`
+	Management             *WorkManagement `json:"management"`
+	Title                  *string         `json:"title"`
+	Acceptance             *string         `json:"acceptance"`
+	Branch                 *string         `json:"branch"`
+	Status                 *string         `json:"status"`
+	RepoID                 *int64          `json:"repo_id"`
+	ExpectedReviewRevision *string         `json:"expected_review_revision"`
+	ExpectedStatus         *string         `json:"expected_status"`
 }
+
+// Different review rounds and deliveries have distinct row IDs even when their
+// timestamps match. A manual review can have no delivery entry.
+const reviewRevisionSQL = `COALESCE((SELECT MAX(id) FROM work_item_state_changes
+	WHERE work_item_id=w.id AND status='review' AND old_status<>'review'),0) || ':' ||
+	COALESCE((SELECT delivery.id FROM brief_entries delivery
+	WHERE delivery.work_item_id=w.id AND delivery.field='stage' AND delivery.source='deliver'
+	  AND delivery.flagged='' AND NOT EXISTS (SELECT 1 FROM brief_entries reopened
+	    WHERE reopened.work_item_id=w.id AND reopened.field='stage' AND reopened.source='reopened'
+	      AND (reopened.at,reopened.id) > (delivery.at,delivery.id))
+	ORDER BY delivery.at DESC,delivery.id DESC LIMIT 1),0)`
 
 // UpdateWorkItem 是人工操作，可以把工作项改为任意状态（包括待验收、已完成）。
 func (c *Core) UpdateWorkItem(ctx context.Context, id string, p WorkItemPatch) error {
+	return c.updateWorkItem(ctx, id, p, false)
+}
+
+// UpdatePanelWorkItem requires the displayed revision for delivery decisions.
+func (c *Core) UpdatePanelWorkItem(ctx context.Context, id string, p WorkItemPatch) error {
+	return c.updateWorkItem(ctx, id, p, true)
+}
+
+func (c *Core) updateWorkItem(ctx context.Context, id string, p WorkItemPatch, fromPanel bool) error {
+	directAccept := p.Status != nil && *p.Status == "done"
 	if p.Management != nil && p.Status != nil {
 		return fmt.Errorf("%w: 管理操作和执行状态请分开提交", ErrBadRequest)
 	}
@@ -129,6 +152,13 @@ func (c *Core) UpdateWorkItem(ctx context.Context, id string, p WorkItemPatch) e
 	if p.Status != nil && !itemStatuses[*p.Status] {
 		return fmt.Errorf("%w: 未知状态 %s", ErrBadRequest, *p.Status)
 	}
+	changesReview := p.Status != nil && (*p.Status == "done" || *p.Status == "in_progress")
+	if p.ExpectedReviewRevision != nil && (!changesReview || p.ExpectedStatus != nil) {
+		return fmt.Errorf("%w: 处理交付时只需指定交付版本", ErrBadRequest)
+	}
+	if p.ExpectedStatus != nil && (!changesReview || directAccept || *p.ExpectedStatus == "review" || !itemStatuses[*p.ExpectedStatus]) {
+		return fmt.Errorf("%w: 仅在待验收以外开始或管理任务时指定原状态", ErrBadRequest)
+	}
 	now := c.St.NowTS()
 	err := c.panelTx(ctx, func(tx *sql.Tx) error {
 		var oldStatus string
@@ -137,6 +167,24 @@ func (c *Core) UpdateWorkItem(ctx context.Context, id string, p WorkItemPatch) e
 				return ErrNotFound
 			}
 			return err
+		}
+		// A panel status change must name the delivery, or explicitly target a
+		// non-review status. An old unversioned return can never reopen completed work.
+		if p.ExpectedReviewRevision != nil || (fromPanel && changesReview && (oldStatus == "review" || directAccept || p.ExpectedStatus == nil)) {
+			stale := fmt.Errorf("%w: 当前待验收交付已变化，请刷新后重新查看", ErrConflict)
+			if oldStatus != "review" || p.ExpectedReviewRevision == nil {
+				return stale
+			}
+			var current string
+			if err := tx.QueryRow(`SELECT `+reviewRevisionSQL+` FROM work_items w WHERE w.id=?`, id).Scan(&current); err != nil {
+				return err
+			}
+			if current != *p.ExpectedReviewRevision {
+				return stale
+			}
+		}
+		if p.ExpectedStatus != nil && oldStatus != *p.ExpectedStatus {
+			return fmt.Errorf("%w: 工作状态已变化，请刷新后重新查看", ErrConflict)
 		}
 		set := []string{"updated_at=?"}
 		args := []any{now}

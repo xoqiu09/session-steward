@@ -26,6 +26,7 @@ import { WorkStatusActions } from './ui/WorkStatusActions'
 import { requestsForItem } from './ui/WorkOverview'
 import { ConversationReturn } from './ui/ConversationReturn'
 import { currentUnbindTarget } from './sessionBinding'
+import { workStatusPrecondition } from './workManagement'
 import {
   ago, freshnessLabel, itemSignal, itemStatusLabel, mergeStateLabel, nextItemId, providerLabel, repoPrefix, sessionBuckets, sessionName, sessionRepo, sessionSignal, sessionStateLabel, sessionsFor, type SessionScope,
 } from './model'
@@ -59,25 +60,31 @@ export function ItemDetail({ snap, id, onClose, onSelectSession, onSelectItem = 
   const [savedInfo, setSavedInfo] = useState('')
   const reviewAct = useAction()
   const reviewGate = useRef(false)
+  const [seenRevision, setSeenRevision] = useState(item?.review_revision)
   const [deliveryReceipt, setDeliveryReceipt] = useState<DeliveryReceipt | null>(null)
   const remote = isRemote()
   if (!item) return <MissingDetail kind="item" id={id} onClose={onClose} />
+  const manualReview = item.status === 'review' && item.completion_policy !== 'auto_history'
+  const reviewChanged = manualReview && seenRevision !== item.review_revision
   const sessions = sessionsFor(snap, id)
   const ups = (snap.deps ?? []).filter((d) => d.downstream === id)
   const downs = (snap.deps ?? []).filter((d) => d.upstream === id)
-  const set = (status: ItemStatus) => act.run(() => api.patchItem(id, { status }))
+  const set = (status: ItemStatus) => act.run(() => api.patchItem(id, {
+    status,
+    ...(status === 'in_progress' ? workStatusPrecondition(item) : {}),
+  }))
   const recordReview = (status: 'done' | 'in_progress') => {
-    if (reviewGate.current) return
+    if (reviewChanged || reviewGate.current) return
     reviewGate.current = true
     return reviewAct.run(async () => {
-      await api.patchItem(id, { status })
+      await api.patchItem(id, { status, ...workStatusPrecondition(item) })
       setDeliveryReceipt({ item, snapshot: snap, status })
     }).finally(() => { reviewGate.current = false })
   }
   const repo = (snap.repos ?? []).find((r) => r.id === item.repo_id)
 
   return (
-    <RunDesk snap={snap} item={item} remote={remote} onClose={onClose} onSelectSession={onSelectSession} conversation={<ConversationReturn key={item.id} snap={snap} item={item} preferred={preferredSession} />} actions={<WorkStatusActions key={item.id} item={item} />} attention={(() => {
+    <RunDesk snap={snap} item={item} remote={remote} onClose={onClose} onSelectSession={onSelectSession} conversation={<ConversationReturn key={item.id} snap={snap} item={item} preferred={preferredSession} />} actions={<WorkStatusActions key={item.id} item={item} reviewChanged={reviewChanged} />} attention={(() => {
         const requests = requestsForItem(snap, item)
         const perms = requests.filter(a => a.kind === 'permission')
         const decisions = requests.filter(a => a.kind === 'decision')
@@ -90,11 +97,15 @@ export function ItemDetail({ snap, id, onClose, onSelectSession, onSelectItem = 
           {perms.length > 0 && <div className="item-permissions"><h3>等待你处理的权限</h3>{perms.map((a) => <PermissionCard key={a.id} a={a} snap={snap} />)}</div>}
           {decisions.length > 0 && <section className="item-requests" aria-label="等待你回答"><h3>等待你回答</h3>{decisions.map(a => <DecisionCard key={a.id} a={a} snap={snap} />)}</section>}
           {item.automatic_history && <section className="delivery-review" aria-label="自动任务归档"><h3>本轮已自动归档</h3><p>Agent 已回报完成，按例行整理规则收进历史，无需你逐轮验收。可以在这里查看本轮来源；发现问题时可重新开始。</p></section>}
-          {item.status === 'review' && item.completion_policy !== 'auto_history' && <DeliveryReview snap={snap} item={item} onSelectSession={onSelectSession} actions={<>
-            {remote ? <p className="hint">远程只读，请在本机面板验收。</p> : <div className="row wrap">
-              <button className="btn primary" disabled={reviewAct.busy} onClick={() => recordReview('done')}>{reviewAct.busy ? '正在记录…' : '验收并完成'}</button>
-              <button className="btn" disabled={reviewAct.busy} onClick={() => recordReview('in_progress')}>退回修改</button>
-            </div>}
+          {manualReview && <DeliveryReview snap={snap} item={item} onSelectSession={onSelectSession} actions={<>
+            {remote ? <p className="hint">远程只读，请在本机面板验收。</p> : <>
+              <p className="hint" role="status">{reviewChanged && '交付已更新。请重新查看说明，再处理本轮交付。'}</p>
+              <div className="row wrap">
+                {reviewChanged && <button type="button" className="btn" onClick={() => setSeenRevision(item.review_revision)}>已查看更新后的交付</button>}
+                <button className="btn primary" disabled={reviewAct.busy || reviewChanged} onClick={() => recordReview('done')}>{reviewAct.busy ? '正在记录…' : '验收并完成'}</button>
+                <button className="btn" disabled={reviewAct.busy || reviewChanged} onClick={() => recordReview('in_progress')}>退回修改</button>
+              </div>
+            </>}
           </>} />}
         </>
       })()}>
@@ -135,7 +146,7 @@ export function ItemDetail({ snap, id, onClose, onSelectSession, onSelectItem = 
         <dt>验收条件</dt><dd className="pre">{item.acceptance || '—'}</dd>
       </dl>
       {!remote && <div className="row wrap">
-        {item.status !== 'in_progress' && <button disabled={remote} className="btn small" onClick={() => set('in_progress')}>标为执行中</button>}
+        {item.status !== 'in_progress' && !manualReview && <button className="btn small" onClick={() => set('in_progress')}>{item.status === 'todo' || item.status === 'blocked' ? '标为执行中' : '重新开始'}</button>}
         {item.status !== 'blocked' && <button disabled={remote} className="btn small" onClick={() => set('blocked')}>标为阻塞</button>}
         {item.status !== 'review' && item.completion_policy !== 'auto_history' && <button disabled={remote} className="btn small" onClick={() => set('review')}>提交验收</button>}
         {item.status !== 'abandoned' && <button disabled={remote} className="btn small" onClick={() => set('abandoned')}>放弃</button>}

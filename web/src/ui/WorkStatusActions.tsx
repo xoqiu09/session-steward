@@ -3,7 +3,7 @@ import { api } from '../api'
 import { isRemote } from '../access'
 import { ErrorLine, useAction } from '../bits'
 import type { WorkItem, WorkManagement } from '../types'
-import { managementLabel } from '../workManagement'
+import { managementLabel, workStatusPrecondition } from '../workManagement'
 import './workStatus.css'
 
 const choices: Record<WorkManagement['state'], { label: string; confirm: string; help: string }> = {
@@ -13,26 +13,32 @@ const choices: Record<WorkManagement['state'], { label: string; confirm: string;
   active: { label: '继续处理', confirm: '确认继续处理', help: '恢复日常跟进并清除旧的阻塞提示。旧回报保留；可在说明中填写现在的下一步。' },
 }
 
-export function WorkStatusActions({ item }: { item: WorkItem }) {
+export function WorkStatusActions({ item, reviewChanged = false }: { item: WorkItem; reviewChanged?: boolean }) {
   const [open, setOpen] = useState(false)
   if (isRemote()) return null
   return <div className="work-status-actions">
     <button className="btn" type="button" aria-label={`管理状态 ${item.id}`} aria-expanded={open} onClick={() => setOpen(!open)}>管理状态</button>
-    {open && <WorkManagementForm key={item.id} item={item} onClose={() => setOpen(false)} />}
+    {open && <WorkManagementForm key={item.id} item={item} reviewChanged={reviewChanged} onClose={() => setOpen(false)} />}
   </div>
 }
 
-export function WorkManagementForm({ item, onClose }: { item: WorkItem; onClose: () => void }) {
+export function WorkManagementForm({ item, onClose, reviewChanged = false }: { item: WorkItem; onClose: () => void; reviewChanged?: boolean }) {
   const [state, setState] = useState<WorkManagement['state']>(item.management?.state === 'paused' || item.management?.state === 'delegated' ? 'active' : 'accepted')
   const [owner, setOwner] = useState(item.management?.owner || '')
   const [note, setNote] = useState('')
+  const [target] = useState(() => workStatusPrecondition(item))
   const act = useAction()
   if (isRemote()) return null
   const choice = choices[state]
+  const blocked = reviewChanged && state !== 'paused'
   return <form className="work-management-form" aria-label={`管理状态 ${item.id}`} onSubmit={e => {
     e.preventDefault()
-    act.run(async () => {
-      await api.patchItem(item.id, { management: { state, owner: state === 'delegated' ? owner.trim() : '', note: note.trim() } })
+    if (blocked) return
+    return act.run(async () => {
+      await api.patchItem(item.id, {
+        management: { state, owner: state === 'delegated' ? owner.trim() : '', note: note.trim() },
+        ...(state === 'paused' ? {} : target),
+      })
       onClose()
     })
   }}>
@@ -45,6 +51,6 @@ export function WorkManagementForm({ item, onClose }: { item: WorkItem; onClose:
     <label>{state === 'active' ? '现在的下一步（可选）' : '说明（可选）'}<textarea maxLength={500} rows={2} value={note} disabled={act.busy} onChange={e => setNote(e.target.value)} /></label>
     <p className="hint">{choice.help}</p>
     <ErrorLine msg={act.error} />
-    <div className="row wrap"><button className="btn primary" type="submit" disabled={act.busy}>{act.busy ? '正在保存…' : choice.confirm}</button><button className="btn" type="button" disabled={act.busy} onClick={onClose}>取消</button></div>
+    <div className="row wrap"><button className="btn primary" type="submit" disabled={act.busy || blocked}>{act.busy ? '正在保存…' : choice.confirm}</button><button className="btn" type="button" disabled={act.busy} onClick={onClose}>取消</button></div>
   </form>
 }
