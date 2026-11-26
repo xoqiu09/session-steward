@@ -3,7 +3,7 @@ import { api } from '../api'
 import { isRemote } from '../access'
 import { ErrorLine, useAction } from '../bits'
 import type { WorkItem } from '../types'
-import { deliveredAt, STALE_REVIEW_MS } from '../workManagement'
+import { deliveredAt, STALE_REVIEW_MS, workStatusPrecondition } from '../workManagement'
 
 // 卡片上统一的收起方式。每一种都要再点一次确认；这些都是你本人的选择，不会由 Agent 代做。
 type Close = 'accepted' | 'paused' | 'abandoned'
@@ -14,20 +14,23 @@ const closes: Record<Close, { label: string; confirm: string; help: string }> = 
 }
 
 export function QuickClose({ item, only }: { item: WorkItem; only?: Close[] }) {
-  const [pending, setPending] = useState<Close | null>(null)
+  const [pending, setPending] = useState<{ choice: Close; target: ReturnType<typeof workStatusPrecondition> } | null>(null)
   const act = useAction()
   if (isRemote() || item.status === 'done' || item.status === 'abandoned') return null
   const shown = (only ?? (Object.keys(closes) as Close[])).filter(c => c !== 'paused' || item.management?.state !== 'paused')
-  const apply = (c: Close) => act.run(async () => {
-    await api.patchItem(item.id, c === 'abandoned' ? { status: 'abandoned' } : { management: { state: c, owner: '', note: '' } })
+  const apply = ({ choice, target }: NonNullable<typeof pending>) => act.run(async () => {
+    await api.patchItem(item.id, choice === 'abandoned' ? { status: 'abandoned' } : {
+      management: { state: choice, owner: '', note: '' },
+      ...(choice === 'accepted' ? target : {}),
+    })
     setPending(null)
   })
   return <div className="quick-close" role="group" aria-label={`收起 ${item.id}`}>
     {pending ? <>
-      <span className="hint">{closes[pending].help}</span>
-      <button type="button" className="btn small primary" disabled={act.busy} onClick={() => apply(pending)}>{act.busy ? '保存中…' : closes[pending].confirm}</button>
+      <span className="hint">{closes[pending.choice].help}</span>
+      <button type="button" className="btn small primary" disabled={act.busy} onClick={() => apply(pending)}>{act.busy ? '保存中…' : closes[pending.choice].confirm}</button>
       <button type="button" className="btn small" disabled={act.busy} onClick={() => { setPending(null); act.setError('') }}>取消</button>
-    </> : shown.map(c => <button key={c} type="button" className="btn small" title={closes[c].help} onClick={() => setPending(c)}>{closes[c].label}</button>)}
+    </> : shown.map(c => <button key={c} type="button" className="btn small" title={closes[c].help} onClick={() => setPending({ choice: c, target: workStatusPrecondition(item) })}>{closes[c].label}</button>)}
     <ErrorLine msg={act.error} />
   </div>
 }

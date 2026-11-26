@@ -7,7 +7,7 @@ import { ago, providerLabel } from '../model'
 import { MergeCard } from '../Queue'
 import { WorkStatusActions } from '../ui/WorkStatusActions'
 import { PauseStale, QuickClose, staleDeliveries } from '../ui/QuickClose'
-import { managementLabel } from '../workManagement'
+import { managementLabel, workStatusPrecondition } from '../workManagement'
 import { buildToday, type DecideRow, type Grade, type ReviewRow, type StuckRow } from './todayModel'
 import { ActionFeedback } from '../ui/ActionFeedback'
 import { DeliveryActionReceipt, type DeliveryReceipt } from '../ui/DeliveryReview'
@@ -41,6 +41,10 @@ export function TodayView({ snap, onSelectItem, onOpenTown, device }: { snap: Sn
   const [seenFeedback, setSeenFeedback] = useState(false)
   const [receipts, setReceipts] = useState<DeliveryReceipt[]>([])
   const [reviewFailures, setReviewFailures] = useState<{ id: string; title: string; message: string }[]>([])
+  const [seenRevisions, setSeenRevisions] = useState(() => new Map(
+    (snap.work_items ?? []).filter(item => item.status === 'review').map(item => [item.id, item.review_revision]),
+  ))
+  const recordSeenRevision = (id: string, revision: string | undefined) => setSeenRevisions(previous => new Map(previous).set(id, revision))
   const recordReceipt = (receipt: DeliveryReceipt) => {
     setReceipts(previous => [receipt, ...previous.filter(r => r.item.id !== receipt.item.id)])
     setReviewFailures(previous => previous.filter(failure => failure.id !== receipt.item.id))
@@ -90,7 +94,7 @@ export function TodayView({ snap, onSelectItem, onOpenTown, device }: { snap: Sn
           {receipts.map(receipt => <DeliveryActionReceipt key={receipt.item.id} receipt={receipt} onSelectItem={onSelectItem} />)}
           {reviewFailures.map(failure => <ActionFeedback key={failure.id} tone="error"><strong>{failure.id} · {failure.title}</strong><p>未确认这次交付处理成功：{failure.message}。请核对当前状态后重试。</p></ActionFeedback>)}
           <PauseStale items={staleDeliveries(t.review.map((r) => r.item), snap.now)} />
-          {t.review.map((r) => <ReviewLine key={r.item.id} r={r} snap={snap} onSelectItem={onSelectItem} onRecorded={recordReceipt} onFailed={recordFailure} />)}
+          {t.review.map((r) => <ReviewLine key={r.item.id} r={r} snap={snap} seenRevision={seenRevisions.get(r.item.id)} onReviewedUpdate={recordSeenRevision} onSelectItem={onSelectItem} onRecorded={recordReceipt} onFailed={recordFailure} />)}
         </section>}
 
         {t.stuck.length > 0 && <section id="today-stuck" className="today-card">
@@ -188,15 +192,16 @@ const gradeTag: Record<Grade, [string, string]> = {
   failed: ['有验证失败', 'is-bad'],
 }
 
-function ReviewLine({ r, snap, onSelectItem, onRecorded, onFailed }: { r: ReviewRow; snap: Snapshot; onSelectItem: (id: string) => void; onRecorded: (receipt: DeliveryReceipt) => void; onFailed: (failure: { id: string; title: string; message: string }) => void }) {
+function ReviewLine({ r, snap, seenRevision, onReviewedUpdate, onSelectItem, onRecorded, onFailed }: { r: ReviewRow; snap: Snapshot; seenRevision: string | undefined; onReviewedUpdate: (id: string, revision: string | undefined) => void; onSelectItem: (id: string) => void; onRecorded: (receipt: DeliveryReceipt) => void; onFailed: (failure: { id: string; title: string; message: string }) => void }) {
   const act = useAction()
   const gate = useRef(false)
   const remote = isRemote()
+  const reviewChanged = seenRevision !== r.item.review_revision
   const set = (status: 'done' | 'in_progress') => {
-    if (gate.current) return
+    if (reviewChanged || gate.current) return
     gate.current = true
     return act.run(async () => {
-      try { await api.patchItem(r.item.id, { status }) }
+      try { await api.patchItem(r.item.id, { status, ...workStatusPrecondition(r.item) }) }
       catch (error) {
         onFailed({ id: r.item.id, title: r.item.title, message: error instanceof Error ? error.message : String(error) })
         throw error
@@ -218,10 +223,12 @@ function ReviewLine({ r, snap, onSelectItem, onRecorded, onFailed }: { r: Review
       <span className="today-meta">{r.repo} · {r.item.agents.map(providerLabel).join(' · ') || 'Agent'} · {clock(r.at, snap.now)} 交付</span>
     </div>
     {remote ? <div className="today-acts"><span className="muted small">远程只读</span></div> : <div className="today-acts">
-      <QuickClose item={r.item} only={['paused', 'abandoned']} /><WorkStatusActions item={r.item} />
+      <QuickClose item={r.item} only={['paused', 'abandoned']} /><WorkStatusActions item={r.item} reviewChanged={reviewChanged} />
       <button className="btn" type="button" onClick={() => onSelectItem(r.item.id)}>详情</button>
-      <button className={r.grade === 'failed' ? 'btn primary' : 'btn'} type="button" disabled={act.busy} onClick={() => set('in_progress')}>退回修改</button>
-      <button className={r.grade === 'failed' ? 'btn' : 'btn primary'} type="button" disabled={act.busy} onClick={() => set('done')}>{act.busy ? '正在记录…' : '验收并完成'}</button>
+      <p className="hint" role="status">{reviewChanged && '交付已更新。请重新查看说明，再处理本轮交付。'}</p>
+      {reviewChanged && <button className="btn" type="button" onClick={() => onReviewedUpdate(r.item.id, r.item.review_revision)}>已查看更新后的交付</button>}
+      <button className={r.grade === 'failed' ? 'btn primary' : 'btn'} type="button" disabled={act.busy || reviewChanged} onClick={() => set('in_progress')}>退回修改</button>
+      <button className={r.grade === 'failed' ? 'btn' : 'btn primary'} type="button" disabled={act.busy || reviewChanged} onClick={() => set('done')}>{act.busy ? '正在记录…' : '验收并完成'}</button>
     </div>}
   </div>
 }

@@ -127,11 +127,11 @@ describe('WorldStage 跟随动态', () => {
     const patch = vi.spyOn(api, 'patchItem').mockResolvedValue(undefined as never)
     render()
     snap = { ...snap, cursor: snap.cursor + 1, now: new Date().toISOString(),
-      work_items: snap.work_items!.map((w) => w.id === 'DEMO-1' ? { ...w, returned_at: new Date(Date.now() + 1000).toISOString() } : w) }
+      work_items: snap.work_items!.map((w) => w.id === 'DEMO-1' ? { ...w, review_revision: '1:2', returned_at: new Date(Date.now() + 1000).toISOString() } : w) }
     render(); advance(3000)
     expect(notice(tree)?.props.moment.kind).toBe('returned'); expect(patch).not.toHaveBeenCalled()
     click('已处理')
-    expect(patch).toHaveBeenCalledWith('DEMO-1', { status: 'done' })
+    expect(patch).toHaveBeenCalledWith('DEMO-1', { status: 'done', expected_review_revision: '1:2' })
     await Promise.resolve(); await Promise.resolve(); render()
     expect(notice(tree)).toBeUndefined(); expect(words(tree)).toContain('已收下 DEMO-1')
   })

@@ -13,6 +13,7 @@ export interface TownMoment {
   at: string
   buildingKey: string
   itemId?: string
+  reviewRevision?: string
   approvalId?: string
   local: boolean
   message: string
@@ -46,6 +47,7 @@ function itemMoment(s: Snapshot, w: WorkItem, kind: Exclude<MomentKind, 'decisio
     : kind === 'merged' ? `${w.id} 已合并进 ${w.merge_evidence?.target_ref || repo?.target_ref || '目标分支'}`
     : `${project}：${w.id} 有了新进展`
   return { key: JSON.stringify([w.id, kind, at]), kind, at, buildingKey: `repo-${w.repo_id ?? 'none'}`, itemId: w.id,
+    ...(kind === 'returned' ? { reviewRevision: w.review_revision } : {}),
     local: localMoment(s, w.repo_id, w.id), message }
 }
 

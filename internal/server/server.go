@@ -806,7 +806,7 @@ func (s *Server) handlePatchItem(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	if err := s.Core.UpdateWorkItem(r.Context(), r.PathValue("id"), p); err != nil {
+	if err := s.Core.UpdatePanelWorkItem(r.Context(), r.PathValue("id"), p); err != nil {
 		writeErr(w, err)
 		return
 	}

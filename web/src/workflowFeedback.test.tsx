@@ -40,6 +40,8 @@ import { TodayView } from './today/TodayView'
 import { ActionFeedback } from './ui/ActionFeedback'
 import { DeliveryActionReceipt, DeliveryReview } from './ui/DeliveryReview'
 import { ProjectPicker } from './ui/ProjectPicker'
+import { QuickClose } from './ui/QuickClose'
+import { WorkManagementForm } from './ui/WorkStatusActions'
 import { api } from './api'
 import { synthSnapshot } from './ui/fixtures'
 
@@ -56,7 +58,7 @@ const submit = (tree: any, label: string) => form(tree, label).props.onSubmit({ 
 const render = (key: string, fn: () => any): Node => { host.begin(key); const tree = fn(); host.commit(); return tree }
 function deferred<T = unknown>() { let resolve!: (value: T) => void, reject!: (error: Error) => void; const promise = new Promise<T>((ok, no) => { resolve = ok; reject = no }); return { promise, resolve, reject } }
 const feedback = (tree: any) => nodes(tree).filter(node => node.type === ActionFeedback)
-const reviewSnap = (): Snapshot => ({ ...synthSnapshot, work_items: [{ ...synthSnapshot.work_items![0], status: 'review' }], approvals: [], merge_jobs: [] })
+const reviewSnap = (): Snapshot => ({ ...synthSnapshot, work_items: [{ ...synthSnapshot.work_items![0], status: 'review', review_revision: '1:2' }], approvals: [], merge_jobs: [] })
 
 beforeEach(() => {
   vi.mocked(api.createItem).mockReset(); vi.mocked(api.patchItem).mockReset(); vi.mocked(api.launchManaged).mockReset()
@@ -145,6 +147,62 @@ describe('普通表单的在途目标与稿件保护', () => {
 })
 
 describe('交付处理回执与状态含义', () => {
+  it('详情和今日页自动换轮后，先提示重新查看，再允许处理新交付', async () => {
+    let snap = reviewSnap()
+    const detail = () => render('refresh-detail', () => ItemDetail({ snap, id: 'SYN-12', onClose() {}, onSelectSession() {} }))
+    const today = () => {
+      const parent = render('refresh-today', () => TodayView({ snap, onSelectItem() {}, onOpenTown() {} }))
+      const row = nodes(parent).find(n => n.props.onRecorded)!
+      return render('refresh-row', () => (row.type as (props: any) => Node)(row.props))
+    }
+    for (const draw of [detail, today]) expect(button(draw(), '验收并完成').props.disabled).toBe(false)
+    snap = { ...snap, work_items: [{ ...snap.work_items![0], review_revision: '1:3' }] }
+    for (const draw of [detail, today]) {
+      const changed = draw()
+      expect(words(nodes(changed).find(n => n.props.role === 'status' && words(n).includes('交付已更新')))).toContain('重新查看')
+      expect(button(changed, '验收并完成').props.disabled).toBe(true)
+      expect(button(changed, '退回修改').props.disabled).toBe(true)
+      button(changed, '已查看更新后的交付').props.onClick()
+      vi.mocked(api.patchItem).mockResolvedValueOnce({})
+      await button(draw(), '验收并完成').props.onClick()
+      expect(api.patchItem).toHaveBeenLastCalledWith('SYN-12', { status: 'done', expected_review_revision: '1:3' })
+    }
+  })
+
+  it('队列已处理和管理表单提交打开确认时的交付编号', async () => {
+    let item = reviewSnap().work_items![0]
+    const quick = () => render('quick-close', () => QuickClose({ item }))
+    const manage = () => render('manage', () => WorkManagementForm({ item, onClose() {} }))
+    button(quick(), '已处理').props.onClick()
+    manage()
+    item = { ...item, review_revision: '1:3' }
+    vi.mocked(api.patchItem).mockResolvedValue({})
+    await button(quick(), '确认已处理').props.onClick()
+    await submit(manage(), '管理状态 SYN-12')
+    expect(vi.mocked(api.patchItem).mock.calls).toEqual([
+      ['SYN-12', { management: { state: 'accepted', owner: '', note: '' }, expected_review_revision: '1:2' }],
+      ['SYN-12', { management: { state: 'accepted', owner: '', note: '' }, expected_review_revision: '1:2' }],
+    ])
+  })
+
+  it('详情的重新开始明确指定已完成状态', async () => {
+    const snap = reviewSnap()
+    snap.work_items![0] = { ...snap.work_items![0], status: 'done', review_revision: undefined }
+    const tree = render('reopen-detail', () => ItemDetail({ snap, id: 'SYN-12', onClose() {}, onSelectSession() {} }))
+    vi.mocked(api.patchItem).mockResolvedValueOnce({})
+    await button(tree, '重新开始').props.onClick()
+    expect(api.patchItem).toHaveBeenCalledExactlyOnceWith('SYN-12', { status: 'in_progress', expected_status: 'done' })
+  })
+
+  it('详情可以从自动归档重开，仍须带上当前交付编号', async () => {
+    const snap = reviewSnap()
+    snap.work_items![0] = { ...snap.work_items![0], automatic_history: true, completion_policy: 'auto_history' }
+    const tree = render('reopen-routine', () => ItemDetail({ snap, id: 'SYN-12', onClose() {}, onSelectSession() {} }))
+    vi.mocked(api.patchItem).mockResolvedValueOnce({})
+    await button(tree, '重新开始').props.onClick()
+    expect(api.patchItem).toHaveBeenCalledExactlyOnceWith('SYN-12', { status: 'in_progress', expected_review_revision: '1:2' })
+  })
+
   it('原会话处理记录与工作项验收分别命名', () => {
     const snap: Snapshot = { ...reviewSnap(), approvals: [
       { ...synthSnapshot.approvals![0], id: 'synthetic-manual-permission', status: 'pending', kind: 'permission', handleable: false },
@@ -170,7 +228,7 @@ describe('交付处理回执与状态含义', () => {
     vi.mocked(api.patchItem).mockReturnValueOnce(pending.promise)
     const click = button(tree, label).props.onClick
     const request = click(); click()
-    expect(api.patchItem).toHaveBeenCalledExactlyOnceWith('SYN-12', { status })
+    expect(api.patchItem).toHaveBeenCalledExactlyOnceWith('SYN-12', { status, expected_review_revision: '1:2' })
     snap = { ...snap, work_items: [{ ...snap.work_items![0], status, brief: undefined }] }
     tree = draw()
     expect(nodes(tree).some(n => n.type === DeliveryReview)).toBe(false)
@@ -194,6 +252,7 @@ describe('交付处理回执与状态含义', () => {
     const rowTree = render('review-row', () => (row.type as (props: any) => Node)(row.props))
     vi.mocked(api.patchItem).mockResolvedValueOnce({})
     await button(rowTree, '退回修改').props.onClick()
+    expect(api.patchItem).toHaveBeenCalledExactlyOnceWith('SYN-12', { status: 'in_progress', expected_review_revision: '1:2' })
     host.unmount('review-row')
     snap = { ...snap, work_items: [{ ...snap.work_items![0], status: 'in_progress', brief: undefined }] }
     tree = draw()
