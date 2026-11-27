@@ -482,6 +482,55 @@ func TestEndedSessionCanResumeReportingWithoutDuplicateItem(t *testing.T) {
 	}
 }
 
+func TestLateSessionEndPreservesResumedRun(t *testing.T) {
+	ctx := context.Background()
+	st, err := store.Open(filepath.Join(t.TempDir(), "s.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { st.Close() })
+	c := core.New(st, loc{})
+	for _, id := range []string{"RUN-1", "RUN-2"} {
+		if err := c.CreateWorkItem(ctx, core.WorkItemInput{ID: id, Title: id}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	at := time.Date(2026, 10, 18, 10, 0, 0, 0, time.UTC)
+	source := event.Source{Provider: "claude", HostID: "h"}
+	for _, e := range []event.Event{
+		{EventID: "start", Kind: event.KindSessionStart, OccurredAt: at.Add(-5 * time.Minute)},
+		{EventID: "claim-first", Kind: event.KindClaim, WorkTag: "RUN-1", OccurredAt: at.Add(-4 * time.Minute)},
+		{EventID: "resume", Kind: event.KindSessionStart, OccurredAt: at.Add(5 * time.Minute)},
+		{EventID: "claim-second", Kind: event.KindClaim, WorkTag: "RUN-2", OccurredAt: at.Add(5 * time.Minute)},
+		{EventID: "late-end", Kind: event.KindSessionEnd, OccurredAt: at},
+	} {
+		e.SchemaVersion, e.Source, e.SessionID = 1, source, "resume-report"
+		if _, err := c.Ingest(ctx, &e); err != nil {
+			t.Fatalf("%s: %v", e.EventID, err)
+		}
+	}
+
+	report := event.Event{EventID: "report", SchemaVersion: 1, Source: source, SessionID: "resume-report",
+		Kind: event.KindReport, OccurredAt: at.Add(7 * time.Minute), Brief: map[string]string{"progress": "新一轮进展"}}
+	body, err := json.Marshal(report)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "http://127.0.0.1/hook/agent-action", bytes.NewReader(body))
+	req.Header.Set("Authorization", "Bearer ing")
+	w := httptest.NewRecorder()
+	(&Server{Core: c, IngestToken: "ing"}).Handler().ServeHTTP(w, req)
+	var result struct{ Acked []string }
+	if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil || w.Code != http.StatusOK || len(result.Acked) != 1 || result.Acked[0] != report.EventID {
+		t.Fatalf("10:07 的进展回报应被接收，实际 HTTP %d %s", w.Code, w.Body.String())
+	}
+	var item string
+	if err := st.R().QueryRow(`SELECT work_item_id FROM brief_entries WHERE source='report' AND field='progress'`).Scan(&item); err != nil || item != "RUN-2" {
+		t.Fatalf("进展应写入 RUN-2，实际 %q (%v)", item, err)
+	}
+}
+
 func TestExistingSessionGetsOnePromptHint(t *testing.T) {
 	ts, _, s := start(t)
 	client := &hook.Client{BaseURL: ts.URL, Token: "ing", HostID: "h"}

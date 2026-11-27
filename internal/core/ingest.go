@@ -401,7 +401,7 @@ func (c *Core) applyEvent(tx *sql.Tx, sid int64, e *event.Event, now string, can
 		*cancelled = append(*cancelled, ids...)
 	}
 	if e.Kind == event.KindSessionEnd {
-		if _, err := tx.Exec(`UPDATE runs SET ended_at=? WHERE session_id=? AND ended_at=''`, occ, sid); err != nil {
+		if _, err := tx.Exec(`UPDATE runs SET ended_at=? WHERE session_id=? AND ended_at='' AND started_at<=?`, occ, sid, occ); err != nil {
 			return err
 		}
 	}
