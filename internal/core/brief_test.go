@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -66,6 +67,34 @@ func TestReportWritesBriefWithSource(t *testing.T) {
 	}
 	if _, ok := b.Fields["bogus"]; ok {
 		t.Fatal("未知字段不应写入")
+	}
+}
+
+func TestSnapshotPreservesDeliveryAfterOwnerCorrectsBrief(t *testing.T) {
+	c, at := claimed(t, "QM-1")
+	delivery := ev("s1", event.KindDeliver, at.Add(time.Minute))
+	delivery.Brief = map[string]string{"summary": "修好导入"}
+	mustIngest(t, c, delivery)
+	if _, err := c.EditBrief(context.Background(), "QM-1", BriefEdit{Field: "summary", Action: "set", Text: "还要核对"}); err != nil {
+		t.Fatal(err)
+	}
+	mustIngest(t, c, report("s1", at.Add(2*time.Minute), map[string]string{"summary": "准备下次检查", "progress": "新的进度"}))
+	b := briefOf(t, c, "QM-1")
+	if summary := b.Fields["summary"]; summary == nil || summary.Text != "还要核对" || summary.Kind != "user" {
+		t.Fatalf("当前简报应保留用户更正，得到 %+v", summary)
+	}
+	data, err := json.Marshal(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var wire struct {
+		DeliverySummary *BriefField `json:"delivery_summary"`
+	}
+	if err := json.Unmarshal(data, &wire); err != nil {
+		t.Fatal(err)
+	}
+	if note := wire.DeliverySummary; note == nil || note.Text != "修好导入" || note.Kind != "agent" || note.Source != "deliver" || note.SessionID == nil || note.At != b.LastDeliveredAt {
+		t.Fatalf("快照应提供本次 Agent 交付原文及来源，得到 %+v", note)
 	}
 }
 

@@ -39,7 +39,7 @@ type Handoff struct {
 	CreatedAt     string `json:"created_at"`
 }
 
-// handoffSource 找到工作项当前代码所在分支：显式指定的会话 → 工作项分支 → 最近的托管会话分支。
+// handoffSource 找到工作项当前代码所在分支：来源运行 → 工作项分支 → 最近的托管会话分支。
 func (c *Core) handoffSource(ctx context.Context, item string, from int64) (repo int64, common, branch, sha, provider string, sid int64, err error) {
 	var title, itemBranch string
 	var rid sql.NullInt64
@@ -60,7 +60,19 @@ func (c *Core) handoffSource(ctx context.Context, item string, from int64) (repo
 		return
 	}
 	// 来源会话：显式指定须属于该工作项；否则取最近的关联会话
-	q := `SELECT s.id,s.provider,s.branch FROM runs r JOIN sessions s ON s.id=r.session_id WHERE r.work_item_id=? AND r.outcome<>'attribution_reverted'`
+	// 自然结束的运行只用结束前记录的分支，避免读取会话后来切换到的分支。
+	q := `SELECT s.id,s.provider,CASE
+		WHEN r.ended_at='' THEN s.branch
+		WHEN r.outcome='' THEN COALESCE((
+			SELECT json_extract(e.body,'$.branch') FROM events ended
+			JOIN events e ON e.session_id=ended.session_id
+			WHERE ended.session_id=r.session_id AND ended.kind='session_end' AND ended.occurred_at=r.ended_at
+				AND e.occurred_at BETWEEN r.started_at AND r.ended_at
+				AND (e.occurred_at<r.ended_at OR e.seq<=ended.seq)
+				AND CASE WHEN json_valid(e.body) THEN json_extract(e.body,'$.branch')<>'' ELSE 0 END
+			ORDER BY e.occurred_at DESC,e.seq DESC LIMIT 1
+		), '') ELSE '' END
+		FROM runs r JOIN sessions s ON s.id=r.session_id WHERE r.work_item_id=? AND r.outcome<>'attribution_reverted'`
 	args := []any{item}
 	if from != 0 {
 		q += ` AND s.id=?`

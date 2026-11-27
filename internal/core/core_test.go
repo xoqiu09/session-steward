@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"os"
@@ -491,6 +492,53 @@ func makeLegacyQuestion(t *testing.T, c *Core, missingEventID string) {
 		return nil
 	}); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestSnapshotKeepsPendingDecisionBeyondHistoryLimit(t *testing.T) {
+	c := newCore(t, nil)
+	ctx := context.Background()
+	at := c.St.Now().Add(-time.Hour)
+	c.St.Now = func() time.Time { return at }
+	ask := ev("waiting", event.KindAsk, at)
+	ask.Text = "选择合成导出格式？"
+	mustIngest(t, c, ask)
+	var pendingID string
+	if err := c.St.R().QueryRow(`SELECT id FROM approvals WHERE kind='decision' AND status='pending'`).Scan(&pendingID); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.St.Tx(ctx, func(tx *sql.Tx) error {
+		for i := range 2000 {
+			stamp := store.TS(at.Add(time.Duration(i+1) * time.Second))
+			if _, err := tx.Exec(`INSERT INTO approvals(id,kind,status,created_at,closed_at) VALUES (?,'decision','cancelled',?,?)`, fmt.Sprintf("closed-%04d", i), stamp, stamp); err != nil {
+				return err
+			}
+		}
+		// 已确认的历史记录可能没有关闭时间，也应受上限约束。
+		_, err := tx.Exec(`INSERT INTO approvals(id,kind,status,created_at,confirmed_at) VALUES ('confirmed','permission','confirmed',?,?)`, store.TS(at), store.TS(at))
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	c.St.Now = func() time.Time { return at.Add(time.Hour) }
+	snap, err := c.Snapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var pending []string
+	history := 0
+	for _, approval := range snap.Approvals {
+		if approval.Kind == "decision" && approval.Status == "pending" {
+			pending = append(pending, approval.ID)
+		} else {
+			history++
+		}
+	}
+	if len(pending) != 1 || pending[0] != pendingID {
+		t.Errorf("面板返回 %d 条待回答问题 %v，应包含唯一的待办 %s", len(pending), pending, pendingID)
+	}
+	if history != 2000 || snap.Approvals[0].ID != "closed-1999" {
+		t.Errorf("面板应按时间返回最新的 2000 条历史，目前返回 %d 条", history)
 	}
 }
 
