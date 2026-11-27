@@ -62,6 +62,122 @@ func panelReq(t *testing.T, ts *httptest.Server, method, path string, body any) 
 	return resp.StatusCode, b
 }
 
+func TestStaleDismissKeepsReplacementQuestionPending(t *testing.T) {
+	ctx := context.Background()
+	st, err := store.Open(filepath.Join(t.TempDir(), "synthetic.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { st.Close() })
+	base := time.Now().Add(-time.Minute)
+	now := base
+	st.Now = func() time.Time { return now }
+	c := core.New(st, nil)
+	const itemID = "DEMO-1"
+	if err := c.CreateWorkItem(ctx, core.WorkItemInput{ID: itemID, Title: itemID}); err != nil {
+		t.Fatal(err)
+	}
+	h := (&Server{Core: c, IngestToken: "ing", PanelToken: "pan"}).Handler()
+	panel := func(method, path, body string) *httptest.ResponseRecorder {
+		return ddo(h, drq{method: method, host: localHost, remote: loopPeer, path: path, body: body, cookie: cookieName, value: "pan"})
+	}
+	ask := func(id, question string, at time.Time) {
+		t.Helper()
+		body, err := json.Marshal(event.Event{EventID: id, SchemaVersion: event.SchemaVersion, OccurredAt: at,
+			Kind: event.KindAsk, SessionID: "synthetic-session", Source: event.Source{Provider: "codex", HostID: "synthetic-host"}, Text: question})
+		if err != nil {
+			t.Fatal(err)
+		}
+		w := ddo(h, drq{method: "POST", host: localHost, remote: loopPeer, path: "/hook/event", body: string(body),
+			headers: map[string]string{"Authorization": "Bearer ing"}})
+		if w.Code != http.StatusOK {
+			t.Fatalf("ask: status=%d body=%s", w.Code, w.Body.String())
+		}
+	}
+	snapshot := func() core.Snapshot {
+		t.Helper()
+		w := panel("GET", "/api/snapshot", "")
+		var snap core.Snapshot
+		if err := json.Unmarshal(w.Body.Bytes(), &snap); err != nil || w.Code != http.StatusOK {
+			t.Fatalf("snapshot: status=%d err=%v", w.Code, err)
+		}
+		return snap
+	}
+	question := func(snap core.Snapshot, wantPreview, wantStatus string) core.Approval {
+		t.Helper()
+		if len(snap.Approvals) != 1 {
+			t.Fatalf("want one question, got %d", len(snap.Approvals))
+		}
+		a := snap.Approvals[0]
+		if a.Status != wantStatus || a.Preview != wantPreview {
+			t.Fatalf("question %q status=%s, want %q status=%s", a.Preview, a.Status, wantPreview, wantStatus)
+		}
+		return a
+	}
+	dismiss := func(cardID, questionID string) *httptest.ResponseRecorder {
+		body := fmt.Sprintf(`{"reason":"ignored","question_id":%q}`, questionID)
+		return panel("POST", "/api/approvals/"+cardID+"/dismiss", body)
+	}
+	notifier := core.Notifier{C: c, BaseURL: "http://" + localHost}
+	if _, err := notifier.Pending(ctx); err != nil {
+		t.Fatal(err)
+	}
+	now = base.Add(time.Second)
+	ask("first-question", "封面用浅色吗", base)
+	old := question(snapshot(), "封面用浅色吗", "pending")
+	if old.SessionID == nil {
+		t.Fatal("first question has no session")
+	}
+	if err := c.BindManual(ctx, *old.SessionID, itemID); err != nil {
+		t.Fatal(err)
+	}
+	alerts, err := notifier.Pending(ctx)
+	if err != nil || len(alerts) != 1 {
+		t.Fatalf("first question alerts = %v, err=%v, want one notification", alerts, err)
+	}
+	oldLink := alerts[0].Link
+	if err := notifier.Check(ctx); err != nil {
+		t.Fatal(err)
+	}
+	now = base.Add(2 * time.Second)
+	ask("second-question", "标题用哪一版", base)
+	if w := dismiss(old.ID, old.ID); w.Code != http.StatusConflict || !strings.Contains(w.Body.String(), "已更新") {
+		t.Errorf("stale dismiss: status=%d body=%s, want 409 with refresh message", w.Code, strings.TrimSpace(w.Body.String()))
+	}
+	if w := dismiss(old.ID, ""); w.Code != http.StatusConflict {
+		t.Errorf("unversioned dismiss after replacement: status=%d, want 409", w.Code)
+	}
+	snap := snapshot()
+	current := question(snap, "标题用哪一版", "pending")
+	var item string
+	if oldLink == notifier.BaseURL+"/#approval="+current.ID && current.SessionID != nil {
+		for _, s := range snap.Sessions {
+			if s.ID == *current.SessionID {
+				item = s.WorkItemID
+				break
+			}
+		}
+	}
+	if item != itemID {
+		t.Errorf("old notification resolves to work item %q, want %s", item, itemID)
+	}
+	if alerts, err := notifier.Pending(ctx); err != nil || len(alerts) != 0 {
+		t.Errorf("replacement alerts = %v, err=%v, want no duplicate notification", alerts, err)
+	}
+	var payload struct {
+		QuestionID string `json:"question_id"`
+	}
+	if err := json.Unmarshal(current.Payload, &payload); err != nil || payload.QuestionID == "" || payload.QuestionID == old.ID {
+		t.Fatalf("replacement question ID = %q, err=%v, want a new question ID", payload.QuestionID, err)
+	}
+	if w := dismiss(current.ID, payload.QuestionID); w.Code != http.StatusOK {
+		t.Fatalf("current dismiss: status=%d body=%s", w.Code, w.Body.String())
+	}
+	if a := question(snapshot(), "标题用哪一版", "cancelled"); a.CloseReason != "ignored" {
+		t.Fatalf("current dismiss close reason=%q, want ignored", a.CloseReason)
+	}
+}
+
 func TestAuthSeparation(t *testing.T) {
 	ts, _, _ := start(t)
 	// 采集 token 不能访问面板

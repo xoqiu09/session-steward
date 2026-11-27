@@ -230,7 +230,7 @@ func TestUserObservationDoesNotChangeReplayOrAgentDayActivity(t *testing.T) {
 				t.Fatal(err)
 			}
 			ctx := PanelSignalContext(context.Background(), "POST /api/approvals/{id}/dismiss", "USER-AP")
-			if err := c.Dismiss(ctx, "USER-AP", "dismissed"); err != nil {
+			if err := c.Dismiss(ctx, "USER-AP", "dismissed", ""); err != nil {
 				t.Fatal(err)
 			}
 			replay, err := c.SnapshotAt(context.Background(), userAt)

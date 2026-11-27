@@ -112,7 +112,7 @@ export function PermissionCard({ a, snap }: { a: Approval; snap: Snapshot }) {
         <div className="row">
           <span className="pill warn">请回原界面处理</span>
           <span className="muted">这个请求没有经过可接管的 hook，只能在 Agent 界面里批准</span>
-          <button disabled={isRemote()} className="btn small" onClick={() => act.run(() => api.dismiss(a.id, 'handled_elsewhere'))}>已在原会话处理</button>
+          <button disabled={isRemote()} className="btn small" onClick={() => act.run(() => api.dismiss(a, 'handled_elsewhere'))}>已在原会话处理</button>
         </div>
       )}
       {a.status === 'decided' && <p className="hint">面板已作出决定。其他 hook 的拒绝可能优先，以“已确认继续”为准。</p>}
@@ -147,8 +147,8 @@ export function DecisionCard({ a, snap }: { a: Approval; snap: Snapshot }) {
       <div className="row">
         {s?.resume_command && <CopyButton text={s.resume_command} label="复制恢复命令" />}
         {s?.cwd && <CopyButton text={`cd ${JSON.stringify(s.cwd)}`} label="复制目录" />}
-        <button disabled={isRemote()} className="btn small" onClick={() => act.run(() => api.dismiss(a.id, low ? 'ignored' : 'resolved'))}>{low ? '忽略' : memory ? '已在原会话处理' : '已在原会话回答'}</button>
-        {!low && !memory && <button disabled={isRemote()} className="btn small" title="只收起这条提醒，不改工作状态" onClick={() => act.run(() => api.dismiss(a.id, 'ignored'))}>忽略这条提醒</button>}
+        <button disabled={isRemote()} className="btn small" onClick={() => act.run(() => api.dismiss(a, low ? 'ignored' : 'resolved'))}>{low ? '忽略' : memory ? '已在原会话处理' : '已在原会话回答'}</button>
+        {!low && !memory && <button disabled={isRemote()} className="btn small" title="只收起这条提醒，不改工作状态" onClick={() => act.run(() => api.dismiss(a, 'ignored'))}>忽略这条提醒</button>}
       </div>
       <ErrorLine msg={act.error} />
     </div>

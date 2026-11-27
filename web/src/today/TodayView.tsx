@@ -155,11 +155,11 @@ function DecideLine({ d, snap, onSelectItem }: { d: DecideRow; snap: Snapshot; o
         </>}
         {d.kind === 'permission' && !a.handleable && <>
           <span className="muted small">只能回原界面批准</span>
-          <button className="btn" type="button" disabled={remote || act.busy} onClick={() => act.run(() => api.dismiss(a.id, 'handled_elsewhere'))}>已在原会话处理</button>
+          <button className="btn" type="button" disabled={remote || act.busy} onClick={() => act.run(() => api.dismiss(a, 'handled_elsewhere'))}>已在原会话处理</button>
         </>}
         {d.kind === 'decision' && <>
           {s?.resume_command && <CopyButton text={s.resume_command} label="复制恢复命令，回原会话回答" />}
-          <button className="btn" type="button" disabled={remote || act.busy} onClick={() => act.run(() => api.dismiss(a.id, 'resolved'))}>已在原会话回答</button>
+          <button className="btn" type="button" disabled={remote || act.busy} onClick={() => act.run(() => api.dismiss(a, 'resolved'))}>已在原会话回答</button>
         </>}
       </div>
     </div>
