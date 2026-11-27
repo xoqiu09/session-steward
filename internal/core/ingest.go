@@ -352,23 +352,22 @@ func (c *Core) applyEvent(tx *sql.Tx, sid int64, e *event.Event, now string, can
 		if native > 0 {
 			break // notification must not overwrite a call-scoped native question
 		}
-		if err := upsertAttention(tx, sid, "decision", nz(e.Preview, "Agent 请求输入"), map[string]any{"source": e.Reason, "confidence": "high"}, now); err != nil {
+		if err := upsertAttention(tx, sid, "decision", nz(e.Preview, "Agent 请求输入"), map[string]any{"source": e.Reason, "confidence": "high"}, occ, now); err != nil {
 			return err
 		}
 	case event.KindAsk:
-		if err := upsertAttention(tx, sid, "decision", nz(e.Text, "Agent 请求帮助"), map[string]any{"source": "steward-hook ask", "confidence": "high"}, now); err != nil {
+		if err := upsertAttention(tx, sid, "decision", nz(e.Text, "Agent 请求帮助"), map[string]any{"source": "steward-hook ask", "confidence": "high"}, occ, now); err != nil {
 			return err
 		}
 	case event.KindStop:
 		if e.EndsWithAsk {
-			if err := upsertAttention(tx, sid, "attention", nz(e.Text, "最后一条回复以问句结尾"), map[string]any{"confidence": "low"}, now); err != nil {
+			if err := upsertAttention(tx, sid, "attention", nz(e.Text, "最后一条回复以问句结尾"), map[string]any{"confidence": "low"}, occ, now); err != nil {
 				return err
 			}
 		}
 	case event.KindPrompt:
-		// 用户回到该会话输入，低置信提醒自动关闭
-		if _, err := tx.Exec(`UPDATE approvals SET status='cancelled', close_reason='user_replied', closed_at=?
-			WHERE session_id=? AND kind IN ('attention','decision') AND status='pending'`, now, sid); err != nil {
+		// 只关闭同会话里发生时间不晚于这条回复的提问和提醒。
+		if err := closeRepliedQuestions(tx, sid, occ, now); err != nil {
 			return err
 		}
 		if err := markReturned(tx, sid, occ, now); err != nil {
@@ -401,7 +400,7 @@ func (c *Core) applyEvent(tx *sql.Tx, sid int64, e *event.Event, now string, can
 		*cancelled = append(*cancelled, ids...)
 	}
 	if e.Kind == event.KindSessionEnd {
-		if _, err := tx.Exec(`UPDATE runs SET ended_at=? WHERE session_id=? AND ended_at=''`, occ, sid); err != nil {
+		if _, err := tx.Exec(`UPDATE runs SET ended_at=? WHERE session_id=? AND ended_at='' AND started_at<=?`, occ, sid, occ); err != nil {
 			return err
 		}
 	}
