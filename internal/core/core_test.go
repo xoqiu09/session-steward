@@ -352,6 +352,148 @@ func TestAttentionDedupAndClose(t *testing.T) {
 	}
 }
 
+func TestPromptClosesQuestionOnlyByEventTime(t *testing.T) {
+	base := time.Date(2026, 10, 18, 10, 0, 0, 0, time.UTC)
+	const session = "replayed-prompt"
+	askedAt := base.Add(5 * time.Minute)
+	reminder := ev(session, event.KindStop, askedAt)
+	reminder.EndsWithAsk = true
+	cases := []struct {
+		name     string
+		question *event.Event
+		kind     string
+	}{
+		{"explicit_question", ev(session, event.KindAsk, askedAt), "decision"},
+		{"input_notification", ev(session, event.KindNotifyInput, askedAt), "decision"},
+		{"question_reminder", reminder, "attention"},
+		{"native_question", nativeEvent(session, event.KindToolPre, "synthetic-call", askedAt), "decision"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			c := newCore(t, nil)
+			// The question and both replies are collected after all three events occurred.
+			c.St.Now = func() time.Time { return base.Add(10 * time.Minute) }
+			check := func(after, wantStatus, wantReason string) {
+				t.Helper()
+				var status, reason string
+				if err := c.St.R().QueryRow(`SELECT status, close_reason FROM approvals WHERE kind=?`, tc.kind).Scan(&status, &reason); err != nil {
+					t.Fatal(err)
+				}
+				if status != wantStatus || reason != wantReason {
+					t.Fatalf("%s: question status=%q reason=%q, want status=%q reason=%q", after, status, reason, wantStatus, wantReason)
+				}
+			}
+
+			mustIngest(t, c, ev("other-session", event.KindPrompt, base.Add(6*time.Minute)))
+			mustIngest(t, c, ev(session, event.KindPrompt, base))
+			mustIngest(t, c, tc.question)
+			check("after the 10:05 question", "pending", "")
+			mustIngest(t, c, ev(session, event.KindPrompt, base))
+			check("after replaying the 10:00 reply", "pending", "")
+			mustIngest(t, c, ev(session, event.KindPrompt, base.Add(6*time.Minute)))
+			check("after the 10:06 reply", "cancelled", "user_replied")
+
+			t.Run("reply_arrives_first", func(t *testing.T) {
+				c := newCore(t, nil)
+				c.St.Now = func() time.Time { return base.Add(10 * time.Minute) }
+				mustIngest(t, c, ev(session, event.KindPrompt, base.Add(6*time.Minute)))
+				mustIngest(t, c, tc.question)
+				var pending int
+				if err := c.St.R().QueryRow(`SELECT COUNT(*) FROM approvals WHERE kind=? AND status='pending'`, tc.kind).Scan(&pending); err != nil {
+					t.Fatal(err)
+				}
+				if pending != 0 {
+					t.Fatalf("the 10:05 question arrived after its 10:06 reply: pending=%d, want 0", pending)
+				}
+			})
+		})
+	}
+}
+
+func TestReplayedAskKeepsNewerLegacyQuestionPending(t *testing.T) {
+	c := newCore(t, nil)
+	base := time.Date(2026, 10, 18, 10, 0, 0, 0, time.UTC)
+	c.St.Now = func() time.Time { return base.Add(10 * time.Minute) }
+	const session = "legacy-question-merge"
+	newer := ev(session, event.KindAsk, base.Add(5*time.Minute))
+	newer.Text = "Newer synthetic question"
+	mustIngest(t, c, newer)
+	makeLegacyQuestion(t, c, newer.EventID)
+
+	older := ev(session, event.KindAsk, base)
+	older.Text = "Older synthetic question"
+	mustIngest(t, c, older)
+	mustIngest(t, c, ev(session, event.KindPrompt, base.Add(time.Minute)))
+	var status, preview string
+	if err := c.St.R().QueryRow(`SELECT status, preview FROM approvals`).Scan(&status, &preview); err != nil {
+		t.Fatal(err)
+	}
+	if status != "pending" || preview != newer.Text {
+		t.Fatalf("after replaying an older question and reply: status=%q preview=%q, want pending %q", status, preview, newer.Text)
+	}
+}
+
+func TestPromptClosesLegacyQuestionOnlyWithUniqueEvent(t *testing.T) {
+	base := time.Date(2026, 10, 18, 10, 0, 0, 0, time.UTC)
+	const session = "legacy-question-close"
+	for _, tc := range []struct {
+		name, wantStatus, wantReason string
+		replyMinute                  time.Duration
+	}{
+		{"unique_event", "cancelled", "user_replied", 6},
+		{"unique_native_event", "cancelled", "user_replied", 6},
+		{"ambiguous_events", "pending", "", 11},
+		{"missing_event", "pending", "", 11},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := newCore(t, nil)
+			c.St.Now = func() time.Time { return base.Add(10 * time.Minute) }
+			ask := ev(session, event.KindAsk, base.Add(5*time.Minute))
+			ask.Text = "A synthetic question"
+			if tc.name == "unique_native_event" {
+				ask = nativeEvent(session, event.KindToolPre, "synthetic-legacy-call", ask.OccurredAt)
+			}
+			if tc.name == "ambiguous_events" {
+				later := ev(session, event.KindAsk, base.Add(7*time.Minute))
+				later.Text = ask.Text
+				mustIngest(t, c, later)
+			}
+			mustIngest(t, c, ask)
+			missingID := ""
+			if tc.name == "missing_event" {
+				missingID = ask.EventID
+			}
+			makeLegacyQuestion(t, c, missingID)
+
+			mustIngest(t, c, ev(session, event.KindPrompt, base.Add(tc.replyMinute*time.Minute)))
+			var status, reason string
+			if err := c.St.R().QueryRow(`SELECT status, close_reason FROM approvals`).Scan(&status, &reason); err != nil {
+				t.Fatal(err)
+			}
+			if status != tc.wantStatus || reason != tc.wantReason {
+				t.Fatalf("after replaying the 10:%02d reply: status=%q reason=%q, want %q %q", tc.replyMinute, status, reason, tc.wantStatus, tc.wantReason)
+			}
+		})
+	}
+}
+
+func makeLegacyQuestion(t *testing.T, c *Core, missingEventID string) {
+	t.Helper()
+	if err := c.St.Tx(context.Background(), func(tx *sqlTx) error {
+		if _, err := tx.Exec(`UPDATE approvals SET payload=json_remove(payload,'$.occurred_at')`); err != nil {
+			return err
+		}
+		if missingEventID != "" {
+			_, err := tx.Exec(`DELETE FROM events WHERE event_id=?`, missingEventID)
+			return err
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func git(t *testing.T, dir string, args ...string) string {
 	t.Helper()
 	cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)

@@ -69,11 +69,29 @@ func insertApprovalID(tx *sql.Tx, a approvalRow, now string) (string, error) {
 }
 
 // upsertAttention 为同一 session 合并重复的决策/提醒条目。
-func upsertAttention(tx *sql.Tx, sid int64, kind, preview string, payload map[string]any, now string) error {
-	var id string
-	err := tx.QueryRow(`SELECT id FROM approvals WHERE session_id=? AND kind=? AND status='pending'
-		AND COALESCE(json_extract(payload,'$.source'),'')<>'native_user_input' LIMIT 1`, sid, kind).Scan(&id)
+func upsertAttention(tx *sql.Tx, sid int64, kind, preview string, payload map[string]any, occurredAt, now string) error {
+	answered, err := hasReplyAtOrAfter(tx, sid, occurredAt)
+	if err != nil || answered {
+		return err
+	}
+	payload["occurred_at"] = occurredAt
+	var id, previousAt, createdAt string
+	err = tx.QueryRow(`SELECT id, COALESCE(json_extract(payload,'$.occurred_at'),''), created_at FROM approvals
+		WHERE session_id=? AND kind=? AND status='pending'
+		AND COALESCE(json_extract(payload,'$.source'),'')<>'native_user_input' LIMIT 1`, sid, kind).Scan(&id, &previousAt, &createdAt)
 	if err == nil {
+		if previousAt == "" {
+			previousAt, err = legacyQuestionTime(tx, id)
+			if err != nil {
+				return err
+			}
+			if previousAt == "" {
+				previousAt = createdAt
+			}
+		}
+		if occurredAt < previousAt {
+			return nil
+		}
 		p, _ := json.Marshal(payload)
 		_, err = tx.Exec(`UPDATE approvals SET preview=?, payload=?, created_at=? WHERE id=?`, preview, string(p), now, id)
 		if err == nil {
@@ -89,6 +107,100 @@ func upsertAttention(tx *sql.Tx, sid int64, kind, preview string, payload map[st
 		tx.Exec(`UPDATE approvals SET status='cancelled', close_reason='superseded', closed_at=? WHERE session_id=? AND kind='attention' AND status='pending'`, now, sid)
 	}
 	return insertApproval(tx, approvalRow{kind: kind, sessionID: sid, preview: preview, payload: payload}, now)
+}
+
+func hasReplyAtOrAfter(tx *sql.Tx, sid int64, at string) (bool, error) {
+	var answered bool
+	err := tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM events WHERE session_id=? AND kind='prompt' AND occurred_at>=?)`, sid, at).Scan(&answered)
+	return answered, err
+}
+
+// Legacy questions used the receipt time of the event that created or last updated the row.
+// Recover the event time only when a single event agrees with the stored question.
+func legacyQuestionTime(tx *sql.Tx, id string) (string, error) {
+	rows, err := tx.Query(`SELECT e.occurred_at, e.body, a.kind, a.preview, a.tool_name, a.fingerprint, a.payload
+		FROM approvals a JOIN events e ON e.session_id=a.session_id AND e.received_at=a.created_at
+		WHERE a.id=? AND e.kind IN ('ask','stop','notify_input','tool_pre')`, id)
+	if err != nil {
+		return "", err
+	}
+	defer rows.Close()
+	var matchedAt string
+	for rows.Next() {
+		var at, body, kind, preview, tool, fp, payload string
+		if err := rows.Scan(&at, &body, &kind, &preview, &tool, &fp, &payload); err != nil {
+			return "", err
+		}
+		var e event.Event
+		var origin struct {
+			Source    string              `json:"source"`
+			Execution permissionExecution `json:"execution"`
+		}
+		if err := json.Unmarshal([]byte(body), &e); err != nil {
+			return "", err
+		}
+		if err := json.Unmarshal([]byte(payload), &origin); err != nil {
+			return "", err
+		}
+		var matches bool
+		switch {
+		case kind == "attention":
+			matches = e.Kind == event.KindStop && e.EndsWithAsk && preview == nz(e.Text, "最后一条回复以问句结尾")
+		case origin.Source == "native_user_input":
+			matches = (e.Kind == event.KindToolPre || e.Kind == event.KindNotifyInput) && event.NativeInputTool(e.Source.Provider, e.ToolName) &&
+				e.ToolName == tool && e.Fingerprint == fp && e.Preview == preview && origin.Execution.ToolUseID != "" &&
+				e.ToolUseID == origin.Execution.ToolUseID && e.SubagentID == origin.Execution.SubagentID
+		case e.Kind == event.KindAsk:
+			matches = origin.Source == "steward-hook ask" && preview == nz(e.Text, "Agent 请求帮助")
+		case e.Kind == event.KindNotifyInput:
+			matches = !event.NativeInputTool(e.Source.Provider, e.ToolName) && origin.Source == e.Reason && preview == nz(e.Preview, "Agent 请求输入")
+		}
+		if matches {
+			if matchedAt != "" {
+				return "", nil
+			}
+			matchedAt = at
+		}
+	}
+	return matchedAt, rows.Err()
+}
+
+func closeRepliedQuestions(tx *sql.Tx, sid int64, at, now string) error {
+	if _, err := tx.Exec(`UPDATE approvals SET status='cancelled', close_reason='user_replied', closed_at=?
+		WHERE session_id=? AND kind IN ('attention','decision') AND status='pending'
+		AND NULLIF(json_extract(payload,'$.occurred_at'),'') <= ?`, now, sid, at); err != nil {
+		return err
+	}
+	rows, err := tx.Query(`SELECT id FROM approvals WHERE session_id=? AND kind IN ('attention','decision') AND status='pending'
+		AND COALESCE(json_extract(payload,'$.occurred_at'),'')=''`, sid)
+	if err != nil {
+		return err
+	}
+	var legacyIDs []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return err
+		}
+		legacyIDs = append(legacyIDs, id)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	for _, id := range legacyIDs {
+		askedAt, err := legacyQuestionTime(tx, id)
+		if err != nil {
+			return err
+		}
+		if askedAt != "" && askedAt <= at {
+			if _, err := tx.Exec(`UPDATE approvals SET status='cancelled', close_reason='user_replied', closed_at=? WHERE id=?`, now, id); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 // RequestPermission 由 hook 适配器同步调用：先落库事件，再创建可处理的审批并等待面板决定。

@@ -12,6 +12,11 @@ import (
 // Native questions are observations, never permission waiters. Keep the call
 // identity so a matching answer closes only that question, not a peer's input.
 func upsertNativeInput(tx *sql.Tx, sid int64, e *event.Event, now string) error {
+	occurredAt := store.TS(e.OccurredAt)
+	answered, err := hasReplyAtOrAfter(tx, sid, occurredAt)
+	if err != nil || answered {
+		return err
+	}
 	ref, err := permissionExecutionFor(tx, sid, e)
 	if err != nil || ref.ToolUseID == "" {
 		return err // do not recreate an already-completed or ambiguous call
@@ -19,7 +24,7 @@ func upsertNativeInput(tx *sql.Tx, sid int64, e *event.Event, now string) error 
 	var completed int
 	if err := tx.QueryRow(`SELECT COUNT(*) FROM events WHERE session_id=? AND kind IN ('tool_post','tool_fail')
 		AND occurred_at>=? AND json_extract(body,'$.tool_name')=? AND json_extract(body,'$.tool_use_id')=?
-		AND COALESCE(json_extract(body,'$.subagent_id'),'')=?`, sid, store.TS(e.OccurredAt), e.ToolName, ref.ToolUseID, ref.SubagentID).Scan(&completed); err != nil {
+		AND COALESCE(json_extract(body,'$.subagent_id'),'')=?`, sid, occurredAt, e.ToolName, ref.ToolUseID, ref.SubagentID).Scan(&completed); err != nil {
 		return err
 	}
 	if completed > 0 {
@@ -39,7 +44,7 @@ func upsertNativeInput(tx *sql.Tx, sid int64, e *event.Event, now string) error 
 	}
 	return insertApproval(tx, approvalRow{kind: "decision", sessionID: sid,
 		tool: e.ToolName, fp: e.Fingerprint, preview: e.Preview,
-		payload: map[string]any{"source": "native_user_input", "execution": ref, "confidence": "high"}}, now)
+		payload: map[string]any{"source": "native_user_input", "execution": ref, "confidence": "high", "occurred_at": occurredAt}}, now)
 }
 
 func closeNativeInput(tx *sql.Tx, sid int64, e *event.Event, now string) error {
