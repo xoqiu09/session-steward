@@ -62,9 +62,9 @@ func bindRun(tx *sql.Tx, sid int64, item, binding, at, now string) error {
 		return ErrNotFound
 	}
 	var runID int64
-	var curItem, curBinding string
-	err := tx.QueryRow(`SELECT id, work_item_id, binding FROM runs WHERE session_id=? AND ended_at='' ORDER BY id DESC LIMIT 1`, sid).
-		Scan(&runID, &curItem, &curBinding)
+	var curItem, curBinding, curStartedAt string
+	err := tx.QueryRow(`SELECT id, work_item_id, binding, started_at FROM runs WHERE session_id=? AND ended_at='' ORDER BY id DESC LIMIT 1`, sid).
+		Scan(&runID, &curItem, &curBinding, &curStartedAt)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return err
 	}
@@ -76,6 +76,10 @@ func bindRun(tx *sql.Tx, sid int64, item, binding, at, now string) error {
 			return err
 		}
 		if bindingRank[binding] < bindingRank[curBinding] {
+			return nil
+		}
+		// 迟到的标签事件不能结束一个在它之后开始的 run。
+		if binding == "tag" && at < curStartedAt {
 			return nil
 		}
 		if _, err := tx.Exec(`UPDATE runs SET ended_at=?, outcome='handed_off' WHERE id=?`, at, runID); err != nil {
