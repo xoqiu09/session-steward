@@ -3,6 +3,7 @@ package core
 import (
 	"database/sql"
 	"errors"
+	"fmt"
 	"regexp"
 	"strings"
 
@@ -27,7 +28,17 @@ func GuessFromBranch(branch string) string {
 func (c *Core) attribute(tx *sql.Tx, sid int64, e *event.Event, now string) error {
 	switch {
 	case e.Kind == event.KindClaim && e.WorkTag != "":
-		return bindRun(tx, sid, e.WorkTag, "tag", store.TS(e.OccurredAt), now)
+		if err := bindRun(tx, sid, e.WorkTag, "tag", store.TS(e.OccurredAt), now); err != nil {
+			return err
+		}
+		var current string
+		if err := tx.QueryRow(`SELECT work_item_id FROM runs WHERE session_id=? AND ended_at='' ORDER BY id DESC LIMIT 1`, sid).Scan(&current); err != nil {
+			return err
+		}
+		if current != e.WorkTag {
+			return fmt.Errorf("%w: 认领 %s 失败，当前会话仍关联 %s", ErrConflict, e.WorkTag, current)
+		}
+		return nil
 	case e.Kind == event.KindPrompt && e.WorkTag != "":
 		if itemExists(tx, e.WorkTag) {
 			return bindRun(tx, sid, e.WorkTag, "tag", store.TS(e.OccurredAt), now)

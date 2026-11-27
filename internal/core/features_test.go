@@ -202,3 +202,39 @@ func TestFeatureClosedReviewerFailureAndScopeConfirmation(t *testing.T) {
 		t.Fatal("ending reviewer session erased failure")
 	}
 }
+
+func TestFeatureIgnoresRevertedAttributionReports(t *testing.T) {
+	c := newCore(t, nil)
+	ctx := context.Background()
+	seedAutoSession(t, c, "exporter", "新增清单导出功能", false)
+	if _, err := c.ReconcileAttributions(ctx); err != nil {
+		t.Fatal(err)
+	}
+	snap, err := c.Snapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(snap.Attributions) != 1 || snap.Attributions[0].Status != "applied" || !snap.Attributions[0].Automatic {
+		t.Fatalf("want one applied automatic attribution, got %+v", snap.Attributions)
+	}
+	a := snap.Attributions[0]
+	mustIngest(t, c, featureEvent("exporter", c.St.Now(), update()))
+	before := featureOf(t, c)
+	if before.Candidate != "sha-one" || before.Implementation != "implemented" || before.Validation != "passed" {
+		t.Fatalf("report did not reach the feature: %+v", before)
+	}
+	if err := c.DecideAttributions(ctx, []AttributionDecision{{ID: a.ID, Fingerprint: a.Fingerprint, Action: "undo"}}); err != nil {
+		t.Fatal(err)
+	}
+	after := featureOf(t, c)
+	if after.Candidate != "" || after.Implementation != "unknown" || after.Validation != "unknown" {
+		t.Errorf("reverted report still counts: candidate=%q implementation=%s validation=%s", after.Candidate, after.Implementation, after.Validation)
+	}
+	if err := c.AcceptFeature(ctx, after.RepoID, after.ID, before.Candidate, after.Revision, "accepted"); err == nil {
+		t.Error("Owner could still accept sha-one using the reverted report")
+	}
+	var reports int
+	if err := c.St.R().QueryRow(`SELECT COUNT(*) FROM feature_reports WHERE run_id=?`, a.RunID).Scan(&reports); err != nil || reports != 1 {
+		t.Fatalf("stored reports for reverted run = %d, err=%v, want 1", reports, err)
+	}
+}

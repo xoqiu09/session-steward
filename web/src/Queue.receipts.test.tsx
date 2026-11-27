@@ -12,11 +12,23 @@ type Node = ReactElement<any>
 const nodes = (node: any): Node[] => Array.isArray(node) ? node.flatMap(nodes) : node?.props ? [node, ...nodes(node.props.children)] : []
 const words = (node: any): string => Array.isArray(node) ? node.map(words).join('') : typeof node === 'string' || typeof node === 'number' ? String(node) : node?.props ? words(node.props.children) : ''
 const button = (tree: Node, label: string) => nodes(tree).find(node => node.type === 'button' && words(node) === label)
-const question: Approval = { ...synthSnapshot.approvals![0], id: 'synthetic-question', kind: 'decision', status: 'pending', session_id: 88, work_item_id: 'SYN-12', deadline: '', preview: '合成问题：是否继续？' }
+const question: Approval = { ...synthSnapshot.approvals![0], id: 'synthetic-card', kind: 'decision', status: 'pending', session_id: 88, work_item_id: 'SYN-12', deadline: '', preview: '合成问题：是否继续？', payload: { question_id: 'synthetic-question' } }
 beforeEach(() => { vi.mocked(api.dismiss).mockReset().mockResolvedValue({}); vi.mocked(api.decide).mockReset().mockResolvedValue({}) })
 afterEach(() => vi.unstubAllGlobals())
 
 describe('关注队列的原会话回执文案与既有请求契约', () => {
+  it('回执提交原卡片编号和所见提问编号', async () => {
+    const { api: realApi } = await vi.importActual<typeof import('./api')>('./api')
+    const fetch = vi.fn(async () => new Response('{}'))
+    vi.stubGlobal('fetch', fetch)
+    vi.mocked(api.dismiss).mockImplementation(realApi.dismiss)
+    const tree = DecisionCard({ a: question, snap: synthSnapshot })
+    await button(tree, '忽略这条提醒')!.props.onClick()
+    expect(fetch).toHaveBeenCalledExactlyOnceWith('/api/approvals/synthetic-card/dismiss', expect.objectContaining({
+      body: JSON.stringify({ reason: 'ignored', question_id: 'synthetic-question' }),
+    }))
+  })
+
   it.each([false, true])('恢复命令=%s时区分已回答和忽略，不在渲染时发送请求', async hasCommand => {
     const snap = { ...synthSnapshot, sessions: synthSnapshot.sessions!.map(s => s.id === 88 ? { ...s, resume_command: hasCommand ? 'codex --resume synthetic' : '' } : s) }
     const tree = DecisionCard({ a: question, snap })
@@ -26,9 +38,9 @@ describe('关注队列的原会话回执文案与既有请求契约', () => {
     expect(html).not.toContain('不需要时点“已处理”')
     expect(api.dismiss).not.toHaveBeenCalled(); expect(api.decide).not.toHaveBeenCalled()
     await button(tree, '已在原会话回答')!.props.onClick()
-    expect(api.dismiss).toHaveBeenNthCalledWith(1, question.id, 'resolved')
+    expect(api.dismiss).toHaveBeenNthCalledWith(1, question, 'resolved')
     await button(tree, '忽略这条提醒')!.props.onClick()
-    expect(api.dismiss).toHaveBeenNthCalledWith(2, question.id, 'ignored')
+    expect(api.dismiss).toHaveBeenNthCalledWith(2, question, 'ignored')
     expect(api.decide).not.toHaveBeenCalled()
   })
 
@@ -39,7 +51,7 @@ describe('关注队列的原会话回执文案与既有请求契约', () => {
     expect(button(tree, '忽略这条提醒')).toBeUndefined()
     expect(api.dismiss).not.toHaveBeenCalled()
     await button(tree, '已在原会话处理')!.props.onClick()
-    expect(api.dismiss).toHaveBeenCalledExactlyOnceWith(question.id, 'resolved')
+    expect(api.dismiss).toHaveBeenCalledExactlyOnceWith(question, 'resolved')
   })
 
   it('低置信关注保持忽略语义和ignored原因', async () => {
@@ -48,7 +60,7 @@ describe('关注队列的原会话回执文案与既有请求契约', () => {
     expect(button(tree, '已在原会话回答')).toBeUndefined()
     expect(renderToStaticMarkup(tree)).toContain('不需要回应时忽略即可，不影响工作项状态')
     await button(tree, '忽略')!.props.onClick()
-    expect(api.dismiss).toHaveBeenCalledExactlyOnceWith(a.id, 'ignored')
+    expect(api.dismiss).toHaveBeenCalledExactlyOnceWith(a, 'ignored')
   })
 
   it('不能在面板批准的权限请求只改回执名称，仍发handled_elsewhere', async () => {
@@ -57,7 +69,7 @@ describe('关注队列的原会话回执文案与既有请求契约', () => {
     expect(button(tree, '允许本次')).toBeUndefined()
     expect(api.dismiss).not.toHaveBeenCalled()
     await button(tree, '已在原会话处理')!.props.onClick()
-    expect(api.dismiss).toHaveBeenCalledExactlyOnceWith(a.id, 'handled_elsewhere')
+    expect(api.dismiss).toHaveBeenCalledExactlyOnceWith(a, 'handled_elsewhere')
     expect(api.decide).not.toHaveBeenCalled()
   })
 

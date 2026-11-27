@@ -407,3 +407,70 @@ func errorText(err error) string {
 	}
 	return err.Error()
 }
+
+type claimTestTransport func(*http.Request) (*http.Response, error)
+
+func (f claimTestTransport) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+func TestClaimRejectsManualBinding(t *testing.T) {
+	ctx := context.Background()
+	st, err := store.Open(filepath.Join(t.TempDir(), "synthetic.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { st.Close() })
+	c := core.New(st, nil)
+	for _, item := range []string{"DEMO-1", "DEMO-2"} {
+		if err := c.CreateWorkItem(ctx, core.WorkItemInput{ID: item, Title: item}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	res, err := c.Ingest(ctx, &event.Event{EventID: "start", SchemaVersion: event.SchemaVersion,
+		OccurredAt: time.Now(), Kind: event.KindSessionStart, SessionID: "synthetic-session",
+		Source: event.Source{Provider: "codex", HostID: "synthetic-host"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.BindManual(ctx, res.SessionID, "DEMO-1"); err != nil {
+		t.Fatal(err)
+	}
+	s := &server.Server{Core: c, IngestToken: "synthetic-ingest"}
+	handler := s.Handler()
+	var status int
+	var body string
+	client := &hook.Client{BaseURL: "http://127.0.0.1", Token: "synthetic-ingest", HostID: "synthetic-host",
+		HTTP: &http.Client{Transport: claimTestTransport(func(r *http.Request) (*http.Response, error) {
+			rec := httptest.NewRecorder()
+			handler.ServeHTTP(rec, r)
+			status, body = rec.Code, rec.Body.String()
+			return rec.Result(), nil
+		})}}
+	stderr, err := os.CreateTemp(t.TempDir(), "stderr")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stderr.Close()
+	code := func() int {
+		original := os.Stderr
+		os.Stderr = stderr
+		defer func() { os.Stderr = original }()
+		return agentAction(ctx, client, []string{"claim", "DEMO-2", "--session", "synthetic-session", "--provider", "codex"})
+	}()
+	item, err := c.SessionItemAt(ctx, "synthetic-host", "codex", "synthetic-session", time.Now())
+	if err != nil || item != "DEMO-1" {
+		t.Fatalf("session binding = %q, err=%v, want DEMO-1", item, err)
+	}
+	if code != 1 || status != http.StatusConflict || !strings.Contains(body, "DEMO-1") {
+		t.Fatalf("claim exit=%d status=%d body=%s, want exit=1 and conflict naming DEMO-1", code, status, strings.TrimSpace(body))
+	}
+	if _, err := stderr.Seek(0, io.SeekStart); err != nil {
+		t.Fatal(err)
+	}
+	output, err := io.ReadAll(stderr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(output), "DEMO-1") {
+		t.Fatalf("claim stderr=%q, want current work item DEMO-1", output)
+	}
+}

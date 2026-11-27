@@ -892,10 +892,11 @@ func (s *Server) handleDismiss(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var b struct {
-		Reason string `json:"reason"`
+		Reason     string `json:"reason"`
+		QuestionID string `json:"question_id"`
 	}
 	readJSON(r, &b)
-	if err := s.Core.Dismiss(r.Context(), r.PathValue("id"), b.Reason); err != nil {
+	if err := s.Core.Dismiss(r.Context(), r.PathValue("id"), b.Reason, b.QuestionID); err != nil {
 		writeErr(w, err)
 		return
 	}

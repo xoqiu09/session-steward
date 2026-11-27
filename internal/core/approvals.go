@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/xoqiu09/session-steward/internal/event"
@@ -92,6 +93,8 @@ func upsertAttention(tx *sql.Tx, sid int64, kind, preview string, payload map[st
 		if occurredAt < previousAt {
 			return nil
 		}
+		// Keep the card ID for notification links and deduplication.
+		payload["question_id"] = newID("q")
 		p, _ := json.Marshal(payload)
 		_, err = tx.Exec(`UPDATE approvals SET preview=?, payload=?, created_at=? WHERE id=?`, preview, string(p), now, id)
 		if err == nil {
@@ -370,16 +373,19 @@ func (c *Core) AckDelivered(ctx context.Context, id string) error {
 }
 
 // Dismiss 关闭决策/提醒/观察类条目（人工确认已处理或忽略）。
-func (c *Core) Dismiss(ctx context.Context, id, reason string) error {
+func (c *Core) Dismiss(ctx context.Context, id, reason, questionID string) error {
 	now := c.St.NowTS()
 	err := c.panelTx(ctx, func(tx *sql.Tx) error {
+		// A card that has never been replaced uses its own ID. Older clients may omit it only in that case.
 		r, err := tx.Exec(`UPDATE approvals SET status='cancelled', close_reason=?, closed_at=?
-			WHERE id=? AND status='pending' AND (kind IN ('decision','attention') OR (kind='permission' AND handleable=0))`, nz(reason, "dismissed"), now, id)
+			WHERE id=? AND status='pending' AND (kind IN ('decision','attention') OR (kind='permission' AND handleable=0))
+			AND (COALESCE(json_extract(payload,'$.question_id'),id)=?
+				OR (?='' AND json_extract(payload,'$.question_id') IS NULL))`, nz(reason, "dismissed"), now, id, questionID, questionID)
 		if err != nil {
 			return err
 		}
 		if n, _ := r.RowsAffected(); n == 0 {
-			return ErrConflict
+			return fmt.Errorf("%w: 提醒已更新或已处理，请刷新面板", ErrConflict)
 		}
 		return store.Touch(tx, now, "approval", id)
 	})

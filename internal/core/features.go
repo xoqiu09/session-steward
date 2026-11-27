@@ -128,7 +128,9 @@ func (c *Core) readFeatures(tx *sql.Tx) ([]ProjectFeature, error) {
 	if err != nil {
 		return nil, err
 	}
-	rows, err = tx.Query(`SELECT f.repo_id,f.feature_id,f.body,f.session_id,f.run_id,f.work_item_id,s.provider,f.at,r.ended_at='' FROM feature_reports f JOIN sessions s ON s.id=f.session_id JOIN runs r ON r.id=f.run_id ORDER BY f.at,f.id`)
+	rows, err = tx.Query(`SELECT f.repo_id,f.feature_id,f.body,f.session_id,f.run_id,f.work_item_id,s.provider,f.at,r.ended_at=''
+ FROM feature_reports f JOIN sessions s ON s.id=f.session_id JOIN runs r ON r.id=f.run_id
+ WHERE r.outcome<>'attribution_reverted' ORDER BY f.at,f.id`)
 	if err != nil {
 		return nil, err
 	}

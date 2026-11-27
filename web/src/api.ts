@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { isRemote, remoteReadOnlyMessage } from './access'
 import type { ResidentId } from './town/residents'
-import type { AISummary, AttributionDecision, BriefEdit, DayDetail, Handoff, HistoryResp, HubStatus, ManagedSession, MergeJob, MergeSyncStatus, ProjectInfo, ProjectStructure, ProjectStructureDocument, Review, Worktree, SessionUsageDetail, Snapshot } from './types'
+import type { AISummary, Approval, AttributionDecision, BriefEdit, DayDetail, Handoff, HistoryResp, HubStatus, ManagedSession, MergeJob, MergeSyncStatus, ProjectInfo, ProjectStructure, ProjectStructureDocument, Review, Worktree, SessionUsageDetail, Snapshot } from './types'
 import { snapshotRefresher } from './snapshotRefresh'
 import { publishNativeSnapshot } from './nativeBridge'
 import { snapshotStream } from './snapshotStream'
@@ -106,7 +106,11 @@ export const api = {
   runOutcome: (id: number, outcome: string) => call('POST', `/api/runs/${id}/outcome`, { outcome }),
   decide: (id: string, fingerprint: string, behavior: 'allow' | 'deny') =>
     call('POST', `/api/approvals/${id}/decide`, { fingerprint, behavior }),
-  dismiss: (id: string, reason = 'dismissed') => call('POST', `/api/approvals/${id}/dismiss`, { reason }),
+  dismiss: (a: Approval, reason = 'dismissed') => {
+    const isQuestion = a.kind === 'decision' || a.kind === 'attention'
+    const questionId = typeof a.payload.question_id === 'string' ? a.payload.question_id : a.id
+    return call('POST', `/api/approvals/${a.id}/dismiss`, { reason, question_id: isQuestion ? questionId : undefined })
+  },
   approveMerge: (id: string, source_head_sha: string, target_base_sha: string) =>
     call('POST', `/api/approvals/${id}/approve-merge`, { source_head_sha, target_base_sha }),
   rejectMerge: (id: string, reason: string) => call('POST', `/api/approvals/${id}/reject-merge`, { reason }),
