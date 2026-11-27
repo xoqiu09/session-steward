@@ -105,6 +105,15 @@ describe('项目列表读取与刷新', () => {
 })
 
 describe('项目操作回执', () => {
+  it('归档有待回答事项但没有运行中会话的项目时，在确认区显示提醒', () => {
+    const pendingProject = { ...projects[0], pending: 1, running: 0 }
+    const draw = () => render(ProjectManager, { projects: [pendingProject], statuses: [], onArchive: vi.fn(), onTrash: vi.fn(), onSync: vi.fn() })
+    button(draw(), '归档').props.onClick()
+    const confirmation = nodes(draw()).find(node => node.props.role === 'region' && node.props['aria-label'] === '确认项目操作')
+    expect(confirmation).toBeDefined()
+    expect(renderToStaticMarkup(confirmation!)).toContain('其中有待批准请求或状态显示运行中的会话')
+  })
+
   it('失败保留确认对象可重试，慢响应连续点击只写一次，ACK 后显示独立成功回执', async () => {
     let fail!: (reason: Error) => void, succeed!: () => void
     const archive = vi.fn().mockImplementationOnce(() => new Promise((_, reject) => { fail = reject })).mockImplementationOnce(() => new Promise(resolve => { succeed = () => resolve({}) }))

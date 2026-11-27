@@ -400,14 +400,23 @@ func (c *Core) SetRunOutcome(ctx context.Context, runID int64, outcome string) e
 	}
 	now := c.St.NowTS()
 	err := c.panelTx(ctx, func(tx *sql.Tx) error {
-		r, err := tx.Exec(`UPDATE runs SET outcome=?, ended_at=CASE WHEN ended_at='' THEN ? ELSE ended_at END WHERE id=?`, outcome, now, runID)
+		r, err := tx.Exec(`UPDATE runs SET outcome=? WHERE id=? AND ended_at<>'' AND outcome=''`, outcome, runID)
 		if err != nil {
 			return err
 		}
-		if n, _ := r.RowsAffected(); n == 0 {
+		if n, err := r.RowsAffected(); err != nil {
+			return err
+		} else if n == 1 {
+			return store.Touch(tx, now, "work_item", "")
+		}
+		var exists bool
+		if err := tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM runs WHERE id=?)`, runID).Scan(&exists); err != nil {
+			return err
+		}
+		if !exists {
 			return ErrNotFound
 		}
-		return store.Touch(tx, now, "work_item", "")
+		return fmt.Errorf("%w: 运行尚未结束或结果已补记，请刷新面板", ErrConflict)
 	})
 	c.notify()
 	return err
