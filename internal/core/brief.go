@@ -48,6 +48,7 @@ type Brief struct {
 	// 各会话独立回报；不把另一个会话的字段拼进自己的下一步。
 	BySession       map[int64]*Brief `json:"by_session,omitempty"`
 	LastDeliveredAt string           `json:"last_delivered_at,omitempty"`
+	DeliverySummary *BriefField      `json:"delivery_summary"`
 	InputResolvedAt string           `json:"input_resolved_at,omitempty"`
 	// 最近进展之后观察到的工具事件数与最后事件时间；用于“可能过期”提示，不改变内容。
 	ToolEventsSince int    `json:"tool_events_since"`
@@ -63,6 +64,7 @@ type briefRow struct {
 	kind       string
 	source     string
 	session    sql.NullInt64
+	eventSeq   sql.NullInt64
 	supersedes int64
 	flagged    string
 	at         string
@@ -334,7 +336,7 @@ func (c *Core) BriefHistory(ctx context.Context, item string) ([]map[string]any,
 
 // loadBriefs 在快照事务中计算所有工作项的当前简报与过期提示。
 func (c *Core) loadBriefs(tx *sql.Tx, status map[string]string) (map[string]*Brief, error) {
-	rows, err := tx.Query(`SELECT id, work_item_id, field, text, kind, source, session_id, supersedes, flagged, at
+	rows, err := tx.Query(`SELECT id, work_item_id, field, text, kind, source, session_id, event_seq, supersedes, flagged, at
 		FROM brief_entries ORDER BY work_item_id, field, id`)
 	if err != nil {
 		return nil, err
@@ -342,7 +344,7 @@ func (c *Core) loadBriefs(tx *sql.Tx, status map[string]string) (map[string]*Bri
 	group := map[string]map[string][]briefRow{}
 	for rows.Next() {
 		var r briefRow
-		if err := rows.Scan(&r.id, &r.item, &r.field, &r.text, &r.kind, &r.source, &r.session, &r.supersedes, &r.flagged, &r.at); err != nil {
+		if err := rows.Scan(&r.id, &r.item, &r.field, &r.text, &r.kind, &r.source, &r.session, &r.eventSeq, &r.supersedes, &r.flagged, &r.at); err != nil {
 			rows.Close()
 			return nil, err
 		}
@@ -355,7 +357,7 @@ func (c *Core) loadBriefs(tx *sql.Tx, status map[string]string) (map[string]*Bri
 	out := map[string]*Brief{}
 	for item, fs := range group {
 		b := &Brief{Fields: map[string]*BriefField{}, BySession: map[int64]*Brief{}}
-		var boundary *briefRow
+		var boundary, delivery *briefRow
 		for i := range fs["stage"] {
 			r := &fs["stage"][i]
 			if r.source == "reopened" && (boundary == nil || r.at > boundary.at || (r.at == boundary.at && r.id > boundary.id)) {
@@ -374,9 +376,10 @@ func (c *Core) loadBriefs(tx *sql.Tx, status map[string]string) (map[string]*Bri
 			}
 			var v *BriefField
 			if f == "stage" {
-				for _, r := range entries {
-					if r.source == "deliver" && r.flagged == "" && r.at > b.LastDeliveredAt {
-						b.LastDeliveredAt = r.at
+				for i := range entries {
+					r := &entries[i]
+					if r.source == "deliver" && r.flagged == "" && (delivery == nil || r.at >= delivery.at) {
+						delivery = r
 					}
 				}
 			}
@@ -400,6 +403,25 @@ func (c *Core) loadBriefs(tx *sql.Tx, status map[string]string) (map[string]*Bri
 				}
 				if value := resolveField(sourceRows); value != nil {
 					b.BySession[sid].Fields[f] = value
+				}
+			}
+		}
+		if delivery != nil {
+			b.LastDeliveredAt = delivery.at
+			// 交付说明来自同一次交付，即使当前简报后来被改过。
+			for _, field := range []string{"summary", "progress"} {
+				entries := fs[field]
+				for i := len(entries) - 1; i >= 0; i-- {
+					r := entries[i]
+					if r.kind == "agent" && r.source == "deliver" && r.flagged == "" && r.text != "" &&
+						r.eventSeq == delivery.eventSeq && r.session == delivery.session && r.at == delivery.at &&
+						(boundary == nil || r.at > boundary.at || r.id >= boundary.id) {
+						b.DeliverySummary = r.out()
+						break
+					}
+				}
+				if b.DeliverySummary != nil {
+					break
 				}
 			}
 		}

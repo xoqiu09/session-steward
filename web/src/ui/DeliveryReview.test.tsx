@@ -2,6 +2,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { DeliveryReview } from './DeliveryReview'
 import { reviewGuide, runsBySession } from './runDeskModel'
+import { TodayView } from '../today/TodayView'
 import { fakeItem, fakeRun, fakeSession } from '../town/fixtures'
 import type { Snapshot, WorkItem } from '../types'
 
@@ -55,6 +56,25 @@ describe('待验收卡片', () => {
     const g = reviewGuide(withSessions(item, [s80]), item)
     expect(g.mismatch).toEqual({ delivered: 'demo-panel', item: 'demo-town' })
     expect(render(withSessions(item, [s80]), item)).toContain('⚠ 这次交付在 demo-panel，不在本项目 demo-town')
+  })
+
+  it('用户更正简报后，验收卡和每日十分钟都显示本次交付原文', () => {
+    const submitted = { ...brief(80).fields.summary, text: '修好导入' }
+    const corrected = { ...item, brief: {
+      ...brief(80),
+      fields: { summary: { entry_id: 2, text: '还要核对', kind: 'user' as const, source: 'user', session_id: null, at: now } },
+      delivery_summary: submitted,
+      last_delivered_at: submitted.at,
+    } }
+    const s80 = fakeSession({ id: 80, provider: 'claude', state: 'idle' })
+    const s = withSessions(corrected, [s80])
+    const html = render(s, corrected)
+    expect(html).toContain('修好导入<small class="muted">（Agent 自述')
+    expect(html).not.toContain('还要核对')
+    expect(reviewGuide(s, corrected).session?.id).toBe(80)
+    const today = renderToStaticMarkup(<TodayView snap={s} onSelectItem={() => {}} onOpenTown={() => {}} />)
+    expect(today).toContain('Agent 说：</span>修好导入')
+    expect(today).not.toContain('还要核对')
   })
 
   it('交付会话没记下仓库和分支时退回到工作项分支，并标出来源', () => {

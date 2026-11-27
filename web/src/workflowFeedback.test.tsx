@@ -58,7 +58,14 @@ const submit = (tree: any, label: string) => form(tree, label).props.onSubmit({ 
 const render = (key: string, fn: () => any): Node => { host.begin(key); const tree = fn(); host.commit(); return tree }
 function deferred<T = unknown>() { let resolve!: (value: T) => void, reject!: (error: Error) => void; const promise = new Promise<T>((ok, no) => { resolve = ok; reject = no }); return { promise, resolve, reject } }
 const feedback = (tree: any) => nodes(tree).filter(node => node.type === ActionFeedback)
-const reviewSnap = (): Snapshot => ({ ...synthSnapshot, work_items: [{ ...synthSnapshot.work_items![0], status: 'review', review_revision: '1:2' }], approvals: [], merge_jobs: [] })
+const reviewSnap = (): Snapshot => {
+  const item = synthSnapshot.work_items![0]
+  const brief = item.brief!
+  const delivery = { ...brief.fields.summary!, source: 'deliver' }
+  return { ...synthSnapshot, work_items: [{ ...item, status: 'review', review_revision: '1:2',
+    brief: { ...brief, fields: { ...brief.fields, summary: delivery }, delivery_summary: delivery, last_delivered_at: delivery.at },
+  }], approvals: [], merge_jobs: [] }
+}
 
 beforeEach(() => {
   vi.mocked(api.createItem).mockReset(); vi.mocked(api.patchItem).mockReset(); vi.mocked(api.launchManaged).mockReset()

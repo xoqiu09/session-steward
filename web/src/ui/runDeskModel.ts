@@ -1,4 +1,4 @@
-import type { Approval, Handoff, ManagedSession, MergeJob, MergePayload, Run, Session, Snapshot, WorkItem } from '../types'
+import type { Approval, BriefField, Handoff, ManagedSession, MergeJob, MergePayload, Run, Session, Snapshot, WorkItem } from '../types'
 import { providerLabel, sessionsFor, sessionSignal } from '../model'
 import { shownNo } from '../hub/ids'
 
@@ -197,10 +197,16 @@ export interface ReviewGuide {
   mismatch: { delivered: string; item: string } | null
 }
 
+export function deliverySummary(item: WorkItem): BriefField | undefined {
+  const brief = item.brief
+  if (brief?.delivery_summary !== undefined) return brief.delivery_summary ?? undefined
+  return [brief?.fields.summary, brief?.fields.progress].find(f =>
+    f?.text && !f.flagged && f.kind === 'agent' && f.source === 'deliver' && (!brief?.last_delivered_at || f.at === brief.last_delivered_at))
+}
+
 /** 验收卡片要讲清楚：Agent 说交付了什么、在哪看、怎么回到原对话。都只是快照里已有的字段。 */
 export function reviewGuide(snap: Snapshot, item: WorkItem): ReviewGuide {
-  const f = item.brief?.fields ?? {}
-  const said = f.summary?.text ? f.summary : f.progress?.text ? f.progress : null
+  const said = deliverySummary(item)
   const sessions = snap.sessions ?? []
   // 交付会话：写交付说明的那个会话；没有说明时取这项工作最近一段运行的会话。
   const lastRun = (snap.runs ?? []).filter((r) => r.work_item_id === item.id).sort((a, b) => (b.ended_at || b.started_at).localeCompare(a.ended_at || a.started_at))[0]
