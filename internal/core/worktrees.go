@@ -121,14 +121,18 @@ func (c *Core) worktreeRemovable(ctx context.Context, repo int64, common, target
 	if !merged {
 		return false, "当前提交还没有合并进 " + target
 	}
-	var busy int
+	var unresolved, busy int
 	staleBefore := c.St.Now().Add(-c.StaleAfter).UTC().Format("2006-01-02T15:04:05.000000000Z")
-	c.St.R().QueryRowContext(ctx, `SELECT
-	 (SELECT COUNT(*) FROM sessions WHERE repo_id=? AND worktree=? AND state IN ('running','waiting_permission') AND last_activity_at>=?)
-	 + (SELECT COUNT(*) FROM managed_sessions WHERE worktree=? AND state IN ('starting','running'))`,
-		repo, w.Path, staleBefore, w.Path).Scan(&busy)
+	err := c.St.R().QueryRowContext(ctx, `SELECT COUNT(*),
+	 COUNT(CASE WHEN last_activity_at>=? THEN 1 END)
+	 + (SELECT COUNT(*) FROM managed_sessions WHERE worktree=? AND state IN ('starting','running'))
+	 FROM sessions WHERE repo_id=? AND worktree=? AND state IN ('running','waiting_permission')`,
+		staleBefore, w.Path, repo, w.Path).Scan(&unresolved, &busy)
 	if busy > 0 {
 		return false, "有会话正在这个目录里运行"
+	}
+	if err != nil || unresolved > 0 {
+		return false, "无法确认这个目录里的会话是否已结束"
 	}
 	return true, ""
 }

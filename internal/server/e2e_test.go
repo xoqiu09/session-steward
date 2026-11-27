@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -528,6 +529,68 @@ func TestLateSessionEndPreservesResumedRun(t *testing.T) {
 	var item string
 	if err := st.R().QueryRow(`SELECT work_item_id FROM brief_entries WHERE source='report' AND field='progress'`).Scan(&item); err != nil || item != "RUN-2" {
 		t.Fatalf("进展应写入 RUN-2，实际 %q (%v)", item, err)
+	}
+}
+
+func TestRunOutcomeOnlyFillsEndedRunsOnce(t *testing.T) {
+	ctx := context.Background()
+	st, err := store.Open(filepath.Join(t.TempDir(), "s.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { st.Close() })
+	c := core.New(st, loc{})
+	h := (&Server{Core: c, PanelToken: "pan"}).Handler()
+	if err := c.CreateWorkItem(ctx, core.WorkItemInput{ID: "RUN-1", Title: "synthetic"}); err != nil {
+		t.Fatal(err)
+	}
+	at := time.Date(2026, 11, 27, 10, 0, 0, 0, time.UTC)
+	for _, e := range []event.Event{
+		{EventID: "prompt-ended", SessionID: "ended", Kind: event.KindPrompt, WorkTag: "RUN-1", OccurredAt: at},
+		{EventID: "session-end", SessionID: "ended", Kind: event.KindSessionEnd, OccurredAt: at.Add(time.Minute)},
+		{EventID: "prompt-active", SessionID: "active", Kind: event.KindPrompt, WorkTag: "RUN-1", OccurredAt: at.Add(2 * time.Minute)},
+	} {
+		e.SchemaVersion, e.Source = 1, event.Source{Provider: "claude", HostID: "synthetic"}
+		if _, err := c.Ingest(ctx, &e); err != nil {
+			t.Fatal(err)
+		}
+	}
+	readRun := func(session string) (run core.Run) {
+		t.Helper()
+		err := st.R().QueryRow(`SELECT r.id,r.ended_at,r.outcome FROM runs r JOIN sessions s ON s.id=r.session_id WHERE s.provider_session_id=?`, session).
+			Scan(&run.ID, &run.EndedAt, &run.Outcome)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return run
+	}
+	postOutcome := func(id int64, outcome string) *httptest.ResponseRecorder {
+		url := fmt.Sprintf("http://127.0.0.1/api/runs/%d/outcome", id)
+		req := httptest.NewRequest(http.MethodPost, url, strings.NewReader(fmt.Sprintf(`{"outcome":%q}`, outcome)))
+		req.AddCookie(&http.Cookie{Name: cookieName, Value: "pan"})
+		req.Header.Set("X-Steward", "1")
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, req)
+		return w
+	}
+	ended, active := readRun("ended"), readRun("active")
+	if ended.EndedAt == "" || ended.Outcome != "" || active.EndedAt != "" || active.Outcome != "" {
+		t.Fatalf("expected an ended run without an outcome and a running run: ended=%+v active=%+v", ended, active)
+	}
+	if w := postOutcome(ended.ID, "failed"); w.Code != http.StatusOK {
+		t.Fatalf("first outcome: got HTTP %d, want 200: %s", w.Code, w.Body.String())
+	}
+	if w := postOutcome(ended.ID, "delivered"); w.Code != http.StatusConflict {
+		t.Errorf("second outcome: got HTTP %d, want 409: %s", w.Code, w.Body.String())
+	}
+	if got := readRun("ended"); got.Outcome != "failed" || got.EndedAt != ended.EndedAt {
+		t.Errorf("after second outcome: got outcome=%q ended_at=%q, want outcome=failed ended_at=%q", got.Outcome, got.EndedAt, ended.EndedAt)
+	}
+	if w := postOutcome(active.ID, "failed"); w.Code != http.StatusConflict {
+		t.Errorf("outcome for a running run: got HTTP %d, want 409: %s", w.Code, w.Body.String())
+	}
+	if got := readRun("active"); got.EndedAt != "" || got.Outcome != "" {
+		t.Errorf("running run changed: ended_at=%q outcome=%q", got.EndedAt, got.Outcome)
 	}
 }
 

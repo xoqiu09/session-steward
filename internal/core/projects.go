@@ -35,7 +35,10 @@ func (c *Core) Projects(ctx context.Context) ([]ProjectInfo, error) {
 	 (SELECT COUNT(*) FROM work_items w WHERE w.repo_id=r.id AND w.status NOT IN ('done','abandoned')),
 	 (SELECT COUNT(*) FROM sessions s WHERE s.repo_id=r.id),
 	 (SELECT COUNT(*) FROM sessions s WHERE s.repo_id=r.id AND s.data_source='live' AND s.state IN ('running','waiting_permission')),
-	 (SELECT COUNT(*) FROM approvals a WHERE a.repo_id=r.id AND a.status='pending'), COALESCE(t.v,''),
+	 (SELECT COUNT(*) FROM approvals a LEFT JOIN sessions s ON s.id=a.session_id
+	  LEFT JOIN work_items w ON w.id=COALESCE(NULLIF(a.work_item_id,''),
+	   (SELECT work_item_id FROM runs WHERE session_id=s.id AND ended_at='' ORDER BY id DESC LIMIT 1))
+	  WHERE a.status='pending' AND COALESCE(a.repo_id,w.repo_id,s.repo_id)=r.id), COALESCE(t.v,''),
 	 (SELECT COUNT(*) FROM project_features f WHERE f.repo_id=r.id),
 	 EXISTS(SELECT 1 FROM meta s WHERE s.k='project_structure:'||r.id)
 	 FROM repos r LEFT JOIN meta m ON m.k='repo_archive:'||r.id

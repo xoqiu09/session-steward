@@ -50,10 +50,12 @@ func TestWorktreeRemovalOnlyForMergedCleanIdleWorktrees(t *testing.T) {
 	os.WriteFile(filepath.Join(dirty, "scratch.txt"), []byte("x\n"), 0o644)
 
 	c := newCore(t, gitLocator{})
+	now := time.Date(2026, 11, 27, 10, 0, 0, 0, time.UTC)
+	c.St.Now = func() time.Time { return now }
 	trash := filepath.Join(root, "trash")
 	os.MkdirAll(trash, 0o755)
 	c.TrashPath = func(_ context.Context, p string) error { return os.Rename(p, filepath.Join(trash, filepath.Base(p))) }
-	start := ev("synthetic-busy", event.KindSessionStart, time.Now().UTC())
+	start := ev("synthetic-busy", event.KindSessionStart, now)
 	start.Cwd = busy
 	if _, err := c.Ingest(ctx, start); err != nil {
 		t.Fatal(err)
@@ -105,6 +107,34 @@ func TestWorktreeRemovalOnlyForMergedCleanIdleWorktrees(t *testing.T) {
 			t.Fatal("kept worktree was touched", p)
 		}
 	}
+	t.Run("stale running session still protects its worktree", func(t *testing.T) {
+		now = now.Add(11 * time.Minute)
+		trashCalls := 0
+		c.TrashPath = func(context.Context, string) error {
+			trashCalls++
+			return nil
+		}
+		list, err := c.ProjectWorktrees(ctx, repo)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var worktree Worktree
+		for _, candidate := range list {
+			if candidate.Path == busy {
+				worktree = candidate
+				break
+			}
+		}
+		if worktree.Removable || !strings.Contains(worktree.Reason, "无法确认") {
+			t.Errorf("stale running session should block removal with an uncertainty reason: %+v", worktree)
+		}
+		if err := c.RemoveWorktree(ctx, repo, busy); !errors.Is(err, ErrConflict) {
+			t.Errorf("removing a worktree with a stale running session: got %v, want conflict", err)
+		}
+		if trashCalls != 0 {
+			t.Errorf("trash called %d times, want 0", trashCalls)
+		}
+	})
 	c.TrashPath = nil
 	if err := c.RemoveWorktree(ctx, repo, dirty); !errors.Is(err, ErrBadRequest) {
 		t.Fatal("removal allowed without a trash", err)
