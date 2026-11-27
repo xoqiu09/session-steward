@@ -208,14 +208,15 @@ func (c *Core) readFeatures(tx *sql.Tx) ([]ProjectFeature, error) {
 	for i := range out {
 		resolveFeature(&out[i], c.St.Now())
 	}
-	rows, err = tx.Query(`SELECT repo_id,feature_id,candidate,scope_version,decision,at FROM feature_acceptances ORDER BY id`)
+	latestAcceptanceIDs := make([]int64, len(out))
+	rows, err = tx.Query(`SELECT id,repo_id,feature_id,candidate,scope_version,decision,at FROM feature_acceptances ORDER BY id`)
 	if err != nil {
 		return nil, err
 	}
 	for rows.Next() {
-		var repo int64
+		var acceptanceID, repo int64
 		var id, candidate, scope, decision, at string
-		if err = rows.Scan(&repo, &id, &candidate, &scope, &decision, &at); err != nil {
+		if err = rows.Scan(&acceptanceID, &repo, &id, &candidate, &scope, &decision, &at); err != nil {
 			rows.Close()
 			return nil, err
 		}
@@ -223,10 +224,17 @@ func (c *Core) readFeatures(tx *sql.Tx) ([]ProjectFeature, error) {
 			f := &out[i]
 			f.Accepted = decision == "accepted" && candidate != "" && candidate == f.Candidate && scope == f.ScopeVersion && !f.Conflict && f.Implementation == "implemented" && f.Validation != "failed"
 			f.AcceptedAt = at
+			latestAcceptanceIDs[i] = acceptanceID
 		}
 	}
 	err = rows.Err()
 	rows.Close()
+	// A new decision changes the revision even if it returns Accepted to false.
+	for i, acceptanceID := range latestAcceptanceIDs {
+		if acceptanceID != 0 {
+			out[i].Revision = featureHash([]any{out[i].Revision, acceptanceID})
+		}
+	}
 	return out, err
 }
 
