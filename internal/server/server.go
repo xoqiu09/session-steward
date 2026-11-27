@@ -497,10 +497,12 @@ func (s *Server) handleEvent(w http.ResponseWriter, r *http.Request) {
 			e.Kind = event.KindNotifyPerm
 		}
 		if _, err := s.Core.Ingest(r.Context(), e); err != nil {
-			rejected = append(rejected, map[string]string{"event_id": e.EventID, "error": err.Error()})
-			if errors.Is(err, context.Canceled) {
-				break
+			if !errors.Is(err, core.ErrBadRequest) {
+				// 整批留待补发，已入库的事件会按 event_id 去重。
+				writeErr(w, err)
+				return
 			}
+			rejected = append(rejected, map[string]string{"event_id": e.EventID, "error": err.Error()})
 			continue
 		}
 		acked = append(acked, e.EventID)

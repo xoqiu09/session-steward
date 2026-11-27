@@ -3,6 +3,7 @@ package server
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"io"
 	"net"
@@ -178,6 +179,68 @@ func TestHookFallbackAndSpool(t *testing.T) {
 	c.St.R().QueryRow(`SELECT COUNT(1) FROM events`).Scan(&n)
 	if n != 3 {
 		t.Fatal("重复补发产生了重复事件")
+	}
+}
+
+// handlerTransport exercises the HTTP handler without opening a listening socket.
+type handlerTransport struct{ http.Handler }
+
+func (h handlerTransport) RoundTrip(r *http.Request) (*http.Response, error) {
+	defer r.Body.Close()
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	return w.Result(), nil
+}
+
+func TestHookSpoolRetriesFailedDatabaseWrite(t *testing.T) {
+	st, err := store.Open(filepath.Join(t.TempDir(), "spool.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { st.Close() })
+	s := &Server{Core: core.New(st, nil), IngestToken: "ing"}
+	ctx := context.Background()
+	hc := &hook.Client{
+		BaseURL: "http://127.0.0.1", Token: "ing", Spool: &hook.Spool{Dir: t.TempDir()},
+		HTTP: &http.Client{Transport: handlerTransport{s.Handler()}},
+	}
+	e := event.Event{
+		EventID: "synthetic-queued-event", SchemaVersion: event.SchemaVersion, OccurredAt: time.Now().UTC(),
+		Source: event.Source{Provider: "codex", HostID: "synthetic"}, Kind: event.KindSessionStart, SessionID: "synthetic-session",
+	}
+	exec := func(query string) {
+		t.Helper()
+		if err := st.Tx(ctx, func(tx *sql.Tx) error {
+			_, err := tx.Exec(query)
+			return err
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	exec(`CREATE TRIGGER fail_event_insert BEFORE INSERT ON events
+		BEGIN SELECT RAISE(ABORT, 'synthetic write failure'); END`)
+	hc.Spool.Append(&e)
+	hc.Flush(ctx)
+	if got := hc.Spool.Len(); got != 1 {
+		t.Fatalf("database write failed: queued events = %d, want 1", got)
+	}
+
+	exec(`DROP TRIGGER fail_event_insert`)
+	hc.Spool.Append(&e) // Replaying the same event ID must not store it twice.
+	invalid := e
+	invalid.EventID = "synthetic-invalid-event"
+	invalid.SessionID = ""
+	hc.Spool.Append(&invalid)
+	hc.Flush(ctx)
+	if got := hc.Spool.Len(); got != 0 {
+		t.Fatalf("database recovered: queued events = %d, want 0", got)
+	}
+	var count int
+	if err := st.R().QueryRow(`SELECT COUNT(*) FROM events WHERE event_id = ?`, e.EventID).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Fatalf("stored copies of queued event = %d, want 1", count)
 	}
 }
 
