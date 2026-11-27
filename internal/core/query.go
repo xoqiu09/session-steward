@@ -161,7 +161,7 @@ type Snapshot struct {
 	TrashedProjects  int         `json:"trashed_projects,omitempty"`
 }
 
-// Snapshot 返回界面需要的完整状态。审批只包含未关闭的和最近 24 小时关闭的。
+// Snapshot 返回界面需要的完整状态。需跟进的审批全部返回，历史最多返回 2000 条。
 func (c *Core) Snapshot(ctx context.Context) (*Snapshot, error) {
 	db := c.St.R()
 	tx, err := db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
@@ -335,8 +335,15 @@ func (c *Core) Snapshot(ctx context.Context) (*Snapshot, error) {
 	}
 
 	since := c.St.Now().Add(-24 * time.Hour).UTC().Format("2006-01-02T15:04:05.000000000Z")
-	rows, err = tx.Query(`SELECT `+approvalColumns+`
-		FROM approvals WHERE closed_at='' OR closed_at >= ? OR (status='delivered' AND delivered_at >= ?) ORDER BY created_at DESC LIMIT 2000`, since, since)
+	rows, err = tx.Query(`WITH active AS (
+			SELECT id FROM approvals WHERE status IN ('pending','decided') OR (status='delivered' AND decision='allow')
+		), history AS (
+			SELECT id FROM approvals WHERE id NOT IN (SELECT id FROM active)
+				AND (closed_at='' OR closed_at >= ? OR (status='delivered' AND delivered_at >= ?))
+			ORDER BY created_at DESC LIMIT 2000
+		)
+		SELECT `+approvalColumns+` FROM approvals
+		WHERE id IN (SELECT id FROM active UNION ALL SELECT id FROM history) ORDER BY created_at DESC`, since, since)
 	if err != nil {
 		return nil, err
 	}

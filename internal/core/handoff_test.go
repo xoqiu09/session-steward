@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/xoqiu09/session-steward/internal/event"
+	"github.com/xoqiu09/session-steward/internal/gitx"
 )
 
 func TestHandoffClaudeToCodex(t *testing.T) {
@@ -107,6 +108,105 @@ func TestHandoffRequiresBranch(t *testing.T) {
 	if _, _, err := c.StartHandoff(context.Background(), HandoffInput{WorkItemID: "NOPE-1", ToAgent: "codex"}); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("%v", err)
 	}
+}
+
+func TestHandoffUsesItemBranchAfterSessionSwitchesWork(t *testing.T) {
+	dir := gitInit(t)
+	loc := gitx.NewLocator()
+	loc.TTL = 0
+	c := newCore(t, loc)
+	ctx := context.Background()
+	at := time.Now()
+	var sessionID int64
+	for i, item := range []WorkItemInput{
+		{ID: "HO-1", Title: "任务甲", Branch: "fix/a", RepoPath: dir},
+		{ID: "HO-2", Title: "任务乙", Branch: "fix/b", RepoPath: dir},
+	} {
+		git(t, dir, "switch", "-q", "-c", item.Branch, "main")
+		git(t, dir, "commit", "--allow-empty", "-qm", item.Title)
+		if err := c.CreateWorkItem(ctx, item); err != nil {
+			t.Fatal(err)
+		}
+		claim := ev("switching-session", event.KindClaim, at.Add(time.Duration(i)*time.Second))
+		claim.Cwd, claim.WorkTag = dir, item.ID
+		result, err := c.Ingest(ctx, claim)
+		if err != nil {
+			t.Fatal(err)
+		}
+		sessionID = result.SessionID
+		var active string
+		if err := c.St.R().QueryRow(`SELECT work_item_id FROM runs WHERE session_id=? AND ended_at=''`, sessionID).Scan(&active); err != nil || active != item.ID {
+			t.Fatalf("认领 %s 后当前任务是 %q，错误 %v", item.ID, active, err)
+		}
+	}
+	wantSHA, err := gitx.Run(ctx, dir, "rev-parse", "fix/a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, from := range []int64{0, sessionID} {
+		_, preview, err := c.BuildHandoff(ctx, HandoffInput{WorkItemID: "HO-1", FromSession: from})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if preview.SourceBranch != "fix/a" || preview.SourceSHA != wantSHA {
+			t.Errorf("来源会话 %d：交接甲得到 %s (%s)，应为 fix/a (%s)", from, preview.SourceBranch, preview.SourceSHA, wantSHA)
+		}
+		if preview.FromSessionID == nil || *preview.FromSessionID != sessionID {
+			t.Errorf("交接未保留实际来源会话 %d", sessionID)
+		}
+	}
+}
+
+func TestHandoffUsesRunBranchAfterSessionEnds(t *testing.T) {
+	dir := gitInit(t)
+	loc := gitx.NewLocator()
+	loc.TTL = 0
+	c := newCore(t, loc)
+	ctx := context.Background()
+	at := time.Now()
+
+	git(t, dir, "switch", "-qc", "fix/a", "main")
+	git(t, dir, "commit", "--allow-empty", "-qm", "合成任务甲")
+	wantSHA, err := gitx.Run(ctx, dir, "rev-parse", "HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.CreateWorkItem(ctx, WorkItemInput{ID: "HO-1", Title: "任务甲", RepoPath: dir}); err != nil {
+		t.Fatal(err)
+	}
+	claim := ev("ending-session", event.KindClaim, at)
+	claim.Cwd, claim.WorkTag = dir, "HO-1"
+	result, err := c.Ingest(ctx, claim)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sessionID := result.SessionID
+	end := ev("ending-session", event.KindSessionEnd, at.Add(time.Second))
+	end.Cwd = ""
+	mustIngest(t, c, end)
+
+	check := func(t *testing.T) {
+		for _, from := range []int64{0, sessionID} {
+			_, preview, err := c.BuildHandoff(ctx, HandoffInput{WorkItemID: "HO-1", FromSession: from})
+			if err != nil {
+				t.Fatalf("来源会话 %d：自然结束后应能预览交接：%v", from, err)
+			}
+			if preview.SourceBranch != "fix/a" || preview.SourceSHA != wantSHA {
+				t.Errorf("来源会话 %d：交接甲得到 %s (%s)，应为 fix/a (%s)", from, preview.SourceBranch, preview.SourceSHA, wantSHA)
+			}
+		}
+	}
+	t.Run("自然结束", check)
+
+	git(t, dir, "switch", "-qc", "fix/b", "main")
+	resume := ev("ending-session", event.KindSessionStart, end.OccurredAt)
+	resume.Cwd = dir
+	mustIngest(t, c, resume)
+	var sessionBranch string
+	if err := c.St.R().QueryRow(`SELECT branch FROM sessions WHERE id=?`, sessionID).Scan(&sessionBranch); err != nil || sessionBranch != "fix/b" {
+		t.Fatalf("恢复后的会话分支是 %q，应为 fix/b，错误 %v", sessionBranch, err)
+	}
+	t.Run("恢复后会话分支已变化", check)
 }
 
 func TestHandoffRejectsChangedPreview(t *testing.T) {

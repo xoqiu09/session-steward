@@ -140,6 +140,7 @@ export interface Brief {
   fields: Partial<Record<BriefKey, BriefField>>
   by_session?: Record<string, Brief>
   last_delivered_at?: string
+  delivery_summary?: BriefField | null
   input_resolved_at?: string
   tool_events_since: number
   last_event_at: string

@@ -3,6 +3,7 @@ import type { Approval, BriefField, Snapshot, WorkItem } from '../types'
 import { field } from '../brief'
 import { attentionManaged } from '../workManagement'
 import { itemSignal, scopedAttention, sessionBuckets, type ReportedHandoff } from '../model'
+import { deliverySummary } from '../ui/runDeskModel'
 import { periodicView, queueLanes, repoLabel, type MergeGroup } from '../workbench'
 
 // 每日十分钟：把一天里要你管的事按四个问题排好——要你决定什么、做完了什么（证据在哪）、什么卡住了、其余不用管的。
@@ -60,8 +61,6 @@ export function evidenceOf(snap: Snapshot, w: WorkItem): { evidence: Evidence[];
   return { evidence, grade }
 }
 
-const said = (w: WorkItem) => field(w, 'summary') ?? field(w, 'progress')
-
 export function buildToday(snap: Snapshot, lastSeen: string): Today {
   const q = scopedAttention(snap)
   const lanes = queueLanes(q, snap.now)
@@ -93,7 +92,7 @@ export function buildToday(snap: Snapshot, lastSeen: string): Today {
   const review: ReviewRow[] = q.allReview.map((w) => {
     const { evidence, grade } = evidenceOf(snap, w)
     const at = w.brief?.last_delivered_at || w.updated_at
-    return { item: w, repo: repoOf(w.id), said: said(w), evidence, grade, at, fresh: !lastSeen || at > lastSeen, merge: mergeFor.get(w.id) }
+    return { item: w, repo: repoOf(w.id), said: deliverySummary(w), evidence, grade, at, fresh: !lastSeen || at > lastSeen, merge: mergeFor.get(w.id) }
   }).sort((a, b) => gradeOrder[a.grade] - gradeOrder[b.grade] || b.at.localeCompare(a.at))
 
   const taken = new Set<string>([...reviewIds, ...decide.flatMap((d) => (d.kind === 'handoff' ? [d.item.id] : d.itemId ? [d.itemId] : []))])
