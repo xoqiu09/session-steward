@@ -50,6 +50,24 @@ CREATE INDEX IF NOT EXISTS usage_daily_day ON usage_daily(day)`)},
 	// 派活台：托管会话增加运行方式与原生会话号，审计记设备，新增可派活项目与幂等键。
 	{6, addDispatchSchema},
 	{7, addOrchestrationSchema},
+	{8, addSessionLocationTime},
+}
+
+// 旧库从与已存位置匹配的事件补时间。仅有历史扫描记录时沿用扫描的最后时间。
+func addSessionLocationTime(tx *sql.Tx) error {
+	exists, err := hasColumn(tx, "sessions", "location_at")
+	if err != nil || exists {
+		return err
+	}
+	if _, err := tx.Exec(`ALTER TABLE sessions ADD COLUMN location_at TEXT NOT NULL DEFAULT ''`); err != nil {
+		return err
+	}
+	_, err = tx.Exec(`UPDATE sessions AS s SET location_at=COALESCE((
+		SELECT e.occurred_at FROM events e WHERE e.session_id=s.id AND CASE WHEN json_valid(e.body) THEN
+			json_extract(e.body,'$.cwd')=s.cwd AND COALESCE(json_extract(e.body,'$.branch'),'')=s.branch END
+		ORDER BY e.occurred_at DESC LIMIT 1
+	), s.last_activity_at) WHERE s.cwd<>'' AND (s.repo_id IS NOT NULL OR s.data_source='history')`)
+	return err
 }
 
 func execSQL(q string) func(*sql.Tx) error {

@@ -247,19 +247,20 @@ func (c *Core) upsertSession(tx *sql.Tx, e *event.Event, l *locInfo, now string)
 		}
 	}
 	var id int64
-	var dataSource string
-	var lastActivity string
-	err := tx.QueryRow(`SELECT id, data_source, last_activity_at FROM sessions WHERE host_id=? AND provider=? AND provider_session_id=?`,
-		e.Source.HostID, e.Source.Provider, e.SessionID).Scan(&id, &dataSource, &lastActivity)
+	var locationAt string
+	occ := store.TS(e.OccurredAt)
+	err := tx.QueryRow(`SELECT id, location_at FROM sessions WHERE host_id=? AND provider=? AND provider_session_id=?`,
+		e.Source.HostID, e.Source.Provider, e.SessionID).Scan(&id, &locationAt)
 	if errors.Is(err, sql.ErrNoRows) {
-		wt, br := "", e.Branch
+		wt := ""
 		if l != nil {
 			wt = l.worktree
+			locationAt = occ
 		}
-		r, err := tx.Exec(`INSERT INTO sessions(host_id, provider, provider_session_id, client, version, cwd, worktree, branch, repo_id, first_seen_at, data_source)
-			VALUES (?,?,?,?,?,?,?,?,?,?,'live')`,
+		r, err := tx.Exec(`INSERT INTO sessions(host_id, provider, provider_session_id, client, version, cwd, worktree, branch, repo_id, first_seen_at, location_at, data_source)
+			VALUES (?,?,?,?,?,?,?,?,?,?,?,'live')`,
 			e.Source.HostID, e.Source.Provider, e.SessionID, nz(e.Source.Client, "unknown"), e.Source.Version,
-			e.Cwd, wt, br, nullInt(repoID), store.TS(e.OccurredAt))
+			e.Cwd, wt, e.Branch, nullInt(repoID), occ, locationAt)
 		if err != nil {
 			return 0, err
 		}
@@ -273,9 +274,9 @@ func (c *Core) upsertSession(tx *sql.Tx, e *event.Event, l *locInfo, now string)
 		client = CASE WHEN ? NOT IN ('', 'unknown') THEN ? ELSE client END,
 		version = CASE WHEN ? <> '' THEN ? ELSE version END`
 	args := []any{e.Source.Client, e.Source.Client, e.Source.Version, e.Source.Version}
-	if e.Cwd != "" && l != nil && (e.Kind != event.KindCwdChanged || store.TS(e.OccurredAt) >= lastActivity) {
-		q += `, cwd=?, worktree=?, branch=?, repo_id=?`
-		args = append(args, e.Cwd, l.worktree, e.Branch, nullInt(repoID))
+	if l != nil && occ >= locationAt {
+		q += `, cwd=?, worktree=?, branch=?, repo_id=?, location_at=?`
+		args = append(args, e.Cwd, l.worktree, e.Branch, nullInt(repoID), occ)
 	}
 	q += ` WHERE id=?`
 	args = append(args, id)

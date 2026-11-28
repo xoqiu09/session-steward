@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 	"time"
 
@@ -194,6 +195,34 @@ func TestConfirmKeepsContentTime(t *testing.T) {
 	}
 	if _, err := c.EditBrief(context.Background(), "QM-1", BriefEdit{Field: "progress", Action: "confirm", EntryID: p2.EntryID}); err == nil {
 		t.Fatal("不应能确认用户条目")
+	}
+}
+
+func TestBriefConfirmRejectsReportAfterOwnerCorrection(t *testing.T) {
+	c, t0 := claimed(t, "QM-1")
+	ctx := context.Background()
+	mustIngest(t, c, report("s1", t0.Add(time.Minute), map[string]string{"progress": "测试通过"}))
+	old := briefOf(t, c, "QM-1").Fields["progress"]
+	if _, err := c.EditBrief(ctx, "QM-1", BriefEdit{Field: "progress", Action: "set", Text: "仍有一项失败"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.EditBrief(ctx, "QM-1", BriefEdit{Field: "progress", Action: "confirm", EntryID: old.EntryID}); !errors.Is(err, ErrConflict) {
+		t.Errorf("确认旧回报应提示内容已变化，得到 %v", err)
+	}
+	if got := briefOf(t, c, "QM-1").Fields["progress"]; got == nil || got.Text != "仍有一项失败" || got.Source != "user" {
+		t.Fatalf("应保留用户更正，得到 %+v", got)
+	}
+
+	mustIngest(t, c, report("s1", c.St.Now().Add(time.Second), map[string]string{"progress": "已重跑失败用例"}))
+	pending := briefOf(t, c, "QM-1").Fields["progress"].Pending
+	if pending == nil || pending.Text != "已重跑失败用例" {
+		t.Fatalf("应显示待采用的新回报，得到 %+v", pending)
+	}
+	if _, err := c.EditBrief(ctx, "QM-1", BriefEdit{Field: "progress", Action: "confirm", EntryID: pending.EntryID}); err != nil {
+		t.Fatal(err)
+	}
+	if got := briefOf(t, c, "QM-1").Fields["progress"]; got == nil || got.Text != pending.Text || got.Source != "confirm" {
+		t.Fatalf("应采用当前待对照回报，得到 %+v", got)
 	}
 }
 

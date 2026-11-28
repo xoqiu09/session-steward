@@ -132,7 +132,13 @@ func (c *Core) BuildHandoff(ctx context.Context, in HandoffInput) (string, *Hand
 	line := func(f string, a ...any) { fmt.Fprintf(&b, f+"\n", a...) }
 	line("# 交接：%s（%s）", w.Title, w.ID)
 	line("")
-	line("这份交接包由 Session Steward 根据工作项简报、功能清单和 Git 记录生成。内容是上一位 Agent 的自述，不是独立校验，也不代表用户已验收。")
+	statusLabels := map[string]string{
+		"todo": "待开始", "in_progress": "执行中", "blocked": "阻塞",
+		"review": "交付待处理", "done": "已处理", "abandoned": "已放弃",
+	}
+	line("工作项当前状态：%s", nz(statusLabels[w.Status], w.Status))
+	line("")
+	line("这份交接包由 Session Steward 生成。简报和功能回报是 Agent 的自述，需要独立核对，也不代表用户已验收。")
 	line("")
 	line("## 代码位置")
 	line("- 你的 worktree 从 `%s`（%s）新建分支，包含上一位的全部已提交改动。", branch, sha[:min(12, len(sha))])

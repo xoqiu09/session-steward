@@ -261,6 +261,13 @@ func (c *Core) EditBrief(ctx context.Context, item string, b BriefEdit) (int64, 
 			if r.kind != "agent" || r.flagged != "" || r.text == "" {
 				return fmt.Errorf("%w: 只能确认未被标记的 Agent 回报", ErrConflict)
 			}
+			current, err := currentBriefField(tx, item, b.Field)
+			if err != nil {
+				return err
+			}
+			if current == nil || (current.EntryID != r.id && (current.Pending == nil || current.Pending.EntryID != r.id)) {
+				return fmt.Errorf("%w: 简报内容已变化，请刷新后再确认", ErrConflict)
+			}
 			// 保留原内容时间，过期判断仍以内容产生时刻为准
 			if err := insertUser(r.text, "confirm", r.at, r.id); err != nil {
 				return err
@@ -307,6 +314,36 @@ func (c *Core) EditBrief(ctx context.Context, item string, b BriefEdit) (int64, 
 		c.notify()
 	}
 	return out, err
+}
+
+// currentBriefField 在写事务内重新读取面板可见的字段，确认与写入之间不会插入其他更改。
+func currentBriefField(tx *sql.Tx, item, field string) (*BriefField, error) {
+	rows, err := tx.Query(`WITH reopened AS (
+		SELECT at, id FROM brief_entries WHERE work_item_id=? AND field='stage' AND source='reopened'
+		ORDER BY at DESC, id DESC LIMIT 1
+	)
+	SELECT b.id, b.text, b.kind, b.source, b.at, b.flagged FROM brief_entries b
+	LEFT JOIN reopened r ON b.field<>'goal'
+	WHERE b.work_item_id=? AND b.field=? AND (r.id IS NULL OR (b.at, b.id)>=(r.at, r.id))`, item, item, field)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var entries []briefRow
+	for rows.Next() {
+		var r briefRow
+		if err := rows.Scan(&r.id, &r.text, &r.kind, &r.source, &r.at, &r.flagged); err != nil {
+			return nil, err
+		}
+		entries = append(entries, r)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if field == "stage" || field == "next_owner" {
+		return resolveTimelineField(entries), nil
+	}
+	return resolveField(entries), nil
 }
 
 // BriefHistory 返回某工作项全部简报条目（新到旧），用于追溯纠错。
