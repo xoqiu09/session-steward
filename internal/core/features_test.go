@@ -83,6 +83,89 @@ func TestFeatureDedupOrderingAndAcceptance(t *testing.T) {
 		t.Fatal("old candidate validation/acceptance leaked into new version")
 	}
 }
+func TestFeaturePassingRetestRequiresNewOwnerAcceptance(t *testing.T) {
+	c, at := featureCore(t)
+	now := at.Add(3 * time.Minute)
+	c.St.Now = func() time.Time { return now }
+
+	passed := update()
+	mustIngest(t, c, featureEvent("s1", at.Add(2*time.Minute), passed))
+	accept := func() {
+		t.Helper()
+		f := featureOf(t, c)
+		if err := c.AcceptFeature(context.Background(), f.RepoID, f.ID, f.Candidate, f.Revision, "accepted"); err != nil {
+			t.Fatal(err)
+		}
+		if !featureOf(t, c).Accepted {
+			t.Fatal("explicit Owner acceptance missing")
+		}
+	}
+	accept()
+
+	failed := passed
+	failed.Validation = "failed"
+	failed.Evidence = "Synthetic large export failed"
+	now = now.Add(time.Minute)
+	mustIngest(t, c, featureEvent("s1", at.Add(time.Minute), failed))
+	if f := featureOf(t, c); f.Validation != "passed" || !f.Accepted {
+		t.Fatalf("late report from before acceptance: validation=%s accepted=%t, want passed/true", f.Validation, f.Accepted)
+	}
+
+	now = now.Add(time.Minute)
+	mustIngest(t, c, featureEvent("s1", now, failed))
+	if f := featureOf(t, c); f.Validation != "failed" || f.Accepted {
+		t.Fatalf("after failure: validation=%s accepted=%t, want failed/false", f.Validation, f.Accepted)
+	}
+
+	now = now.Add(time.Minute)
+	mustIngest(t, c, featureEvent("s1", now, passed))
+	if f := featureOf(t, c); f.Validation != "passed" || f.Accepted {
+		t.Fatalf("after passing retest: validation=%s accepted=%t, want passed/false", f.Validation, f.Accepted)
+	}
+
+	now = now.Add(time.Minute)
+	accept()
+}
+
+func TestFeatureLateEffectiveFailureRequiresNewOwnerAcceptance(t *testing.T) {
+	c, at := featureCore(t)
+	now := at.Add(time.Minute)
+	c.St.Now = func() time.Time { return now }
+	pass := update()
+	mustIngest(t, c, featureEvent("s1", now, pass))
+
+	accept := func() {
+		t.Helper()
+		f := featureOf(t, c)
+		if err := c.AcceptFeature(context.Background(), f.RepoID, f.ID, f.Candidate, f.Revision, "accepted"); err != nil {
+			t.Fatal(err)
+		}
+		if !featureOf(t, c).Accepted {
+			t.Fatal("explicit Owner acceptance missing")
+		}
+	}
+	now = now.Add(2 * time.Minute)
+	accept()
+
+	now = now.Add(time.Minute)
+	fail := pass
+	fail.Validation = "failed"
+	fail.Evidence = "Synthetic export failed"
+	mustIngest(t, c, featureEvent("s1", at.Add(2*time.Minute), fail))
+	if f := featureOf(t, c); f.Validation != "failed" || f.Accepted {
+		t.Fatalf("after late failure: validation=%s accepted=%t, want failed/false", f.Validation, f.Accepted)
+	}
+
+	now = now.Add(time.Minute)
+	mustIngest(t, c, featureEvent("s1", now, pass))
+	if f := featureOf(t, c); f.Validation != "passed" || f.Accepted {
+		t.Fatalf("after passing retest: validation=%s accepted=%t, want passed/false", f.Validation, f.Accepted)
+	}
+
+	now = now.Add(time.Minute)
+	accept()
+}
+
 func TestFeatureParallelFailuresAndCandidateConflict(t *testing.T) {
 	c, at := featureCore(t)
 	mustIngest(t, c, featureEvent("s1", at.Add(2*time.Minute), update()))

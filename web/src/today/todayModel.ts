@@ -4,7 +4,7 @@ import { field } from '../brief'
 import { attentionManaged } from '../workManagement'
 import { itemSignal, scopedAttention, sessionBuckets, type ReportedHandoff } from '../model'
 import { deliverySummary } from '../ui/runDeskModel'
-import { periodicView, queueLanes, repoLabel, type MergeGroup } from '../workbench'
+import { mergeGroups, periodicView, queueLanes, repoLabel, type MergeGroup } from '../workbench'
 
 // 每日十分钟：把一天里要你管的事按四个问题排好——要你决定什么、做完了什么（证据在哪）、什么卡住了、其余不用管的。
 // 只整理已有数据，不推断进度；Agent 的回报一律标为自述，验收只由你点。
@@ -44,7 +44,7 @@ export interface Today {
 
 const gradeOrder: Record<Grade, number> = { ok: 0, missing: 1, failed: 2 }
 
-// 证据只取能核对的东西：功能进度里 Agent 回报的验证结果、Git 确认的合并、分支。
+// 证据来自 Agent 回报的功能验证、合并检查、Git 确认的合并和分支。
 export function evidenceOf(snap: Snapshot, w: WorkItem): { evidence: Evidence[]; grade: Grade } {
   const evidence: Evidence[] = []
   for (const f of snap.features ?? []) {
@@ -61,9 +61,28 @@ export function evidenceOf(snap: Snapshot, w: WorkItem): { evidence: Evidence[];
   }
   if (w.merge_state === 'merged') evidence.push({ label: w.merge_evidence?.method === 'github_pr' ? '已合并（GitHub PR 确认）' : '已合并（Git 确认）', tone: 'ok' })
   else if (w.merge_state === 'approved') {
+    // 审批按创建时间从新到旧。每个工作项只看当前的审批，再按 Git 操作分组。
+    const current = new Map<string, Approval>()
+    for (const a of snap.approvals ?? []) {
+      if (a.kind === 'merge' && (a.status === 'pending' || a.status === 'decided')
+        && a.repo_id === w.repo_id && a.work_item_id && !current.has(a.work_item_id)) current.set(a.work_item_id, a)
+    }
+    const approved = [...current.values()].filter((a) => a.status === 'decided' && !a.payload.stale)
+    const group = mergeGroups(approved).find((g) => g.workItemIds.includes(w.id))
+    const approval = current.get(w.id)
     // 快照中的检查门记录按创建时间从新到旧。
-    const latestJob = snap.merge_jobs?.find((job) => job.work_item_id === w.id)
-    evidence.push({ label: latestJob?.state === 'needs_review' ? '合并已批准，结果待核对' : '合并已批准，未执行', tone: 'info' })
+    const latestJob = approval && group && snap.merge_jobs?.find((job) => job.repo_id === approval.repo_id
+      && group.members.some((a) => a.id === job.approval_id)
+      && (job.approval_id === approval.id || !approval.decided_at || job.created_at >= approval.decided_at)
+      && job.source_sha === approval.payload.source_head_sha && job.target_sha === approval.payload.target_base_sha
+      && job.target_ref === approval.payload.target_ref)
+    if (latestJob?.state === 'failed') {
+      const failedCheck = latestJob.checks?.find((check) => check.exit_code !== 0)
+      if (failedCheck) evidence.push({ label: `合并检查失败 · 退出码 ${failedCheck.exit_code} · 尚未合并`, tone: 'bad', detail: latestJob.error })
+      else evidence.push({ label: `${latestJob.error || '合并执行失败'} · 尚未合并`, tone: 'info' })
+    } else {
+      evidence.push({ label: latestJob?.state === 'needs_review' ? '合并已批准，结果待核对' : '合并已批准，未执行', tone: 'info' })
+    }
   }
   if (w.branch) evidence.push({ label: `分支 ${w.branch}`, tone: 'info' })
   const grade: Grade = evidence.some((e) => e.tone === 'bad') ? 'failed' : evidence.some((e) => e.tone === 'ok') ? 'ok' : 'missing'

@@ -243,7 +243,7 @@ Agent 用 `steward-hook features` 按稳定的功能 ID 回报每项核心功能
 
 - 只在本机运行，只监听回环地址，`Host` 不是回环地址的请求会被拒绝。没有遥测。
 - 两个随机 token，权限 `0600`：一个给 hooks（只能访问 `/hook/*`），一个给面板（只能访问 `/api/*`，使用 HttpOnly、SameSite=Strict 的 cookie，写操作还要检查 Origin 和 `X-Steward`）。`steward open` 打印的登录链接含面板 token，不要发给别人。
-- 保存的是脱敏后的事件元数据（事件类型、工具名、指纹、截断并遮蔽密钥的预览），不保存原始载荷或完整对话。
+- 事件记录保存脱敏后的元数据（事件类型、工具名、指纹、截断并遮蔽密钥的预览），不保存原始载荷或完整对话。托管终端退出时会在本机保存最后一段输出，并遮盖可识别的密钥。
 - Git 远端核对、`ntfy_url`、`summary_command`、`remote_hosts`、多设备的 `hub` 以及主动使用的执行工具有各自的网络边界。远程查看是只读的，使用单独的 token。本机保存资料不代表 Claude / Codex 本身离线。
 
 发现安全问题请按 [SECURITY.md](SECURITY.md) 私下报告，不要开公开 Issue。
