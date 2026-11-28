@@ -208,3 +208,48 @@ func TestWorkItemReviewWithLateDeliveryOrLegacyReturn(t *testing.T) {
 		})
 	}
 }
+
+func TestSnapshotKeepsAcceptanceTimeAfterTitleEdit(t *testing.T) {
+	st, err := store.Open(filepath.Join(t.TempDir(), "review.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { st.Close() })
+	ctx := context.Background()
+	c := core.New(st, nil)
+	h := (&Server{Core: c, PanelToken: "pan"}).Handler()
+	const id = "DEMO-1"
+	acceptedAt := time.Date(2026, 11, 27, 10, 0, 0, 0, time.UTC)
+	now := acceptedAt.Add(-time.Hour)
+	st.Now = func() time.Time { return now }
+	if err := c.CreateWorkItem(ctx, core.WorkItemInput{ID: id, Title: "旧标题"}); err != nil {
+		t.Fatal(err)
+	}
+	now = acceptedAt
+	done := "done"
+	if err := c.UpdateWorkItem(ctx, id, core.WorkItemPatch{Status: &done}); err != nil {
+		t.Fatal(err)
+	}
+	now = acceptedAt.Add(24 * time.Hour)
+	if w := liveDo(h, "PATCH", local, "/api/work-items/"+id, cookieName, "pan", `{"title":"新标题"}`, true); w.Code != http.StatusOK {
+		t.Fatalf("edit title: HTTP %d %s", w.Code, w.Body)
+	}
+	w := liveDo(h, "GET", local, "/api/snapshot", cookieName, "pan", "", false)
+	var snapshot struct {
+		WorkItems []struct {
+			Title           string `json:"title"`
+			UpdatedAt       string `json:"updated_at"`
+			StatusChangedAt string `json:"status_changed_at"`
+		} `json:"work_items"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &snapshot); w.Code != http.StatusOK || err != nil || len(snapshot.WorkItems) != 1 {
+		t.Fatalf("read snapshot: HTTP %d %s (%v)", w.Code, w.Body, err)
+	}
+	item := snapshot.WorkItems[0]
+	if item.Title != "新标题" || item.UpdatedAt != store.TS(now) {
+		t.Fatalf("title edit not reflected in snapshot: %+v", item)
+	}
+	if item.StatusChangedAt != store.TS(acceptedAt) {
+		t.Errorf("snapshot status_changed_at = %q, want acceptance time %q", item.StatusChangedAt, store.TS(acceptedAt))
+	}
+}

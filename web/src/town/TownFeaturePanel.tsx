@@ -1,5 +1,6 @@
 import { useId, useRef, useState } from 'react'
 import { ago } from '../model'
+import { workItemLabel } from '../hub/hub'
 import type { RoomFocus } from './roomRequest'
 import { houseInfo, featureStatus } from './houseInfo'
 import type { PurposeFeature } from './featureCategories'
@@ -74,7 +75,7 @@ export function TownFeaturePanel({ b, features, structure, writeable = false, on
           const summary = w.brief?.fields.progress
           const blocker = w.brief?.fields.blocker
           return <li key={w.id}>{onOpenItem ? <button type="button" onClick={() => onOpenItem(w.id)}>{w.title}</button> : <b>{w.title}</b>}
-            <p className="town-house-features-line">{w.id} · {itemStatusLabel[w.status]}{w.management?.state === 'paused' ? ' · 已暂停' : ''}</p>
+            <p className="town-house-features-line">{workItemLabel(b.devices, w.id)} · {itemStatusLabel[w.status]}{w.management?.state === 'paused' ? ' · 已暂停' : ''}</p>
             <details className="town-room-task-links"><summary>关联功能 · {linked.length} 项</summary>{linked.length ? <ul>{linked.map(f => <li key={f.id}>{f.title}</li>)}</ul> : <p className="town-house-features-line">尚未登记关联。</p>}</details>
             {summary && !summary.flagged && <p>{summary.text}</p>}{blocker && !blocker.flagged && blocker.text && <p className="town-house-features-blocker">卡点：{blocker.text}</p>}
           </li>

@@ -11,6 +11,7 @@ import { Flowers, Pine } from './scenery'
 import { AGENTS, agentOf, type Agent } from './agents'
 import { Cart, type ShedSpot } from './workshop'
 import { TownFeaturePanel } from './TownFeaturePanel'
+import { workItemLabel } from '../hub/hub'
 import type { ProjectFeature, ProjectStructure, WorkItem } from '../types'
 import './houseCard.css'
 import type { ReactNode } from 'react'
@@ -234,7 +235,7 @@ export function InteriorScene({ b, model, selected, highlight, onSelect, changed
         const review = b.parcels.filter((p) => p.item?.id === w.id && onReviewDesk(p))
         return (
           <g key={w.id} className={`town-obj town-bench${isSel('item', w.id) ? ' is-selected' : ''}${dim(highlight === 'review' ? w.status === 'review' : highlight === 'failed' ? false : !highlight)}`}
-            {...activate(() => onSelect({ kind: 'item', key: w.id }))} aria-label={`工作项 ${w.id} ${w.title}：${itemStatusLabel[w.status]}`}>
+            {...activate(() => onSelect({ kind: 'item', key: w.id }))} aria-label={`工作项 ${workItemLabel(b.devices, w.id)} ${w.title}：${itemStatusLabel[w.status]}`}>
             <IsoBox gx={s.gx} gy={s.gy} w={BENCH_W} d={BENCH_D} h={18} top={BENCH_TOP[w.status]} left="#b98a52" right="#9c7140" stroke={isSel('item', w.id) ? '#2d6cdf' : undefined} />
             {illustrated && <StoryDeskDetail gx={s.gx} gy={s.gy} />}
             {review.slice(0, 2).map((p, k) => <g key={p.key} className="town-crate"><Crate at={iso(s.gx + 2.1 + k * 0.5, s.gy + 0.5, 18)} fill="#d6b27a" tape="#5b6cd8" /></g>)}
@@ -259,7 +260,7 @@ export function InteriorScene({ b, model, selected, highlight, onSelect, changed
           <g key={`lb-${w.id}`} className={`town-obj${dim(highlight === 'review' ? w.status === 'review' : highlight === 'failed' ? false : !highlight)}`} transform={`translate(${label[0]},${label[1]})`}
             {...activate(() => onSelect({ kind: 'item', key: w.id }))} aria-hidden>
             <rect x="-64" y="-30" width="128" height="32" rx="6" fill="#fffaf0" stroke={STATUS_FG[w.status]} strokeWidth="1.5" />
-            <text x="0" y="-17" textAnchor="middle" fontSize="9.5" fontWeight="700" fill={STATUS_FG[w.status]}>{itemStatusLabel[w.status]} · {w.id}</text>
+            <text x="0" y="-17" textAnchor="middle" fontSize="9.5" fontWeight="700" fill={STATUS_FG[w.status]}>{itemStatusLabel[w.status]} · {workItemLabel(b.devices, w.id)}</text>
             <text x="0" y="-4" textAnchor="middle" fontSize="11" fill="#3a2a1c">{clip(w.title, 11)}</text>
             {w.status === 'blocked' && <g transform="translate(58,-30)"><circle r="9" fill="#d2483d" /><text y="4" textAnchor="middle" fontSize="12" fontWeight="800" fill="#fff">!</text></g>}
           </g>

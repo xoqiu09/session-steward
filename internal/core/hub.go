@@ -161,7 +161,7 @@ func (c *Core) HubOthers(ctx context.Context, hubID, hubName, viewerID string) (
 	out := &Snapshot{}
 	for i, p := range parts {
 		out.Devices = append(out.Devices, HubDevice{ID: p.id, Name: p.name, ReceivedAt: p.at, Online: p.online})
-		addSnap(out, p.snap, p.name, int64(i+1)*hubIDStride, p.name+":")
+		addSnap(out, p.snap, p.name, int64(i+1)*hubIDStride, p.id+":")
 	}
 	return out, nil
 }

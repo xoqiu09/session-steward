@@ -37,7 +37,7 @@ const snap: Snapshot = {
     item('BOOK-2', '导出 CSV', { brief: brief({ progress: bf('写好导出', 5) }) }),
     item('BOOK-8', '发布测试版', {}),
     item('BLOG-4', '旧链接跳转', { brief: brief({ next_owner: bf('user', 120), next: bf('决定旧链接要不要做 301 跳转', 120) }) }),
-    item('OLD-1', '昨天验收的', { status: 'done', updated_at: t(120) }),
+    item('OLD-1', '昨天验收的', { status: 'done', updated_at: t(120), status_changed_at: t(120) }),
     item('BLOG-6', '还没开工的标签页', { status: 'todo', ready: false, waiting: ['BLOG-3'] }),
   ],
   features: [
@@ -88,6 +88,12 @@ describe('每日十分钟的四件事', () => {
     const fresh = buildToday(snap, t(30)).review.filter((r) => r.fresh).map((r) => r.item.id)
     expect(fresh.sort()).toEqual(['BOOK-9', 'DASH-2'])
   })
+  it('上次看过以来已处理只计入这次验收，不计入昨天验收后今天改名的任务', () => {
+    const renamed = { ...item('DEMO-1', '改过的标题', { status: 'done', created_at: t(1560), updated_at: t(0) }), status_changed_at: t(1500) }
+    const accepted = { ...item('DEMO-2', '今天验收', { status: 'done', updated_at: t(10) }), status_changed_at: t(10) }
+    const today = buildToday({ ...snap, work_items: [renamed, accepted] }, t(30))
+    expect(today.acceptedSince.map((w) => w.id)).toEqual(['DEMO-2'])
+  })
 })
 
 describe('用户管理日常提醒', () => {
@@ -117,7 +123,7 @@ describe('用户管理日常提醒', () => {
     expect(itemSignal(changed, changed.work_items!.find(w => w.id === 'BOOK-8')!).label).toBe('待你批准')
   })
   it('acceptance keeps old blockers out of the active queues without losing history data', () => {
-    const changed: Snapshot = { ...snap, work_items: snap.work_items!.map(w => w.id === 'DASH-4' ? { ...w, status: 'done', management: { state: 'accepted', at: NOW } } : w) }
+    const changed: Snapshot = { ...snap, work_items: snap.work_items!.map(w => w.id === 'DASH-4' ? { ...w, status: 'done', status_changed_at: NOW, management: { state: 'accepted', at: NOW } } : w) }
     const t = buildToday(changed, '')
     expect(t.stuck.some(s => s.item.id === 'DASH-4')).toBe(false)
     expect(t.acceptedSince.some(w => w.id === 'DASH-4')).toBe(true)
