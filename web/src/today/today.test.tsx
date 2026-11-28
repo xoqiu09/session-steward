@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
-import type { Approval, BriefField, FeatureContribution, ProjectFeature, Session, Snapshot, WorkItem } from '../types'
+import type { Approval, BriefField, FeatureContribution, MergeJob, ProjectFeature, Session, Snapshot, WorkItem } from '../types'
 import { attentionSummary, buildToday, summaryText } from './todayModel'
 import { TodayView } from './TodayView'
 import { itemSignal, reportedHandoffs } from '../model'
@@ -132,6 +132,68 @@ describe('用户管理日常提醒', () => {
 })
 
 describe('TodayView', () => {
+  const mergeReview = () => {
+    const approval: Approval = { ...snap.approvals![1], status: 'decided', decision: 'approve', decided_at: t(10) }
+    const job: MergeJob = {
+      id: 'check-current', approval_id: approval.id, work_item_id: 'BLOG-3', repo_id: 1,
+      source_sha: 'a1', target_ref: 'main', target_sha: 'b2', merge_sha: 'c3', state: 'failed',
+      checks: [{ argv: ['synthetic-check'], exit_code: 3, seconds: 1, tail: 'synthetic failure' }],
+      error: '检查未通过', created_at: t(9), updated_at: t(8),
+    }
+    const oldJob = { ...job, id: 'check-old', approval_id: 'M-old', created_at: t(7) }
+    const changed: Snapshot = {
+      ...snap, work_items: [item('BLOG-3', '迁移图片', { status: 'review', merge_state: 'approved', branch: 'steward/blog-3', needs_merge: true })],
+      features: [], approvals: [approval], merge_jobs: [oldJob, job],
+    }
+    return { approval, job, oldJob, changed }
+  }
+
+  it('在验收卡显示本次合并检查失败和退出码', () => {
+    const { job, oldJob, changed } = mergeReview()
+    expect(buildToday(changed, '').review[0].grade).toBe('failed')
+    const html = renderToStaticMarkup(<TodayView snap={changed} onSelectItem={() => {}} onOpenTown={() => {}} />)
+    expect(html).toContain('有验证失败')
+    expect(html).toContain('合并检查失败 · 退出码 3 · 尚未合并')
+    expect(html).not.toContain('合并已批准，未执行')
+
+    for (const staleJob of [oldJob, { ...job, source_sha: 'old-source' }, { ...job, target_sha: 'old-target' }]) {
+      const row = buildToday({ ...changed, merge_jobs: [staleJob] }, '').review[0]
+      expect(row.grade).toBe('missing')
+      expect(row.evidence[0].label).toBe('合并已批准，未执行')
+    }
+  })
+
+  it('创建集成工作树失败时显示原因和尚未合并', () => {
+    const { job, changed } = mergeReview()
+    const error = '创建集成工作树失败：没有权限'
+    const failed = { ...changed, merge_jobs: [{ ...job, checks: [], error }] }
+    expect(buildToday(failed, '').review[0].grade).toBe('missing')
+    const html = renderToStaticMarkup(<TodayView snap={failed} onSelectItem={() => {}} onOpenTown={() => {}} />)
+    expect(html).toContain(`${error} · 尚未合并`)
+    expect(html).not.toContain('有验证失败')
+    expect(html).not.toContain('合并检查失败')
+  })
+
+  it('同一次合并批准的两张验收卡都显示当前检查的退出码', () => {
+    const { approval, job, changed } = mergeReview()
+    const peer = { ...approval, id: 'M2', work_item_id: 'BLOG-4' }
+    const previous = { ...approval, id: 'M-old', created_at: t(60), decided_at: t(50) }
+    const group: Snapshot = {
+      ...changed,
+      work_items: [changed.work_items![0], { ...changed.work_items![0], id: 'BLOG-4', title: '迁移缩略图' }],
+      approvals: [approval, peer, previous],
+    }
+    const current = { ...group, merge_jobs: [job] }
+    const rows = buildToday(current, '').review
+    expect(rows.map((row) => [row.item.id, row.grade])).toEqual([['BLOG-3', 'failed'], ['BLOG-4', 'failed']])
+    for (const row of rows) expect(row.evidence[0].label).toBe('合并检查失败 · 退出码 3 · 尚未合并')
+    const html = renderToStaticMarkup(<TodayView snap={current} onSelectItem={() => {}} onOpenTown={() => {}} />)
+    expect(html.match(/合并检查失败 · 退出码 3 · 尚未合并/g)).toHaveLength(2)
+    for (const staleJob of [{ ...job, approval_id: previous.id }, { ...job, source_sha: 'old-source' }, { ...job, target_sha: 'old-target' }]) {
+      expect(buildToday({ ...group, merge_jobs: [staleJob] }, '').review.map((row) => row.grade)).toEqual(['missing', 'missing'])
+    }
+  })
+
   it('同一工作和候选版本的较晚通过回报不会盖住失败', () => {
     const changed = { ...snap, features: [feature('export', '导出', [
       contribution('DASH-2', { validation: 'failed', evidence: '大文件导出失败', at: t(7), active: false }),

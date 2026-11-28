@@ -26,7 +26,8 @@ type fakeTerm struct {
 	sent   []string
 	failOn string
 	// captureErr 模拟 tmux 读取画面失败（会话仍在）
-	captureErr error
+	captureErr  error
+	captureText string
 }
 
 func newFakeTerm() *fakeTerm {
@@ -60,6 +61,9 @@ func (f *fakeTerm) Capture(_ context.Context, name string, _ int) (string, error
 	}
 	if f.captureErr != nil {
 		return "", f.captureErr
+	}
+	if f.captureText != "" {
+		return f.captureText, nil
 	}
 	return "screen of " + name, nil
 }
@@ -634,6 +638,51 @@ func TestManagedExitKeepsLastScreen(t *testing.T) {
 	if text, _, _ := c2.CaptureManaged(ctx, a.ID); text != "screen of "+a.TmuxName {
 		t.Fatalf("重启后丢失最后画面: %q", text)
 	}
+}
+
+func TestManagedExitRedactsLastScreen(t *testing.T) {
+	c, ft, repo := managedCore(t)
+	ctx := context.Background()
+	m, err := c.LaunchManaged(ctx, LaunchInput{RepoID: repo, Agent: "claude", Title: "Synthetic exit"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	const raw = "export failed: missing token\nENOENT: file not found\ntoken=DEMO_ONLY_123456\n"
+	const want = "export failed: missing token\nENOENT: file not found\ntoken=***\n"
+	ft.mu.Lock()
+	ft.captureText = raw
+	ft.panes[m.TmuxName] = tmux.Pane{Name: m.TmuxName, Dead: true, ExitCode: 1, HasExitCode: true}
+	ft.mu.Unlock()
+	if err := c.ReconcileManaged(ctx); err != nil {
+		t.Fatal(err)
+	}
+	var stored string
+	if err := c.St.R().QueryRow(`SELECT text FROM managed_screens WHERE managed_id=?`, m.ID).Scan(&stored); err != nil {
+		t.Fatal(err)
+	}
+	if stored != want {
+		t.Errorf("stored screen = %q, want %q", stored, want)
+	}
+	checkReopened := func(label string) {
+		t.Helper()
+		reopened := New(c.St, c.Loc)
+		reopened.Term = ft
+		text, got, err := reopened.CaptureManaged(ctx, m.ID)
+		if err != nil || got.State != "exited" {
+			t.Fatalf("%s: failed to read the exited session: %+v, %v", label, got, err)
+		}
+		if text != want {
+			t.Errorf("%s: reopened screen = %q, want %q", label, text, want)
+		}
+	}
+	checkReopened("new screen")
+	if err := c.St.Tx(ctx, func(tx *sql.Tx) error {
+		_, err := tx.Exec(`UPDATE managed_screens SET text=? WHERE managed_id=?`, raw, m.ID)
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	checkReopened("legacy screen")
 }
 
 // 画面读取失败（非“会话不存在”）时不 Kill、不改状态，下一轮重试，避免丢失最后画面。

@@ -67,6 +67,8 @@ func (c *Core) applyFeatures(tx *sql.Tx, sid int64, e *event.Event, now string) 
 	if err != nil {
 		return err
 	}
+	// Record when the reports are stored, under the same write lock as Owner acceptance.
+	receivedAt := c.St.NowTS()
 	for _, f := range e.Features.Features {
 		// Metadata is stable. Reports cannot silently rename/remove features or alter acceptance criteria.
 		var title string
@@ -96,7 +98,7 @@ func (c *Core) applyFeatures(tx *sql.Tx, sid int64, e *event.Event, now string) 
 			}
 		}
 		body, _ := json.Marshal(f)
-		if _, err = tx.Exec(`INSERT INTO feature_reports(repo_id,feature_id,event_id,session_id,run_id,work_item_id,body,at,received_at) VALUES(?,?,?,?,?,?,?,?,?)`, repo, f.ID, e.EventID, sid, run, item, string(body), at, now); err != nil {
+		if _, err = tx.Exec(`INSERT INTO feature_reports(repo_id,feature_id,event_id,session_id,run_id,work_item_id,body,at,received_at) VALUES(?,?,?,?,?,?,?,?,?)`, repo, f.ID, e.EventID, sid, run, item, string(body), at, receivedAt); err != nil {
 			return err
 		}
 	}
@@ -128,7 +130,18 @@ func (c *Core) readFeatures(tx *sql.Tx) ([]ProjectFeature, error) {
 	if err != nil {
 		return nil, err
 	}
-	rows, err = tx.Query(`SELECT f.repo_id,f.feature_id,f.body,f.session_id,f.run_id,f.work_item_id,s.provider,f.at,r.ended_at=''
+	latestFailures := make([]map[string]string, len(out))
+	// A later event already stored when a failure arrived can supersede it in the same run.
+	// Changes to the candidate reset validation; partial reports for the same candidate keep it.
+	rows, err = tx.Query(`SELECT f.repo_id,f.feature_id,f.body,f.session_id,f.run_id,f.work_item_id,s.provider,f.at,
+ CASE WHEN json_extract(f.body,'$.validation')='failed' AND NOT EXISTS (
+  SELECT 1 FROM feature_reports newer
+  WHERE newer.repo_id=f.repo_id AND newer.feature_id=f.feature_id AND newer.run_id=f.run_id
+   AND newer.at>f.at AND newer.id<f.id
+   AND (json_extract(newer.body,'$.candidate') IS NOT json_extract(f.body,'$.candidate')
+    OR COALESCE(json_extract(newer.body,'$.validation'),'')<>'')
+ ) THEN f.received_at ELSE '' END,
+ r.ended_at=''
  FROM feature_reports f JOIN sessions s ON s.id=f.session_id JOIN runs r ON r.id=f.run_id
  WHERE r.outcome<>'attribution_reverted' ORDER BY f.at,f.id`)
 	if err != nil {
@@ -136,9 +149,9 @@ func (c *Core) readFeatures(tx *sql.Tx) ([]ProjectFeature, error) {
 	}
 	for rows.Next() {
 		var repo int64
-		var id, body string
+		var id, body, failureReceivedAt string
 		var p FeatureContribution
-		if err = rows.Scan(&repo, &id, &body, &p.SessionID, &p.RunID, &p.WorkItemID, &p.Provider, &p.At, &p.Active); err != nil {
+		if err = rows.Scan(&repo, &id, &body, &p.SessionID, &p.RunID, &p.WorkItemID, &p.Provider, &p.At, &failureReceivedAt, &p.Active); err != nil {
 			rows.Close()
 			return nil, err
 		}
@@ -149,6 +162,12 @@ func (c *Core) readFeatures(tx *sql.Tx) ([]ProjectFeature, error) {
 		i, ok := idx[key(repo, id)]
 		if !ok {
 			continue
+		}
+		if failureReceivedAt > latestFailures[i][p.Candidate] {
+			if latestFailures[i] == nil {
+				latestFailures[i] = map[string]string{}
+			}
+			latestFailures[i][p.Candidate] = failureReceivedAt
 		}
 		f := &out[i]
 		f.WorkItemIDs = appendUniq(f.WorkItemIDs, p.WorkItemID)
@@ -224,7 +243,7 @@ func (c *Core) readFeatures(tx *sql.Tx) ([]ProjectFeature, error) {
 		}
 		if i, ok := idx[key(repo, id)]; ok {
 			f := &out[i]
-			f.Accepted = decision == "accepted" && candidate != "" && candidate == f.Candidate && scope == f.ScopeVersion && !f.Conflict && f.Implementation == "implemented" && f.Validation != "failed"
+			f.Accepted = decision == "accepted" && candidate != "" && candidate == f.Candidate && scope == f.ScopeVersion && !f.Conflict && f.Implementation == "implemented" && f.Validation != "failed" && latestFailures[i][candidate] <= at
 			f.AcceptedAt = at
 			latestAcceptanceIDs[i] = acceptanceID
 		}

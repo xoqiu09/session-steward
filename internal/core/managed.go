@@ -17,6 +17,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/xoqiu09/session-steward/internal/event"
 	"github.com/xoqiu09/session-steward/internal/store"
 	"github.com/xoqiu09/session-steward/internal/tmux"
 )
@@ -462,6 +463,14 @@ func (c *Core) SendManagedInput(ctx context.Context, id, text, key string) error
 // lastScreenMax 限制保存的最后画面大小（保留末尾）。
 const lastScreenMax = 64 << 10
 
+func redactLastScreen(text string) string {
+	lines := strings.Split(text, "\n")
+	for i, line := range lines {
+		lines[i] = event.Redact(line)
+	}
+	return strings.Join(lines, "\n")
+}
+
 // saveLastScreen 在结束 tmux 会话前保存最后画面。tmux 会话已不存在时没有可保存的内容，不算错误。
 func (c *Core) saveLastScreen(ctx context.Context, id, name string) error {
 	text, err := c.Term.Capture(ctx, name, 300)
@@ -471,6 +480,7 @@ func (c *Core) saveLastScreen(ctx context.Context, id, name string) error {
 		}
 		return err
 	}
+	text = redactLastScreen(text)
 	if len(text) > lastScreenMax {
 		cut := len(text) - lastScreenMax
 		for cut < len(text) && !utf8.RuneStart(text[cut]) {
@@ -499,7 +509,7 @@ func (c *Core) CaptureManaged(ctx context.Context, id string) (string, *ManagedS
 		var text string
 		err := c.St.R().QueryRowContext(ctx, `SELECT text FROM managed_screens WHERE managed_id=?`, id).Scan(&text)
 		if err == nil {
-			return text, m, nil
+			return redactLastScreen(text), m, nil
 		}
 		if !errors.Is(err, sql.ErrNoRows) {
 			return "", m, err
