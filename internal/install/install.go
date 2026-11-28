@@ -338,6 +338,9 @@ func (in *Installer) Uninstall(t Target) (mode string, err error) {
 			if err != nil {
 				return "", fmt.Errorf("读取备份失败：%w", err)
 			}
+			if sum(orig) != st.OrigHash {
+				return "", fmt.Errorf("备份损坏：%s 的内容与安装记录不符", in.backupPath(t))
+			}
 			fi, _ := os.Stat(t.Path)
 			if err := atomicWrite(t.Path, orig, fi.Mode().Perm(), sum(raw)); err != nil {
 				return "", err
