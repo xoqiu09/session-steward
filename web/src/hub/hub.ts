@@ -8,10 +8,25 @@ export type HubScope = 'here' | 'all'
 const SCOPE_KEY = 'ss.hub.scope'
 
 export { HUB_STRIDE }
+function remoteItem(devices: Snapshot['devices'], id: string) {
+  if (!devices?.length) return null
+  const i = id.lastIndexOf(':')
+  if (i <= 0) return null
+  const prefix = id.slice(0, i)
+  // Older hubs used the device name as the prefix.
+  const device = devices.find((d) => !d.self && d.id === prefix)?.name ?? prefix
+  return { device, item: id.slice(i + 1) }
+}
+
+export function workItemLabel(devices: Snapshot['devices'], id: string): string {
+  const remote = remoteItem(devices, id)
+  return remote ? `${remote.device}:${remote.item}` : id
+}
+
 export function remoteDeviceOf(snap: Snapshot, kind: 'item' | 'session', id: string | number): string | null {
+  if (kind === 'item') return remoteItem(snap.devices, String(id))?.device ?? null
   const devs = snap.devices
   if (!devs?.length) return null
-  if (kind === 'item') { const i = String(id).indexOf(':'); return i > 0 ? String(id).slice(0, i) : null }
   const n = Math.floor(Number(id) / HUB_STRIDE)
   return n > 0 ? devs.filter((d) => !d.self)[n - 1]?.name ?? '另一台电脑' : null
 }

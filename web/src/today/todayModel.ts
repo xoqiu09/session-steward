@@ -127,7 +127,7 @@ export function buildToday(snap: Snapshot, lastSeen: string): Today {
   const running = current.filter((w) => !attentionManaged(w) && w.status === 'in_progress' && !taken.has(w.id) && !stuckIds.has(w.id))
   const managed = items.filter((w) => attentionManaged(w) && !['done', 'abandoned'].includes(w.status))
   const since = lastSeen || new Date(Date.parse(snap.now) - 86_400_000).toISOString()
-  const acceptedSince = items.filter((w) => w.status === 'done' && w.updated_at > since)
+  const acceptedSince = items.filter((w) => w.status === 'done' && (w.status_changed_at ?? '') > since)
   const { recent, quiet } = sessionBuckets(snap)
   const unregistered = [...recent, ...quiet].filter((s) => !s.work_item_id).length
   return { decide, review, stuck, running, managed, acceptedSince, unregistered }

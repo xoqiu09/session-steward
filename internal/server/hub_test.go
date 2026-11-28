@@ -75,7 +75,7 @@ func TestHubPushPullAndMerge(t *testing.T) {
 	if len(snap.Devices) != 2 || !snap.Devices[0].Self || snap.Devices[1].Name != "笔记本" || !snap.Devices[1].Online {
 		t.Fatalf("设备列表 %+v", snap.Devices)
 	}
-	if ids := itemIDs(&snap); !ids["笔记本:NB-1"] || !ids["HUB-1"] {
+	if ids := itemIDs(&snap); !ids["dev-nb:NB-1"] || !ids["HUB-1"] {
 		t.Fatalf("中心机视角：本机工作项编号不变，其他设备的带设备前缀：%v", ids)
 	}
 
@@ -93,7 +93,7 @@ func TestHubPushPullAndMerge(t *testing.T) {
 	if len(mine.Devices) != 2 || !mine.Devices[0].Self || mine.Devices[0].Name != "笔记本" || mine.Devices[1].Self || mine.Devices[1].Name != "台式机" || !mine.Devices[1].Online {
 		t.Fatalf("笔记本视角的设备列表 %+v", mine.Devices)
 	}
-	if ids := itemIDs(&mine); !ids["NB-1"] || !ids["台式机:HUB-1"] || ids["笔记本:NB-1"] || ids["HUB-1"] {
+	if ids := itemIDs(&mine); !ids["NB-1"] || !ids["dev-hub:HUB-1"] || ids["dev-nb:NB-1"] || ids["HUB-1"] {
 		t.Fatalf("笔记本视角：本机编号不变，中心机的带前缀：%v", ids)
 	}
 	for _, rp := range mine.Repos {
@@ -109,6 +109,60 @@ func itemIDs(s *core.Snapshot) map[string]bool {
 		out[it.ID] = true
 	}
 	return out
+}
+
+func TestHubSnapshotKeepsSameNamedDevicesSeparate(t *testing.T) {
+	c := hubCore(t, "hub")
+	srv := &Server{Core: c, PanelToken: "pan",
+		Hub: &Hub{Role: "hub", SelfID: "dev-hub", SelfName: "台式机"}}
+	ctx := context.Background()
+	const deviceName, workID = "笔记本", "DEMO-1"
+	repoID := int64(1)
+	for _, id := range []string{"dev-a", "dev-b"} {
+		snapshot := &core.Snapshot{
+			Repos:     []core.Repo{{ID: repoID, Name: id + "-project"}},
+			WorkItems: []core.WorkItem{{ID: workID, RepoID: &repoID}},
+		}
+		if id == "dev-a" {
+			snapshot.Runs = []core.Run{{ID: 1, WorkItemID: workID, StartedAt: c.St.NowTS()}}
+		}
+		if err := c.HubStore(ctx, core.HubSummary{DeviceID: id, DeviceName: deviceName, Snapshot: snapshot}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	r := httptest.NewRequest("GET", "http://127.0.0.1:7788/api/hub/snapshot", nil)
+	r.AddCookie(&http.Cookie{Name: cookieName, Value: "pan"})
+	w := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(w, r)
+	if w.Code != http.StatusOK {
+		t.Fatalf("snapshot: %d %s", w.Code, w.Body.String())
+	}
+	var snap core.Snapshot
+	if err := json.Unmarshal(w.Body.Bytes(), &snap); err != nil {
+		t.Fatal(err)
+	}
+	if len(snap.WorkItems) != 2 || len(snap.Repos) != 2 || len(snap.Runs) != 1 {
+		t.Fatalf("got %d work items, %d repos and %d runs", len(snap.WorkItems), len(snap.Repos), len(snap.Runs))
+	}
+	if snap.WorkItems[0].ID == snap.WorkItems[1].ID {
+		t.Errorf("both devices have merged work item ID %q", snap.WorkItems[0].ID)
+	}
+	projectByWork := make(map[string]int64)
+	for _, item := range snap.WorkItems {
+		if item.RepoID == nil {
+			t.Fatalf("work item %q has no project", item.ID)
+		}
+		projectByWork[item.ID] = *item.RepoID
+	}
+	for _, repo := range snap.Repos {
+		if repo.Device != deviceName {
+			t.Errorf("project %q shows device name %q, want %q", repo.Name, repo.Device, deviceName)
+		}
+		if gotRun, wantRun := projectByWork[snap.Runs[0].WorkItemID] == repo.ID, repo.Name == "dev-a-project"; gotRun != wantRun {
+			t.Errorf("project %q counted the run: %v, want %v", repo.Name, gotRun, wantRun)
+		}
+	}
 }
 
 // 中心机还是旧版、不认 viewer 时，返回的是它视角的合并视图：其他设备原样显示，不再叠一份本机数据。

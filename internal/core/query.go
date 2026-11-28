@@ -73,7 +73,7 @@ type Dep struct {
 }
 
 type WorkItem struct {
-	StatusChangedAt       string          `json:"-"`
+	StatusChangedAt       string          `json:"status_changed_at,omitempty"`
 	MergeChangedAt        string          `json:"-"`
 	DependenciesChangedAt string          `json:"-"`
 	ID                    string          `json:"id"`

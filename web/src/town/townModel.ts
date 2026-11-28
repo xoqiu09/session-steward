@@ -42,6 +42,7 @@ export interface BuildingView {
   key: string
   repo: Repo | null
   name: string
+  devices?: Snapshot['devices']
   characters: CharacterView[]
   /** 超出场景工位（MAX_SEATS）的角色数，只在列表里看得到。 */
   hiddenCharacters: number
@@ -184,7 +185,7 @@ export function buildTown(snap: Snapshot, clientNow?: string): TownModel {
   })
 
   const repoOf = (repoId: number | null | undefined) => (repoId == null ? 'none' : String(repoId))
-  const empty = (key: string, repo: Repo | null, name: string): BuildingView => ({ key, repo, name, characters: [], hiddenCharacters: 0, items: [], parcels: [] })
+  const empty = (key: string, repo: Repo | null, name: string): BuildingView => ({ key, repo, name, devices: snap.devices, characters: [], hiddenCharacters: 0, items: [], parcels: [] })
   const buildings = repos.map((repo) => empty(`repo-${repo.id}`, repo, repo.name))
   const unassigned = empty('repo-none', null, '未归属')
   const byRepo = new Map(buildings.map((b) => [repoOf(b.repo!.id), b]))

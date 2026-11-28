@@ -106,6 +106,7 @@ export interface WorkItem {
   repo_id: number | null
   title: string
   status: ItemStatus
+  status_changed_at?: string
   review_revision?: string
   acceptance: string
   branch: string
