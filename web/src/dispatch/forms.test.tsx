@@ -16,7 +16,7 @@ const host = vi.hoisted(() => {
 })
 vi.mock('react', async original => ({ ...await original<typeof import('react')>(), useState: host.state, useRef: host.ref, useEffect: host.effect, useCallback: (fn: unknown) => fn }))
 import { DispatchDesk, NewTask, ProjectManager, TaskPanel } from './DispatchDesk'
-import { OrchestrationPanel, type OrchestrationState } from './OrchestrationPanel'
+import { OrchestrationPanel, OrchestrationSummary, type OrchestrationState } from './OrchestrationPanel'
 import type { DispatchDeskState, DispatchTask } from './dispatchModel'
 import { fakeItem } from '../town/fixtures'
 import type { WorkItem } from '../types'
@@ -299,4 +299,34 @@ describe('后台授权不随轮询换工作', () => {
     expect(x.posts[1]).toEqual(x.posts[0])
     x.finish(response({ error: '合成拒绝' }, false)); await retry
   })
+})
+
+it('三条更新的输入不会挤掉最早一条待核对输入的处理按钮', async () => {
+  const delivery = { id: 'earliest', work_item_id: 'A', revision: 'original-revision', state: 'uncertain', reason: 'execution_unknown', receipt: '' }
+  const data: OrchestrationState = {
+    mode: 'enabled', available: true,
+    mandates: [{ work_item_id: 'A', revision: 'grant', expires_at: '2026-11-02T12:00:00Z', max_turns: 10, turns: 1, revoked: false }],
+    deliveries: [...['fourth', 'third', 'second'].map(id => ({ ...delivery, id, state: 'queued', reason: '' })), delivery],
+    findings: [],
+  }
+  const posts: { path: string; body: unknown }[] = []
+  vi.stubGlobal('fetch', vi.fn(async (path: string, init?: RequestInit) => {
+    if (init?.method === 'POST') {
+      posts.push({ path, body: JSON.parse(String(init.body)) })
+      return response({ ok: true })
+    }
+    return response(path === '/api/orchestration' ? data : { work_items: [] })
+  }))
+  const draw = () => render(OrchestrationPanel, {})
+  draw(); await flush()
+  for (const [label, action] of [['核对已记录回执', 'verify_receipt'], ['结束这条输入，不重发', 'close_unknown']]) {
+    const summary = nodes(draw()).find(node => node.type === OrchestrationSummary)!
+    const button = nodes(OrchestrationSummary(summary.props)).find(node => node.type === 'button' && node.props.children === label)
+    expect(button, label).toBeDefined()
+    expect(button!.props.disabled).toBe(false)
+    button!.props.onClick()
+    await flush()
+    expect(posts.at(-1)).toEqual({ path: '/api/orchestration/deliveries/earliest/reconcile', body: { revision: 'original-revision', action } })
+  }
+  expect(posts).toHaveLength(2)
 })

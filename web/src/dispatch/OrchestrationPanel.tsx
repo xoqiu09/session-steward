@@ -25,11 +25,21 @@ export function OrchestrationSummary({ state, items, onRevoke, onAcknowledge, on
   return <>
     {!state.available && <p className="dd-alert">这台电脑暂时没有可用的 Codex 执行入口。可以查看，不能在后台执行。</p>}
     {state.mandates.length === 0 && <p className="muted">还没有工作获得后台推进授权。开启模式后也不会自动取得其他项目的权限。</p>}
-    <ul className="orch-records">{state.mandates.map((m) => <li key={m.work_item_id}>
-      <div><a href={`/?view=town&world=1#item=${encodeURIComponent(m.work_item_id)}`}>{title(m.work_item_id)}</a><small className="muted">{m.revoked ? '授权已撤销' : `已使用 ${m.turns} / ${m.max_turns} 回合 · 到期 ${new Date(m.expires_at).toLocaleString()}`}</small></div>
-      {!m.revoked && <button className="btn small" disabled={pending} onClick={() => onRevoke(m)}>撤销授权</button>}
-      <ul className="orch-inputs">{state.deliveries.filter((d) => d.work_item_id === m.work_item_id).slice(0, 3).map((d) => <li key={d.id}><span>{states[d.state] || '状态待核对'}</span>{d.reason && <small>{reasons[d.reason] || '需要核对投递记录'}</small>}{d.state === 'uncertain' && onReconcile && <div className="dd-actions"><button className="btn small" disabled={pending} onClick={() => onReconcile(d, 'verify_receipt')}>核对已记录回执</button><button className="btn small" disabled={pending} onClick={() => onReconcile(d, 'close_unknown')}>结束这条输入，不重发</button></div>}</li>)}</ul>
-    </li>)}</ul>
+    <ul className="orch-records">{state.mandates.map((m) => {
+      let recentCount = 0
+      const deliveries = state.deliveries.filter((d) => {
+        if (d.work_item_id !== m.work_item_id) return false
+        if (d.state === 'uncertain') return true
+        if (recentCount === 3) return false
+        recentCount++
+        return true
+      })
+      return <li key={m.work_item_id}>
+        <div><a href={`/?view=town&world=1#item=${encodeURIComponent(m.work_item_id)}`}>{title(m.work_item_id)}</a><small className="muted">{m.revoked ? '授权已撤销' : `已使用 ${m.turns} / ${m.max_turns} 回合 · 到期 ${new Date(m.expires_at).toLocaleString()}`}</small></div>
+        {!m.revoked && <button className="btn small" disabled={pending} onClick={() => onRevoke(m)}>撤销授权</button>}
+        <ul className="orch-inputs">{deliveries.map((d) => <li key={d.id}><span>{states[d.state] || '状态待核对'}</span>{d.reason && <small>{reasons[d.reason] || '需要核对投递记录'}</small>}{d.state === 'uncertain' && onReconcile && <div className="dd-actions"><button className="btn small" disabled={pending} onClick={() => onReconcile(d, 'verify_receipt')}>核对已记录回执</button><button className="btn small" disabled={pending} onClick={() => onReconcile(d, 'close_unknown')}>结束这条输入，不重发</button></div>}</li>)}</ul>
+      </li>
+    })}</ul>
     {state.findings.some((f) => f.state === 'open' || f.state === 'acknowledged') && <section aria-label="独立检查发现"><h3>需要核对的进展</h3><p className="muted">只根据现有记录提醒；它不会替你停止任务、批准操作或验收。</p>{state.findings.filter((f) => f.state === 'open' || f.state === 'acknowledged').map((f) => <article className="orch-finding" key={f.id}>
       <a href={`/?view=town&world=1#item=${encodeURIComponent(f.work_item_id)}`}>{title(f.work_item_id)}</a><p>{f.fact}</p><details><summary>查看判断依据</summary><p className="dd-mono">{f.basis}</p><small>{new Date(f.opened_at).toLocaleString()}</small></details>
       {f.state === 'open' ? <button className="btn small" disabled={pending} onClick={() => onAcknowledge(f.id)}>知道了，保留问题</button> : <small className="muted">你已看过，仍待新证据核对</small>}

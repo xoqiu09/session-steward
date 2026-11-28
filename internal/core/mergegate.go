@@ -50,11 +50,12 @@ func (c *Core) ChecksFor(name, common string) [][]string {
 }
 
 var mergeJobTransitions = map[string][]string{
-	"running": {"queued"},
-	"passed":  {"running"},
-	"failed":  {"queued", "running"},
-	"aborted": {"queued", "running", "passed"},
-	"merged":  {"passed"},
+	"running":      {"queued"},
+	"passed":       {"running"},
+	"failed":       {"queued", "running"},
+	"aborted":      {"queued", "running", "passed"},
+	"merged":       {"passed"},
+	"needs_review": {"passed"},
 }
 
 func (c *Core) setJob(ctx context.Context, id, to string, mut func(*MergeJob)) error {
@@ -428,11 +429,44 @@ func (c *Core) readMergeJobs(tx *sql.Tx) ([]MergeJob, error) {
 	return out, rows.Err()
 }
 
-// RecoverMergeJobs：服务重启时中断的任务记为中止（不在未知状态下继续合并）。
+// RecoverMergeJobs 核对已通过检查的提交；恢复过程只读 Git，不重新合并。
 func (c *Core) RecoverMergeJobs(ctx context.Context) error {
 	now := c.St.NowTS()
-	return c.St.Tx(ctx, func(tx *sql.Tx) error {
-		_, err := tx.Exec(`UPDATE merge_jobs SET state='aborted', error='服务重启，检查被中断，未合并', updated_at=? WHERE state IN ('queued','running','passed')`, now)
+	if err := c.St.Tx(ctx, func(tx *sql.Tx) error {
+		_, err := tx.Exec(`UPDATE merge_jobs SET state='aborted', error='服务重启，检查被中断，未合并', updated_at=? WHERE state IN ('queued','running')`, now)
 		return err
-	})
+	}); err != nil {
+		return err
+	}
+	rows, err := c.St.R().QueryContext(ctx, `SELECT j.id,COALESCE(r.common_dir,''),j.target_ref,j.merge_sha
+ FROM merge_jobs j LEFT JOIN repos r ON r.id=j.repo_id WHERE j.state='passed'`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	type interruptedMerge struct{ id, common, target, checked string }
+	var interrupted []interruptedMerge
+	for rows.Next() {
+		var j interruptedMerge
+		if err := rows.Scan(&j.id, &j.common, &j.target, &j.checked); err != nil {
+			return err
+		}
+		interrupted = append(interrupted, j)
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	for _, j := range interrupted {
+		state, message := "needs_review", "重启后未能确认目标分支包含已检查的提交。"
+		if j.common != "" && j.checked != "" {
+			targetSHA, err := gitx.Run(ctx, j.common, "show-ref", "--verify", "--hash", "--", "refs/heads/"+j.target)
+			if err == nil && gitx.IsAncestor(ctx, j.common, j.checked, targetSHA) {
+				state, message = "merged", ""
+			}
+		}
+		if err := c.setJob(ctx, j.id, state, func(job *MergeJob) { job.Error = message }); err != nil {
+			return err
+		}
+	}
+	return nil
 }
