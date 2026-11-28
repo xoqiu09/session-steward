@@ -61,22 +61,26 @@ func (c *Core) RefreshUsage(ctx context.Context, src UsageSource, since time.Dur
 	detail, _ := src.(DetailSource)
 	for _, r := range list {
 		t, ok := src.Totals(r.provider, r.sid)
-		if !ok || t.Zero() {
+		if !ok {
 			continue
 		}
-		// 按天归档：总数变了，或这个会话还没有归档过时才重读明细。
-		if detail != nil {
+		// Claude 子 Agent 的用量可能独立变化，每次都重读明细。
+		// 其他会话只在总数变化或尚未归档时重读。
+		if detail != nil && (r.provider == "claude" || !t.Zero()) {
 			var n int
 			_ = c.St.R().QueryRowContext(ctx, `SELECT COUNT(*) FROM usage_daily WHERE session_id=?`, r.id).Scan(&n)
 			var old usage.Totals
 			_ = c.St.R().QueryRowContext(ctx, `SELECT input,output,cache_read,cache_write FROM session_usage WHERE session_id=?`, r.id).Scan(&old.Input, &old.Output, &old.CacheRead, &old.CacheWrite)
-			if n == 0 || old != t {
+			if r.provider == "claude" || n == 0 || old != t {
 				if ch, err := c.archiveDaily(ctx, detail, r.id, r.provider, r.sid); err != nil {
 					return changed, err
-				} else if ch && old == t {
+				} else if ch && (t.Zero() || old == t) {
 					changed++
 				}
 			}
+		}
+		if t.Zero() {
+			continue
 		}
 		now := c.St.NowTS()
 		err := c.St.Tx(ctx, func(tx *sql.Tx) error {

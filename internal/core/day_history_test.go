@@ -3,6 +3,9 @@ package core
 import (
 	"context"
 	"database/sql"
+	"fmt"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -86,4 +89,78 @@ func TestHistoryDaysAndDayDetail(t *testing.T) {
 	if err != nil || !su.Found || len(su.Subagents) != 1 || su.Self.ByDay != nil {
 		t.Fatalf("%v %+v", err, su)
 	}
+}
+
+func TestHistoryRefreshesWhenOnlyClaudeSubagentUsageChanges(t *testing.T) {
+	t.Run("parent_has_usage", func(t *testing.T) {
+		testHistoryWithClaudeSubagentUsage(t, 100)
+	})
+	t.Run("parent_has_no_usage", func(t *testing.T) {
+		testHistoryWithClaudeSubagentUsage(t, 0)
+	})
+}
+
+func testHistoryWithClaudeSubagentUsage(t *testing.T, parentTokens int64) {
+	t.Helper()
+	c := newCore(t, nil)
+	ctx := context.Background()
+	now := time.Date(2026, 11, 22, 12, 0, 0, 0, time.Local)
+	c.St.Now = func() time.Time { return now }
+	const sid = "history-parent"
+	ingested, err := c.Ingest(ctx, ev(sid, event.KindSessionStart, now))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	src := usage.Finder{ClaudeRoot: t.TempDir()}
+	c.UsageDetail = src
+	projectDir := filepath.Join(src.ClaudeRoot, "project")
+	subDir := filepath.Join(projectDir, sid, "subagents")
+	if err := os.MkdirAll(subDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	line := func(id string, tokens int64) string {
+		return fmt.Sprintf(`{"type":"assistant","timestamp":%q,"message":{"id":%q,"model":"claude-test","usage":{"input_tokens":%d}}}`+"\n",
+			now.Format(time.RFC3339), id, tokens)
+	}
+	write := func(path, contents string) {
+		t.Helper()
+		if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(filepath.Join(projectDir, sid+".jsonl"), line("parent", parentTokens))
+	subFile := filepath.Join(subDir, "agent-child.jsonl")
+	subUsage := line("child-1", 20)
+	write(subFile, subUsage)
+
+	check := func(step string, wantTokens int64, wantChanged int) {
+		t.Helper()
+		changed, err := c.RefreshUsage(ctx, src, time.Hour)
+		if err != nil {
+			t.Fatal(err)
+		}
+		history, err := c.History(ctx, 1, true)
+		if err != nil || len(history.Days) != 1 {
+			t.Fatalf("%s：读取历史失败，days=%v err=%v", step, history.Days, err)
+		}
+		tokens := tokenSum(history.Days[0].Tokens)
+		if tokens != wantTokens || changed != wantChanged {
+			t.Errorf("%s：历史用量=%d，更新会话数=%d；期望 %d、%d", step, tokens, changed, wantTokens, wantChanged)
+			return
+		}
+		t.Logf("%s：历史用量=%d，更新会话数=%d", step, tokens, changed)
+	}
+	check("首次刷新", parentTokens+20, 1)
+	write(subFile, subUsage+line("child-2", 30))
+	detail, err := c.SessionUsage(ctx, ingested.SessionID)
+	if err != nil || !detail.Found || len(detail.Subagents) != 1 || tokenSum(detail.Self.Total) != parentTokens || tokenSum(detail.WithSubs) != parentTokens+50 {
+		t.Fatalf("会话详情应显示主会话用量 %d、合计 %d：%+v err=%v", parentTokens, parentTokens+50, detail, err)
+	}
+	check("只增加子助手用量", parentTokens+50, 1)
+	check("用量没有变化", parentTokens+50, 0)
+	if err := os.Remove(subFile); err != nil {
+		t.Fatal(err)
+	}
+	check("清理子助手日志", parentTokens+50, 0)
 }

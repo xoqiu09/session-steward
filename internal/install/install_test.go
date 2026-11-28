@@ -93,6 +93,35 @@ func TestInstallUninstallVerbatim(t *testing.T) {
 	}
 }
 
+func TestUninstallRejectsTruncatedBackup(t *testing.T) {
+	tg, in := setup(t)
+	if _, err := in.Install(tg); err != nil {
+		t.Fatal(err)
+	}
+	installed, err := os.ReadFile(tg.Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Truncate(in.backupPath(tg), 0); err != nil {
+		t.Fatal(err)
+	}
+
+	mode, err := in.Uninstall(tg)
+	if mode != "" || err == nil || !strings.Contains(err.Error(), "备份损坏") {
+		t.Errorf("卸载应报告备份损坏，得到 mode=%q err=%v", mode, err)
+	}
+	current, err := os.ReadFile(tg.Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(current) != string(installed) {
+		t.Errorf("当前配置被修改：安装后 %d 字节，卸载后 %d 字节", len(installed), len(current))
+	}
+	if state, err := in.loadState(tg); err != nil || state == nil {
+		t.Errorf("安装记录应保留：present=%t err=%v", state != nil, err)
+	}
+}
+
 func TestUninstallKeepsExternalChanges(t *testing.T) {
 	tg, in := setup(t)
 	in.Install(tg)

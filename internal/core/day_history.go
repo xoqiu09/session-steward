@@ -20,7 +20,8 @@ func dayMod(t time.Time) string {
 	return fmt.Sprintf("%+d minutes", off/60)
 }
 
-// archiveDaily 把会话（含子 Agent）的按天用量写进 usage_daily。已有的日子用新数字覆盖，记录里已经没有的日子保留不动。
+// archiveDaily 把会话（含子 Agent）的按天用量写进 usage_daily。
+// Claude 的子 Agent 日志可能先于主日志被清理，每项已归档的用量只增不减。
 func (c *Core) archiveDaily(ctx context.Context, src DetailSource, id int64, provider, sid string) (bool, error) {
 	_, _, all, ok := src.Detail(provider, sid, time.Local)
 	if !ok {
@@ -31,9 +32,14 @@ func (c *Core) archiveDaily(ctx context.Context, src DetailSource, id int64, pro
 		for day, models := range all.ByDay {
 			for model, t := range models {
 				res, err := tx.Exec(`INSERT INTO usage_daily(session_id,day,model,input,output,cache_read,cache_write) VALUES(?,?,?,?,?,?,?)
-					ON CONFLICT(session_id,day,model) DO UPDATE SET input=excluded.input,output=excluded.output,cache_read=excluded.cache_read,cache_write=excluded.cache_write
-					WHERE input<>excluded.input OR output<>excluded.output OR cache_read<>excluded.cache_read OR cache_write<>excluded.cache_write`,
-					id, day, model, t.Input, t.Output, t.CacheRead, t.CacheWrite)
+					ON CONFLICT(session_id,day,model) DO UPDATE SET
+						input=CASE WHEN :keep_archived THEN MAX(input,excluded.input) ELSE excluded.input END,
+						output=CASE WHEN :keep_archived THEN MAX(output,excluded.output) ELSE excluded.output END,
+						cache_read=CASE WHEN :keep_archived THEN MAX(cache_read,excluded.cache_read) ELSE excluded.cache_read END,
+						cache_write=CASE WHEN :keep_archived THEN MAX(cache_write,excluded.cache_write) ELSE excluded.cache_write END
+					WHERE input<excluded.input OR output<excluded.output OR cache_read<excluded.cache_read OR cache_write<excluded.cache_write
+						OR (NOT :keep_archived AND (input>excluded.input OR output>excluded.output OR cache_read>excluded.cache_read OR cache_write>excluded.cache_write))`,
+					id, day, model, t.Input, t.Output, t.CacheRead, t.CacheWrite, sql.Named("keep_archived", provider == "claude"))
 				if err != nil {
 					return err
 				}
