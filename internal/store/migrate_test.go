@@ -99,6 +99,39 @@ func TestMigrationsRunInOrderAndOnlyOnce(t *testing.T) {
 	}
 }
 
+func TestUpgradeBackfillsSessionLocationTimeFromMatchingEvent(t *testing.T) {
+	db := rawDB(t, filepath.Join(t.TempDir(), "v7.sqlite"))
+	defer db.Close()
+	if err := migrate(db, migrations[:7]); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`
+		INSERT INTO repos(id,common_dir,name,created_at) VALUES(1,'/synthetic/.git','synthetic','t');
+		INSERT INTO sessions(id,host_id,provider,provider_session_id,cwd,branch,repo_id,first_seen_at,last_activity_at)
+		VALUES(1,'local','codex','live','/synthetic','main',1,'10:00','10:05');
+		INSERT INTO events(event_id,session_id,kind,occurred_at,received_at,body) VALUES
+		('start',1,'session_start','10:00','10:00','{"cwd":"/synthetic","branch":"main"}'),
+		('other-branch',1,'tool_post','10:01','10:06','{"cwd":"/synthetic","branch":"old"}'),
+		('stop',1,'stop','10:05','10:05','{}');
+		INSERT INTO sessions(id,host_id,provider,provider_session_id,cwd,data_source,first_seen_at,last_activity_at)
+		VALUES(2,'local','codex','history','/synthetic','history','10:00','10:03');`); err != nil {
+		t.Fatal(err)
+	}
+	if err := migrate(db, migrations); err != nil {
+		t.Fatal(err)
+	}
+	for _, tt := range []struct {
+		id                 int
+		location, activity string
+	}{{1, "10:00", "10:05"}, {2, "10:03", "10:03"}} {
+		var location, activity string
+		err := db.QueryRow(`SELECT location_at,last_activity_at FROM sessions WHERE id=?`, tt.id).Scan(&location, &activity)
+		if err != nil || location != tt.location || activity != tt.activity {
+			t.Errorf("会话 %d 的时间 = %q、%q，错误 %v，预期 %q、%q", tt.id, location, activity, err, tt.location, tt.activity)
+		}
+	}
+}
+
 func TestFailedMigrationKeepsVersion(t *testing.T) {
 	db := rawDB(t, filepath.Join(t.TempDir(), "f.sqlite"))
 	defer db.Close()

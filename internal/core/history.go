@@ -57,10 +57,14 @@ func (c *Core) ImportHistory(ctx context.Context, hostID string, found []scan.Fo
 			if client == "" {
 				client = "unknown"
 			}
+			lastAt, locationAt := store.TS(f.LastAt), ""
+			if f.Cwd != "" {
+				locationAt = lastAt
+			}
 			if _, e = tx.Exec(`INSERT INTO sessions(host_id, provider, provider_session_id, client, version, cwd, worktree, branch, repo_id,
-				state, state_at, data_source, first_seen_at, last_activity_at) VALUES (?,?,?,?,?,?,?,?,?,'unknown','', 'history', ?, ?)`,
+				state, state_at, data_source, first_seen_at, last_activity_at, location_at) VALUES (?,?,?,?,?,?,?,?,?,'unknown','', 'history', ?, ?, ?)`,
 				hostID, f.Provider, f.SessionID, client, f.Version, f.Cwd, wt, branch, nullInt(repoID),
-				store.TS(first), store.TS(f.LastAt)); e != nil {
+				store.TS(first), lastAt, locationAt); e != nil {
 				return e
 			}
 			added++

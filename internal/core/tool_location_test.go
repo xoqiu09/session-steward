@@ -2,12 +2,14 @@ package core
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/xoqiu09/session-steward/internal/event"
 	"github.com/xoqiu09/session-steward/internal/gitx"
+	"github.com/xoqiu09/session-steward/internal/store"
 )
 
 // mixedLocator: /repo-* are Git repositories, everything else is a plain directory.
@@ -83,4 +85,98 @@ func TestToolEventsInPlainDirectoriesDoNotRegisterProjects(t *testing.T) {
 	if got := repos(); got["dir:/synthetic/tasks/receipt"] || sessionCwd() != "/synthetic/notes" {
 		t.Fatalf("receipt directory registered after a known plain project: %v", got)
 	}
+}
+
+func TestLateToolEventKeepsCurrentSessionLocation(t *testing.T) {
+	c := newCore(t, mixedLocator{})
+	ctx := context.Background()
+	at := time.Date(2026, 11, 28, 10, 0, 0, 0, time.UTC)
+	start := ev("s1", event.KindSessionStart, at)
+	start.Cwd, start.Branch = "/repo-a", "branch-a"
+	mustIngest(t, c, start)
+	moved := ev("s1", event.KindCwdChanged, at.Add(5*time.Minute))
+	moved.Cwd, moved.Branch = "/repo-b", "branch-b"
+	mustIngest(t, c, moved)
+	late := ev("s1", event.KindToolPost, at.Add(time.Minute))
+	late.Cwd, late.Branch = start.Cwd, start.Branch
+	mustIngest(t, c, late)
+
+	snap, err := c.Snapshot(ctx)
+	if err != nil || len(snap.Sessions) != 1 {
+		t.Fatalf("应有一个会话，得到 %+v，错误 %v", snap, err)
+	}
+	session := snap.Sessions[0]
+	var repoDir string
+	for _, repo := range snap.Repos {
+		if session.RepoID != nil && repo.ID == *session.RepoID {
+			repoDir = repo.CommonDir
+		}
+	}
+	if session.Cwd != moved.Cwd || session.Worktree != moved.Cwd || session.Branch != moved.Branch || repoDir != moved.Cwd+"/.git" || session.LastActivityAt != store.TS(moved.OccurredAt) {
+		t.Errorf("迟到工具记录后的会话 = 项目 %q，目录 %q，工作树 %q，分支 %q，最近活动 %s，应仍在乙项目", repoDir, session.Cwd, session.Worktree, session.Branch, session.LastActivityAt)
+	}
+	history, err := c.SessionEvents(ctx, session.ID, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, body := range history {
+		var saved event.Event
+		if err := json.Unmarshal(body, &saved); err != nil {
+			t.Fatal(err)
+		}
+		if saved.EventID == late.EventID && saved.Kind == late.Kind && saved.Cwd == late.Cwd && saved.Branch == late.Branch {
+			return
+		}
+	}
+	t.Fatal("会话历史应保留甲项目的工具记录")
+}
+
+func TestLateToolEventUpdatesLocationAfterStopWithoutDirectory(t *testing.T) {
+	c := newCore(t, mixedLocator{})
+	ctx := context.Background()
+	at := time.Date(2026, 11, 28, 10, 0, 0, 0, time.UTC)
+	start := ev("s1", event.KindSessionStart, at)
+	start.Cwd, start.Branch = "/repo-a", "branch-a"
+	mustIngest(t, c, start)
+	stop := ev("s1", event.KindStop, at.Add(5*time.Minute))
+	stop.Cwd = ""
+	mustIngest(t, c, stop)
+	late := ev("s1", event.KindToolPost, at.Add(4*time.Minute))
+	late.Cwd, late.Branch = "/repo-b", "branch-b"
+	mustIngest(t, c, late)
+
+	snap, err := c.Snapshot(ctx)
+	if err != nil || len(snap.Sessions) != 1 {
+		t.Fatalf("应有一个会话，得到 %+v，错误 %v", snap, err)
+	}
+	session := snap.Sessions[0]
+	if session.Cwd != late.Cwd || session.Worktree != late.Cwd || session.Branch != late.Branch {
+		t.Errorf("目录、工作树和分支应更新到乙，实际为 %q、%q、%q", session.Cwd, session.Worktree, session.Branch)
+	}
+	var project string
+	for _, repo := range snap.Repos {
+		if session.RepoID != nil && repo.ID == *session.RepoID {
+			project = repo.CommonDir
+		}
+	}
+	if project != late.Cwd+"/.git" {
+		t.Errorf("当前项目应为乙，实际为 %q", project)
+	}
+	if session.LastActivityAt != store.TS(stop.OccurredAt) || session.State != "idle" {
+		t.Errorf("最近活动和状态应仍来自停止消息，实际为 %s、%s", session.LastActivityAt, session.State)
+	}
+	history, err := c.SessionEvents(ctx, session.ID, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, body := range history {
+		var saved event.Event
+		if err := json.Unmarshal(body, &saved); err != nil {
+			t.Fatal(err)
+		}
+		if saved.EventID == late.EventID && saved.Kind == late.Kind && saved.Cwd == late.Cwd {
+			return
+		}
+	}
+	t.Fatal("会话历史应保留乙项目的工具记录")
 }

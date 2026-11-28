@@ -69,6 +69,62 @@ func TestSummaryOptInLabelsAndStaleness(t *testing.T) {
 	}
 }
 
+func TestBranchedSummaryBecomesStaleWhenOwnerHandlesDelivery(t *testing.T) {
+	dir := gitInit(t)
+	const branch = "fix/synthetic"
+	git(t, dir, "branch", branch)
+	c := newCore(t, gitLocator{})
+	ctx := context.Background()
+	const item = "SYN-1"
+	if err := c.CreateWorkItem(ctx, WorkItemInput{ID: item, Title: "合成摘要任务", Branch: branch, RepoPath: dir}); err != nil {
+		t.Fatal(err)
+	}
+	at := time.Now().Add(-time.Minute)
+	claim := ev("s1", event.KindClaim, at)
+	claim.Cwd, claim.WorkTag = dir, item
+	mustIngest(t, c, claim)
+	deliver := ev("s1", event.KindDeliver, at.Add(time.Second))
+	deliver.Cwd, deliver.Text = dir, "合成交付"
+	mustIngest(t, c, deliver)
+
+	c.SummaryCmd = []string{"synthetic-llm"}
+	c.SummaryRepos = []string{"synthetic"}
+	var input string
+	c.SummaryRun = func(_ context.Context, _ []string, in string) (string, error) {
+		input = in
+		return "等待用户验收", nil
+	}
+	first, err := c.GenerateSummary(ctx, item)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !first.Current || !strings.Contains(input, "`"+branch+"`") {
+		t.Fatalf("初次摘要应使用当前分支的交接材料，得到 %+v", first)
+	}
+	snap, err := c.Snapshot(ctx)
+	if err != nil || len(snap.WorkItems) != 1 || snap.WorkItems[0].Status != "review" || snap.WorkItems[0].ReviewRevision == "" {
+		t.Fatalf("应有一条待处理交付，得到 %+v，错误 %v", snap, err)
+	}
+	done := "done"
+	if err := c.UpdatePanelWorkItem(ctx, item, WorkItemPatch{Status: &done, ExpectedReviewRevision: &snap.WorkItems[0].ReviewRevision}); err != nil {
+		t.Fatal(err)
+	}
+	latest, err := c.LatestSummary(ctx, item)
+	if err != nil || latest == nil || latest.Current || latest.Text != "等待用户验收" {
+		t.Errorf("用户处理交付后，原摘要应标为过期，得到 %+v，错误 %v", latest, err)
+	}
+	_, err = c.GenerateSummary(ctx, item)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(input, "工作项当前状态：已处理") {
+		t.Error("重新生成摘要时，输入材料缺少工作项当前状态：已处理")
+	}
+	if !strings.Contains(input, "Agent 的自述") || !strings.Contains(input, "不代表用户已验收") {
+		t.Error("重新生成摘要时，交接材料应说明 Agent 自述与用户验收的区别")
+	}
+}
+
 func TestSummaryWithoutBranchTracksFeatureChanges(t *testing.T) {
 	c := newCore(t, nil)
 	ctx := context.Background()
