@@ -39,6 +39,68 @@ beforeEach(() => {
 afterEach(() => { host.reset(); vi.restoreAllMocks(); vi.unstubAllGlobals() })
 
 describe('派活台按明确对象隔离输入', () => {
+  it('派活台等当前请求的命令正文显示后才允许批准', async () => {
+    window.location.search = '?task=A'
+    const data = desk()
+    const pending = { id: 'A-1', fingerprint: 'fp', kind: 'item/commandExecution/requestApproval', details: '', turn: 't', approvable: true }
+    data.tasks[0].pending = [pending]
+    let finishDetail!: (result: Response) => void
+    vi.stubGlobal('fetch', vi.fn((path: string) => {
+      if (path === '/api/dispatch/tasks/A') return new Promise<Response>(resolve => { finishDetail = resolve })
+      expect(path).toBe('/api/dispatch')
+      return Promise.resolve(response(data))
+    }))
+    const draw = () => render(DispatchDesk, {})
+    const panel = () => renderToStaticMarkup(nodes(draw()).find(node => node.type === TaskPanel)!)
+    draw(); await flush()
+
+    const summary = panel()
+    expect(summary).not.toContain('git status')
+    expect(summary.match(/<button[^>]*>仅允许这一次<\/button>/)?.[0])
+      .toBe('<button class="btn primary" disabled="">仅允许这一次</button>')
+    expect(summary).toContain('<button class="btn">拒绝</button>')
+
+    finishDetail(response({ ...data.tasks[0], pending: [{ ...pending, details: 'git status' }] }))
+    await flush()
+    const detail = panel()
+    expect(detail).toContain('<pre>git status</pre>')
+    expect(detail).toContain('<button class="btn primary">仅允许这一次</button>')
+  })
+
+  it.each([
+    { id: 'A-2', fingerprint: 'fp-1' },
+    { id: 'A-1', fingerprint: 'fp-2' },
+  ])('只用 ID 和指纹都匹配的请求正文启用批准（$id / $fingerprint）', async (nextIdentity) => {
+    window.location.search = '?task=A'
+    let data = desk()
+    const first = { id: 'A-1', fingerprint: 'fp-1', kind: 'item/commandExecution/requestApproval', details: '', turn: 't', approvable: true }
+    const next = { ...first, ...nextIdentity }
+    data.tasks[0].pending = [first]
+    let detail = { ...data.tasks[0], pending: [{ ...first, details: 'git status' }] }
+    vi.stubGlobal('fetch', vi.fn(async (path: string) => {
+      if (path === '/api/dispatch/tasks/A') return response(detail)
+      expect(path).toBe('/api/dispatch')
+      return response(data)
+    }))
+    const draw = () => render(DispatchDesk, {})
+    const panel = () => renderToStaticMarkup(nodes(draw()).find(node => node.type === TaskPanel)!)
+    draw(); await flush()
+    expect(panel()).toContain('<pre>git status</pre>')
+    expect(panel()).toContain('<button class="btn primary">仅允许这一次</button>')
+
+    data = { ...data, tasks: data.tasks.map(t => t.id === 'A' ? { ...t, pending: [next] } : t) }
+    timers[0](); await flush()
+    const waiting = panel()
+    expect(waiting).toContain('<button class="btn primary" disabled="">仅允许这一次</button>')
+    expect(waiting).not.toContain('git status')
+
+    detail = { ...data.tasks[0], pending: [{ ...next, details: 'git diff' }] }
+    timers[1](); await flush()
+    const current = panel()
+    expect(current).toContain('<pre>git diff</pre>')
+    expect(current).toContain('<button class="btn primary">仅允许这一次</button>')
+  })
+
   it('同名仓库在选项与提交前都能按真实位置辨认，位置缺失不能执行', async () => {
     let data = desk()
     data = { ...data, projects: data.projects.map(p => ({ ...p, name: '同名项目' })) }

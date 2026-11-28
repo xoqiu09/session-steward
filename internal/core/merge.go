@@ -70,13 +70,19 @@ func (c *Core) ScanMerges(ctx context.Context) error {
 
 type itemRow struct {
 	id, branch, status, merge string
-	binding                   string
+	binding, baseSHA          string
 }
 
 func (c *Core) mergeItems(ctx context.Context, repo int64) ([]itemRow, error) {
-	rows, err := c.St.R().QueryContext(ctx, `SELECT id, branch, status, merge_state,
-	 COALESCE((SELECT payload FROM approvals a WHERE a.work_item_id=w.id AND a.kind='merge' AND a.status IN ('pending','decided') ORDER BY a.created_at DESC,a.id DESC LIMIT 1),'')
-	 FROM work_items w WHERE repo_id=? AND needs_merge=1 AND branch<>'' AND merge_state<>'merged' AND status<>'abandoned'`, repo)
+	// Only revisit an old merged mark if it proved the dispatch starting commit.
+	rows, err := c.St.R().QueryContext(ctx, `SELECT w.id, w.branch, w.status, w.merge_state,
+	 COALESCE((SELECT payload FROM approvals a WHERE a.work_item_id=w.id AND a.kind='merge' AND a.status IN ('pending','decided') ORDER BY a.created_at DESC,a.id DESC LIMIT 1),''),
+	 COALESCE(m.base_sha,'')
+	 FROM work_items w
+	 LEFT JOIN managed_sessions m ON m.work_item_id=w.id AND m.branch=w.branch AND m.runner='codex_app'
+	 LEFT JOIN meta v ON v.k='merge_verified:'||w.id AND w.merge_state='merged'
+	 WHERE w.repo_id=? AND w.needs_merge=1 AND w.branch<>'' AND w.status<>'abandoned'
+	 AND (w.merge_state<>'merged' OR (w.status IN ('review','done') AND m.base_sha<>'' AND json_extract(v.v,'$.source_sha')=m.base_sha))`, repo)
 	if err != nil {
 		return nil, err
 	}
@@ -84,7 +90,7 @@ func (c *Core) mergeItems(ctx context.Context, repo int64) ([]itemRow, error) {
 	var items []itemRow
 	for rows.Next() {
 		var it itemRow
-		if err := rows.Scan(&it.id, &it.branch, &it.status, &it.merge, &it.binding); err != nil {
+		if err := rows.Scan(&it.id, &it.branch, &it.status, &it.merge, &it.binding, &it.baseSHA); err != nil {
 			return nil, err
 		}
 		items = append(items, it)
@@ -129,6 +135,10 @@ func (c *Core) scanRepo(ctx context.Context, r repoRow) error {
 		if src == "" {
 			continue
 		}
+		ready := it.status == "review" || it.status == "done"
+		if src == it.baseSHA && !ready && it.binding == "" {
+			continue
+		}
 		p := plan{it: it, srcSHA: src}
 		if targetSHA != "" && gitx.IsAncestor(ctx, dir, src, targetSHA) {
 			p.merged = true
@@ -144,6 +154,9 @@ func (c *Core) scanRepo(ctx context.Context, r repoRow) error {
 		} else {
 			p.ahead = gitx.Ahead(ctx, dir, targetSHA, src)
 			p.diffstat = gitx.DiffStat(ctx, dir, targetSHA, src)
+		}
+		if p.merged && it.merge == "merged" && src == it.baseSHA {
+			continue // 已核对起点仍在目标分支，无需重复写入。
 		}
 		plans = append(plans, p)
 	}

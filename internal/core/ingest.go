@@ -325,18 +325,39 @@ func (c *Core) applyEvent(tx *sql.Tx, sid int64, e *event.Event, now string, can
 				return err
 			}
 		}
-		// 观察类的权限条目（未经面板处理）在工具继续执行后关闭
-		if _, err := tx.Exec(`UPDATE approvals SET status='cancelled', close_reason='resolved_elsewhere', closed_at=?
-			WHERE kind='permission' AND handleable=0 AND session_id=? AND status='pending'`, now, sid); err != nil {
-			return err
+		// 观察类权限提醒只在对应的工具调用完成时自动关闭。
+		if e.ToolUseID != "" {
+			if _, err := tx.Exec(`UPDATE approvals SET status='cancelled', close_reason='resolved_elsewhere', closed_at=?
+				WHERE kind='permission' AND handleable=0 AND session_id=? AND status='pending'
+				AND (tool_name='' OR ?='' OR tool_name=?)
+				AND json_extract(payload,'$.execution.tool_use_id')=?
+				AND COALESCE(json_extract(payload,'$.execution.subagent_id'),'')=?
+				AND COALESCE(json_extract(payload,'$.execution.turn_id'),'') IN ('',?)
+				AND json_extract(payload,'$.occurred_at')<=?`, now, sid, e.ToolName, e.ToolName, e.ToolUseID, e.SubagentID, e.TurnID, occ); err != nil {
+				return err
+			}
 		}
 	case event.KindNotifyPerm:
 		// 面板无法处理的权限提示（例如未经过 PermissionRequest 的请求）：只做观察条目
-		var open int
-		tx.QueryRow(`SELECT COUNT(1) FROM approvals WHERE kind='permission' AND session_id=? AND status IN ('pending','decided')`, sid).Scan(&open)
-		if open == 0 {
-			if err := insertApproval(tx, approvalRow{kind: "permission", sessionID: sid, preview: e.Preview, handleable: false,
-				payload: map[string]any{"notification": e.Reason}}, now); err != nil {
+		execution, err := permissionExecutionFor(tx, sid, e)
+		if err != nil {
+			return err
+		}
+		query := `SELECT EXISTS(SELECT 1 FROM approvals WHERE kind='permission' AND session_id=? AND status IN ('pending','decided')`
+		args := []any{sid}
+		if execution.ToolUseID != "" {
+			query += ` AND json_extract(payload,'$.execution.tool_use_id')=?
+				AND COALESCE(json_extract(payload,'$.execution.subagent_id'),'')=?
+				AND (?='' OR COALESCE(json_extract(payload,'$.execution.turn_id'),'') IN ('',?))`
+			args = append(args, execution.ToolUseID, execution.SubagentID, execution.TurnID, execution.TurnID)
+		}
+		var open bool
+		if err := tx.QueryRow(query+`)`, args...).Scan(&open); err != nil {
+			return err
+		}
+		if !open {
+			if err := insertApproval(tx, approvalRow{kind: "permission", sessionID: sid, tool: e.ToolName, preview: e.Preview, handleable: false,
+				payload: map[string]any{"notification": e.Reason, "execution": execution, "occurred_at": occ}}, now); err != nil {
 				return err
 			}
 		}

@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"os"
 	"os/exec"
@@ -107,6 +108,79 @@ func managedCore(t *testing.T) (*Core, *fakeTerm, int64) {
 		t.Fatal(err)
 	}
 	return c, ft, id
+}
+
+func TestDispatchMergeScanWaitsForDeliveredCommit(t *testing.T) {
+	for _, scenario := range []string{"fresh", "old-start-mark", "old-start-mark-target-moved"} {
+		t.Run(scenario, func(t *testing.T) {
+			c, _, repo := managedCore(t)
+			ctx := context.Background()
+			if scenario == "old-start-mark-target-moved" {
+				var commonDir string
+				if err := c.St.R().QueryRow(`SELECT common_dir FROM repos WHERE id=?`, repo).Scan(&commonDir); err != nil {
+					t.Fatal(err)
+				}
+				commit(t, filepath.Dir(commonDir), "synthetic-base-change")
+			}
+			if err := c.SetDispatchProject(ctx, repo, true); err != nil {
+				t.Fatal(err)
+			}
+			m, err := c.LaunchDispatch(ctx, repo, "合成派活任务", "merge-scan-op")
+			if err != nil {
+				t.Fatal(err)
+			}
+			scan := func() (status, merge string) {
+				t.Helper()
+				if err := c.ScanMerges(ctx); err != nil {
+					t.Fatal(err)
+				}
+				if err := c.St.R().QueryRow(`SELECT status,merge_state FROM work_items WHERE id=?`, m.WorkItemID).Scan(&status, &merge); err != nil {
+					t.Fatal(err)
+				}
+				return
+			}
+			if scenario == "fresh" {
+				if _, merge := scan(); merge != "not_ready" {
+					t.Errorf("first scan at the starting commit: merge_state = %q, want not_ready", merge)
+				}
+			} else if err := c.St.Tx(ctx, func(tx *sql.Tx) error {
+				if _, err := tx.Exec(`UPDATE work_items SET merge_state='merged' WHERE id=?`, m.WorkItemID); err != nil {
+					return err
+				}
+				_, err := tx.Exec(`INSERT INTO meta(k,v) VALUES(?,json_object('source_sha',?,'target_ref','main','target_sha',?,'method','local_git','checked_at',?))`,
+					"merge_verified:"+m.WorkItemID, m.BaseSHA, m.BaseSHA, c.St.NowTS())
+				return err
+			}); err != nil {
+				t.Fatal(err)
+			}
+			at := time.Now()
+			claim := ev("synthetic-dispatch", event.KindClaim, at)
+			claim.Cwd, claim.WorkTag = m.Worktree, m.WorkItemID
+			mustIngest(t, c, claim)
+			if scenario == "old-start-mark-target-moved" {
+				git(t, m.Worktree, "update-ref", "refs/heads/main", m.BaseSHA+"^", m.BaseSHA)
+			} else {
+				commit(t, m.Worktree, "synthetic-change")
+			}
+			head := strings.TrimSpace(git(t, m.Worktree, "rev-parse", "HEAD"))
+			delivery := ev("synthetic-dispatch", event.KindDeliver, at.Add(time.Second))
+			delivery.Cwd = m.Worktree
+			mustIngest(t, c, delivery)
+
+			if status, merge := scan(); status != "review" || merge != "awaiting" {
+				t.Errorf("after delivery: status = %q, merge_state = %q, want review/awaiting", status, merge)
+			}
+			var count int
+			var source string
+			if err := c.St.R().QueryRow(`SELECT count(*), COALESCE(MAX(json_extract(payload,'$.source_head_sha')),'')
+				FROM approvals WHERE work_item_id=? AND kind='merge' AND status='pending'`, m.WorkItemID).Scan(&count, &source); err != nil {
+				t.Fatal(err)
+			}
+			if count != 1 || source != head {
+				t.Fatalf("after delivery: got %d pending merge approvals for %q, want one for %q", count, source, head)
+			}
+		})
+	}
 }
 
 func TestLaunchIsolatesWorktreesAndBindsHooks(t *testing.T) {

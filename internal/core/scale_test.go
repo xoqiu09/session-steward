@@ -118,22 +118,28 @@ func scaleSessionEvents(k int, base time.Time, seq *int) (evs []*event.Event, ta
 		tail = []*event.Event{mk(event.KindStop)}
 	}
 	// 中间：tool_pre/tool_post 对，偶尔插入 prompt / compact / 中途的观察权限（随后被 tool_post 关闭）
+	var pendingToolUseID string
 	for i := 0; len(evs)+len(tail)+1 < total; i++ {
 		switch {
 		case i%9 == 4:
 			evs = append(evs, mk(event.KindPrompt))
 		case i%11 == 7 && total-(len(evs)+len(tail)+1) >= 3: // 保证其后至少有一对 tool_pre/tool_post 将其关闭
-			evs = append(evs, mk(event.KindNotifyPerm))
+			n := mk(event.KindNotifyPerm)
+			n.ToolName, n.ToolUseID = "Bash", n.EventID
+			pendingToolUseID = n.ToolUseID
+			evs = append(evs, n)
 		case i%13 == 5:
 			evs = append(evs, mk(event.KindCompact))
 		default:
 			fp := fmt.Sprintf("fp-%d-%d", k, i)
 			pre := mk(event.KindToolPre)
 			pre.ToolName, pre.Fingerprint, pre.Preview = "Bash", fp, "go test ./..."
+			pre.ToolUseID = nz(pendingToolUseID, pre.EventID)
 			evs = append(evs, pre)
 			if len(evs)+len(tail)+1 < total {
 				post := mk(event.KindToolPost)
-				post.ToolName, post.Fingerprint = "Bash", fp
+				post.ToolName, post.Fingerprint, post.ToolUseID = pre.ToolName, fp, pre.ToolUseID
+				pendingToolUseID = ""
 				evs = append(evs, post)
 			}
 		}
