@@ -32,7 +32,7 @@ export function ApprovalCard({ p, disabled, onDecide }: { p: DispatchPending; di
     <pre>{p.details}</pre>
     <p className="muted">只对这一次请求有效，不会变成以后都允许。命令只在这里临时显示，不保存。</p>
     <div className="dd-actions">
-      {p.approvable && <button className="btn primary" disabled={disabled} onClick={() => onDecide('allow')}>仅允许这一次</button>}
+      {p.approvable && <button className="btn primary" disabled={disabled || !p.details.trim()} onClick={() => onDecide('allow')}>仅允许这一次</button>}
       <button className="btn" disabled={disabled} onClick={() => onDecide('deny')}>拒绝</button>
     </div>
     {!p.approvable && <p className="muted">这类请求派活台只能拒绝，要允许请回 Codex 里看完整内容。</p>}
@@ -137,7 +137,15 @@ export function DispatchDesk() {
   if (!desk) return <main className="dispatch-desk"><DeskHeader /><p role="status">正在连接派活台…</p></main>
 
   const other = !!desk.owner && desk.owner !== client
-  const task = detail && detail.id === selected ? detail : desk.tasks.find((t) => t.id === selected) ?? null
+  const listedTask = desk.tasks.find((t) => t.id === selected)
+  const selectedDetail = detail?.id === selected ? detail : null
+  const task = selectedDetail ? {
+    ...selectedDetail,
+    pending: (listedTask?.pending ?? []).map(p => ({
+      ...p,
+      details: selectedDetail.pending.find(d => d.id === p.id && d.fingerprint === p.fingerprint)?.details ?? '',
+    })),
+  } : listedTask
   return <main className="dispatch-desk">
     <DeskHeader />
     <div className="dd-intro">
