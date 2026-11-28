@@ -8,6 +8,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/xoqiu09/session-steward/internal/event"
+	"github.com/xoqiu09/session-steward/internal/gitx"
 )
 
 func TestGitHubSSHOverHTTPSIdentity(t *testing.T) {
@@ -23,6 +26,88 @@ func TestGitHubSSHOverHTTPSIdentity(t *testing.T) {
 		if got := githubRepository(raw); got != "" {
 			t.Errorf("unverified host accepted: %s => %s", raw, got)
 		}
+	}
+}
+
+func TestMoveWorkItemClearsOldProjectMergeProof(t *testing.T) {
+	c, original, _ := gateRepo(t, nil)
+	ctx := context.Background()
+	git(t, original, "merge", "-q", "--no-edit", "feat/GT-1-x")
+	if err := c.ScanMerges(ctx); err != nil {
+		t.Fatal(err)
+	}
+	item := func() WorkItem {
+		t.Helper()
+		snap, err := c.Snapshot(ctx)
+		if err != nil || len(snap.WorkItems) != 1 {
+			t.Fatalf("load work item: %v", err)
+		}
+		return snap.WorkItems[0]
+	}
+	before := item()
+	if before.RepoID == nil || before.MergeState != "merged" || before.MergeEvidence == nil {
+		t.Fatalf("original project must have a verified merge: %+v", before)
+	}
+	proof, err := json.Marshal(before.MergeEvidence)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.St.SetMeta(ctx, "merge_pr:"+before.ID, string(proof)); err != nil {
+		t.Fatal(err)
+	}
+	title := "修改标题，项目不变"
+	if err := c.UpdatePanelWorkItem(ctx, before.ID, WorkItemPatch{Title: &title, RepoID: before.RepoID}); err != nil {
+		t.Fatal(err)
+	}
+	if w := item(); w.MergeState != "merged" || w.MergeEvidence == nil || *w.MergeEvidence != *before.MergeEvidence {
+		t.Fatalf("same project must keep the proof: %+v", w)
+	}
+
+	destination := gitInit(t)
+	git(t, destination, "checkout", "-qb", before.Branch)
+	commit(t, destination, "unrelated-destination-candidate")
+	git(t, destination, "checkout", "-q", "main")
+	git(t, destination, "merge", "-q", "--no-edit", before.Branch)
+	src := before.MergeEvidence.SourceSHA
+	if other := gitx.RevParse(ctx, destination, before.Branch); other == "" || !gitx.IsAncestor(ctx, destination, other, "main") || gitx.RevParse(ctx, destination, src) != "" {
+		t.Fatal("destination must contain its merged same-name branch but not the original candidate")
+	}
+	e := ev("destination", event.KindSessionStart, c.St.Now())
+	e.Cwd = destination
+	mustIngest(t, c, e)
+	var destID int64
+	if err := c.St.R().QueryRow(`SELECT id FROM repos WHERE common_dir=?`, filepath.Join(destination, ".git")).Scan(&destID); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.UpdatePanelWorkItem(ctx, before.ID, WorkItemPatch{RepoID: &destID}); err != nil {
+		t.Fatal(err)
+	}
+	var oldProofs int
+	if err := c.St.R().QueryRow(`SELECT COUNT(*) FROM meta WHERE k IN (?,?)`, "merge_verified:"+before.ID, "merge_pr:"+before.ID).Scan(&oldProofs); err != nil {
+		t.Fatal(err)
+	}
+	if oldProofs != 0 {
+		t.Errorf("old project proof rows after moving: want 0, got %d", oldProofs)
+	}
+	candidates, err := c.mergeItems(ctx, destID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.ScanMerges(ctx); err != nil {
+		t.Fatal(err)
+	}
+	w := item()
+	if w.RepoID == nil || *w.RepoID != destID || w.MergeState != "not_ready" || w.MergeEvidence != nil || len(candidates) != 1 || candidates[0].id != before.ID {
+		t.Fatalf("destination with same-name branch: want not_ready, no proof and 1 scan candidate; got %s, proof=%t and %d candidates", w.MergeState, w.MergeEvidence != nil, len(candidates))
+	}
+
+	git(t, destination, "fetch", "-q", original, src)
+	git(t, destination, "merge", "-q", "--no-edit", "--allow-unrelated-histories", "FETCH_HEAD")
+	if err := c.ScanMerges(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if w := item(); w.MergeState != "merged" || w.MergeEvidence == nil || w.MergeEvidence.SourceSHA != src {
+		t.Fatalf("destination must verify the original candidate after it is merged: %s, %+v", w.MergeState, w.MergeEvidence)
 	}
 }
 

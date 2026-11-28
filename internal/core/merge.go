@@ -71,16 +71,40 @@ func (c *Core) ScanMerges(ctx context.Context) error {
 type itemRow struct {
 	id, branch, status, merge string
 	binding, baseSHA          string
+	transferredSource         sql.NullString
+}
+
+// Keep the old candidate's identity when the project changes, even if it cannot be resolved.
+func rememberTransferredMergeSource(ctx context.Context, tx *sql.Tx, id string) error {
+	var dir, branch, source string
+	err := tx.QueryRow(`SELECT r.common_dir,w.branch,COALESCE(
+	 (SELECT json_extract(v,'$.source_sha') FROM meta WHERE k='merge_verified:'||w.id AND w.merge_state='merged'),
+	 (SELECT json_extract(payload,'$.source_head_sha') FROM approvals a WHERE a.work_item_id=w.id AND a.repo_id=w.repo_id AND a.kind='merge' AND a.status IN ('pending','decided') ORDER BY a.created_at DESC,a.id DESC LIMIT 1),
+	 (SELECT json_extract(v,'$.source_sha') FROM meta WHERE k='merge_pr:'||w.id),'')
+	 FROM work_items w JOIN repos r ON r.id=w.repo_id AND r.is_git=1
+	 WHERE w.id=? AND w.needs_merge=1 AND w.branch<>''`, id).Scan(&dir, &branch, &source)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if source == "" {
+		source = gitx.RevParse(ctx, dir, branch)
+	}
+	_, err = tx.Exec(`INSERT INTO meta(k,v) VALUES(?,?) ON CONFLICT(k) DO NOTHING`, "merge_transferred_source:"+id, source)
+	return err
 }
 
 func (c *Core) mergeItems(ctx context.Context, repo int64) ([]itemRow, error) {
 	// Only revisit an old merged mark if it proved the dispatch starting commit.
 	rows, err := c.St.R().QueryContext(ctx, `SELECT w.id, w.branch, w.status, w.merge_state,
 	 COALESCE((SELECT payload FROM approvals a WHERE a.work_item_id=w.id AND a.kind='merge' AND a.status IN ('pending','decided') ORDER BY a.created_at DESC,a.id DESC LIMIT 1),''),
-	 COALESCE(m.base_sha,'')
+	 COALESCE(m.base_sha,''),t.v
 	 FROM work_items w
 	 LEFT JOIN managed_sessions m ON m.work_item_id=w.id AND m.branch=w.branch AND m.runner='codex_app'
 	 LEFT JOIN meta v ON v.k='merge_verified:'||w.id AND w.merge_state='merged'
+	 LEFT JOIN meta t ON t.k='merge_transferred_source:'||w.id
 	 WHERE w.repo_id=? AND w.needs_merge=1 AND w.branch<>'' AND w.status<>'abandoned'
 	 AND (w.merge_state<>'merged' OR (w.status IN ('review','done') AND m.base_sha<>'' AND json_extract(v.v,'$.source_sha')=m.base_sha))`, repo)
 	if err != nil {
@@ -90,7 +114,7 @@ func (c *Core) mergeItems(ctx context.Context, repo int64) ([]itemRow, error) {
 	var items []itemRow
 	for rows.Next() {
 		var it itemRow
-		if err := rows.Scan(&it.id, &it.branch, &it.status, &it.merge, &it.binding, &it.baseSHA); err != nil {
+		if err := rows.Scan(&it.id, &it.branch, &it.status, &it.merge, &it.binding, &it.baseSHA, &it.transferredSource); err != nil {
 			return nil, err
 		}
 		items = append(items, it)
@@ -99,6 +123,12 @@ func (c *Core) mergeItems(ctx context.Context, repo int64) ([]itemRow, error) {
 }
 
 func (c *Core) mergeSource(ctx context.Context, dir string, it itemRow) string {
+	if it.transferredSource.Valid {
+		if it.transferredSource.String == "" {
+			return ""
+		}
+		return gitx.RevParse(ctx, dir, it.transferredSource.String)
+	}
 	if src := gitx.RevParse(ctx, dir, it.branch); src != "" {
 		return src
 	}
@@ -122,12 +152,13 @@ func (c *Core) scanRepo(ctx context.Context, r repoRow) error {
 	}
 
 	type plan struct {
-		it       itemRow
-		srcSHA   string
-		merged   bool
-		ahead    int
-		diffstat string
-		evidence *MergeEvidence
+		it          itemRow
+		srcSHA      string
+		merged      bool
+		sourceMoved bool
+		ahead       int
+		diffstat    string
+		evidence    *MergeEvidence
 	}
 	var plans []plan
 	for _, it := range items {
@@ -151,6 +182,8 @@ func (c *Core) scanRepo(ctx context.Context, r repoRow) error {
 			p.evidence = proof
 		} else if targetSHA == "" {
 			continue // Can observe an external merge without creating an unexecutable local candidate.
+		} else if it.transferredSource.Valid && gitx.RevParse(ctx, dir, it.branch) != src {
+			p.sourceMoved = true // An executable local candidate still needs the matching branch tip.
 		} else {
 			p.ahead = gitx.Ahead(ctx, dir, targetSHA, src)
 			p.diffstat = gitx.DiffStat(ctx, dir, targetSHA, src)
@@ -192,7 +225,7 @@ func (c *Core) scanRepo(ctx context.Context, r repoRow) error {
 				var b MergeBinding
 				json.Unmarshal([]byte(payload), &b)
 				switch {
-				case b.SourceHeadSHA != p.srcSHA:
+				case b.SourceHeadSHA != p.srcSHA || p.sourceMoved:
 					// 源分支有新提交：旧审批作废，按新 SHA 重新排队
 					tx.Exec(`UPDATE approvals SET status='expired', close_reason='source_moved', closed_at=? WHERE id=?`, now, aid)
 					hasOpen = false

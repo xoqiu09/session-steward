@@ -46,9 +46,18 @@ func TestHandoffClaudeToCodex(t *testing.T) {
 	if _, _, err := c.StartHandoff(ctx, HandoffInput{WorkItemID: src.WorkItemID, ToAgent: "sh"}); !errors.Is(err, ErrBadRequest) {
 		t.Fatalf("未配置的 Agent 应拒绝: %v", err)
 	}
-	h, m, err := c.StartHandoff(ctx, HandoffInput{WorkItemID: src.WorkItemID, ToAgent: "codex", Note: "注意不要改公开接口"})
+	in := HandoffInput{WorkItemID: src.WorkItemID, ToAgent: "codex", Note: "注意不要改公开接口"}
+	pkg, preview, err := c.BuildHandoff(ctx, in)
 	if err != nil {
 		t.Fatal(err)
+	}
+	in.SourceSHA, in.PackageSHA = preview.SourceSHA, preview.PackageSHA
+	h, m, err := c.StartHandoff(ctx, in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if h.Package != pkg {
+		t.Fatal("发出的交接包必须与确认的预览一致")
 	}
 	if m.WorkItemID != src.WorkItemID || m.Worktree == src.Worktree || m.Branch == src.Branch || h.FromProvider != "claude" || h.SourceBranch != src.Branch {
 		t.Fatalf("h=%+v m=%+v", h, m)
@@ -221,8 +230,81 @@ func TestHandoffRejectsChangedPreview(t *testing.T) {
 		t.Fatal(err)
 	}
 	git(t, m.Worktree, "-c", "user.name=t", "-c", "user.email=t@example.invalid", "commit", "--allow-empty", "-qm", "changed after preview")
-	if _, _, err := c.StartHandoff(ctx, HandoffInput{WorkItemID: m.WorkItemID, ToAgent: "codex", SourceSHA: preview.SourceSHA}); !errors.Is(err, ErrConflict) {
+	if _, _, err := c.StartHandoff(ctx, HandoffInput{WorkItemID: m.WorkItemID, ToAgent: "codex", SourceSHA: preview.SourceSHA, PackageSHA: preview.PackageSHA}); !errors.Is(err, ErrConflict) {
 		t.Fatalf("stale preview: %v", err)
+	}
+}
+
+func TestHandoffRejectsChangedPackageAtSameCommit(t *testing.T) {
+	c, term, repo := managedCore(t)
+	ctx := context.Background()
+	m, err := c.LaunchManaged(ctx, LaunchInput{RepoID: repo, Agent: "claude", Title: "synthetic"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	editNext := func(next string) {
+		t.Helper()
+		if _, err := c.EditBrief(ctx, m.WorkItemID, BriefEdit{Field: "next", Action: "set", Text: next}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	in := HandoffInput{WorkItemID: m.WorkItemID, ToAgent: "codex"}
+	editNext("只检查导入")
+	pkg, preview, err := c.BuildHandoff(ctx, in)
+	if err != nil || !strings.Contains(pkg, "只检查导入") {
+		t.Fatalf("initial preview: %q, %v", pkg, err)
+	}
+	in.SourceSHA = preview.SourceSHA
+	starts := len(term.starts)
+	if _, _, err := c.StartHandoff(ctx, in); !errors.Is(err, ErrConflict) || len(term.starts) != starts {
+		t.Errorf("missing package fingerprint: want conflict and 0 new starts; got %v and %d new starts", err, len(term.starts)-starts)
+	}
+	in.PackageSHA = preview.PackageSHA
+	editNext("开始修改导出")
+	starts = len(term.starts)
+	if _, _, err := c.StartHandoff(ctx, in); !errors.Is(err, ErrConflict) || len(term.starts) != starts {
+		t.Fatalf("stale package: want conflict and 0 new starts; got %v and %d new starts", err, len(term.starts)-starts)
+	}
+}
+
+func TestHandoffRejectsMovedItemAtSameCommit(t *testing.T) {
+	c, term, repo := managedCore(t)
+	ctx := context.Background()
+	var common string
+	if err := c.St.R().QueryRow(`SELECT common_dir FROM repos WHERE id=?`, repo).Scan(&common); err != nil {
+		t.Fatal(err)
+	}
+	original := filepath.Dir(common)
+	const branch = "feat/handoff"
+	git(t, original, "checkout", "-qb", branch)
+	destination := filepath.Join(t.TempDir(), "clone")
+	git(t, original, "clone", "-q", original, destination)
+	e := ev("handoff-destination", event.KindSessionStart, c.St.Now())
+	e.Cwd = destination
+	mustIngest(t, c, e)
+	var destID int64
+	if err := c.St.R().QueryRow(`SELECT id FROM repos WHERE id<>?`, repo).Scan(&destID); err != nil {
+		t.Fatal(err)
+	}
+	const itemID = "HO-1"
+	if err := c.CreateWorkItem(ctx, WorkItemInput{ID: itemID, RepoID: repo, Title: "synthetic handoff", Branch: branch}); err != nil {
+		t.Fatal(err)
+	}
+	in := HandoffInput{WorkItemID: itemID, ToAgent: "codex"}
+	pkg, preview, err := c.BuildHandoff(ctx, in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.UpdatePanelWorkItem(ctx, itemID, WorkItemPatch{RepoID: &destID}); err != nil {
+		t.Fatal(err)
+	}
+	movedPkg, movedPreview, err := c.BuildHandoff(ctx, in)
+	if err != nil || pkg != movedPkg || preview.SourceSHA != movedPreview.SourceSHA {
+		t.Fatalf("move must leave the preview text and commit unchanged: %v", err)
+	}
+	in.SourceSHA, in.PackageSHA = preview.SourceSHA, preview.PackageSHA
+	if _, _, err := c.StartHandoff(ctx, in); !errors.Is(err, ErrConflict) || len(term.starts) != 0 {
+		t.Fatalf("preview from another project: want conflict and 0 starts; got %v and %d starts", err, len(term.starts))
 	}
 }
 

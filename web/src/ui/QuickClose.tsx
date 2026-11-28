@@ -14,23 +14,26 @@ const closes: Record<Close, { label: string; confirm: string; help: string }> = 
 }
 
 export function QuickClose({ item, only }: { item: WorkItem; only?: Close[] }) {
-  const [pending, setPending] = useState<{ choice: Close; target: ReturnType<typeof workStatusPrecondition> } | null>(null)
+  const [pending, setPending] = useState<{ itemId: string; choice: Close; target: ReturnType<typeof workStatusPrecondition> } | null>(null)
   const act = useAction()
+  const confirmation = pending?.itemId === item.id ? pending : null
+  if (pending && !confirmation) setPending(null)
   if (isRemote() || item.status === 'done' || item.status === 'abandoned') return null
   const shown = (only ?? (Object.keys(closes) as Close[])).filter(c => c !== 'paused' || item.management?.state !== 'paused')
-  const apply = ({ choice, target }: NonNullable<typeof pending>) => act.run(async () => {
-    await api.patchItem(item.id, choice === 'abandoned' ? { status: 'abandoned' } : {
+  const apply = (request: NonNullable<typeof pending>) => act.run(async () => {
+    const { itemId, choice, target } = request
+    await api.patchItem(itemId, choice === 'abandoned' ? { status: 'abandoned', ...target } : {
       management: { state: choice, owner: '', note: '' },
       ...(choice === 'accepted' ? target : {}),
     })
-    setPending(null)
+    setPending(current => current === request ? null : current)
   })
   return <div className="quick-close" role="group" aria-label={`收起 ${item.id}`}>
-    {pending ? <>
-      <span className="hint">{closes[pending.choice].help}</span>
-      <button type="button" className="btn small primary" disabled={act.busy} onClick={() => apply(pending)}>{act.busy ? '保存中…' : closes[pending.choice].confirm}</button>
+    {confirmation ? <>
+      <span className="hint">{closes[confirmation.choice].help}</span>
+      <button type="button" className="btn small primary" disabled={act.busy} onClick={() => apply(confirmation)}>{act.busy ? '保存中…' : closes[confirmation.choice].confirm}</button>
       <button type="button" className="btn small" disabled={act.busy} onClick={() => { setPending(null); act.setError('') }}>取消</button>
-    </> : shown.map(c => <button key={c} type="button" className="btn small" title={closes[c].help} onClick={() => setPending({ choice: c, target: workStatusPrecondition(item) })}>{closes[c].label}</button>)}
+    </> : shown.map(c => <button key={c} type="button" className="btn small" title={closes[c].help} onClick={() => setPending({ itemId: item.id, choice: c, target: workStatusPrecondition(item) })}>{closes[c].label}</button>)}
     <ErrorLine msg={act.error} />
   </div>
 }

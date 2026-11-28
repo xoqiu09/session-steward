@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -23,6 +24,7 @@ type HandoffInput struct {
 	FromSession int64  `json:"from_session_id"`
 	Note        string `json:"note"`       // Owner 补充说明
 	SourceSHA   string `json:"source_sha"` // 预览时的候选；变化后必须重新预览。
+	PackageSHA  string `json:"package_sha"`
 }
 
 type Handoff struct {
@@ -34,9 +36,12 @@ type Handoff struct {
 	SourceBranch  string `json:"source_branch"`
 	SourceSHA     string `json:"source_sha"`
 	Package       string `json:"package"`
+	PackageSHA    string `json:"-"`
 	ManagedID     string `json:"managed_id"`
 	State         string `json:"state"`
 	CreatedAt     string `json:"created_at"`
+	repoID        int64
+	title         string
 }
 
 // handoffSource 找到工作项当前代码所在分支：来源运行 → 工作项分支 → 最近的托管会话分支。
@@ -117,6 +122,9 @@ func (c *Core) BuildHandoff(ctx context.Context, in HandoffInput) (string, *Hand
 	}
 	if w == nil {
 		return "", nil, ErrNotFound
+	}
+	if w.RepoID == nil || *w.RepoID != repo {
+		return "", nil, fmt.Errorf("%w: 工作项所属项目已变化，请重新预览交接", ErrConflict)
 	}
 	var target string
 	c.St.R().QueryRowContext(ctx, `SELECT target_ref FROM repos WHERE id=?`, repo).Scan(&target)
@@ -200,11 +208,12 @@ func (c *Core) BuildHandoff(ctx context.Context, in HandoffInput) (string, *Hand
 	line("## 接手方式")
 	line("- 先阅读仓库的 AGENTS.md 等说明，核对上述进展是否属实，再继续。")
 	line("- 本会话已关联工作项 %s；进展用 steward-hook report 回报，完成用 deliver。", w.ID)
-	h := &Handoff{ID: "ho_" + shortID(), WorkItemID: w.ID, FromProvider: provider, ToAgent: in.ToAgent, SourceBranch: branch, SourceSHA: sha}
+	h := &Handoff{ID: "ho_" + shortID(), WorkItemID: w.ID, FromProvider: provider, ToAgent: in.ToAgent, SourceBranch: branch, SourceSHA: sha, repoID: repo, title: w.Title}
 	if sid != 0 {
 		h.FromSessionID = &sid
 	}
 	h.Package = event.Redact(b.String())
+	h.PackageSHA = fmt.Sprintf("%x", sha256.Sum256([]byte(fmt.Sprintf("%d\n%s", repo, h.Package))))
 	return h.Package, h, nil
 }
 
@@ -218,17 +227,17 @@ func (c *Core) StartHandoff(ctx context.Context, in HandoffInput) (*Handoff, *Ma
 	if err != nil {
 		return nil, nil, err
 	}
-	if in.SourceSHA != "" && in.SourceSHA != h.SourceSHA {
+	if in.SourceSHA != h.SourceSHA {
 		return nil, nil, fmt.Errorf("%w: 预览后源分支已变化，请重新预览交接", ErrConflict)
 	}
-	var repo int64
-	var title string
-	c.St.R().QueryRowContext(ctx, `SELECT repo_id,title FROM work_items WHERE id=?`, in.WorkItemID).Scan(&repo, &title)
-	prompt := fmt.Sprintf("你在接手工作项 %s（%s）。交接包在 .git 目录下的 %s（路径见 `git rev-parse --git-dir`），也附在下面。先核对再继续。\n\n%s", in.WorkItemID, title, HandoffFile, pkg)
+	if in.PackageSHA != h.PackageSHA {
+		return nil, nil, fmt.Errorf("%w: 交接内容已变化，请重新预览交接", ErrConflict)
+	}
+	prompt := fmt.Sprintf("你在接手工作项 %s（%s）。交接包在 .git 目录下的 %s（路径见 `git rev-parse --git-dir`），也附在下面。先核对再继续。\n\n%s", in.WorkItemID, h.title, HandoffFile, pkg)
 	if len(prompt) > 16<<10 {
 		prompt = fmt.Sprintf("你在接手工作项 %s。请先用 git rev-parse --git-dir 找到私有Git目录，读取其中的 %s 完整交接包，核对仓库 AGENTS.md 后再继续。", in.WorkItemID, HandoffFile)
 	}
-	m, err := c.launch(ctx, LaunchInput{RepoID: repo, Agent: in.ToAgent, Title: title}, launchOpts{
+	m, err := c.launch(ctx, LaunchInput{RepoID: h.repoID, Agent: in.ToAgent, Title: h.title}, launchOpts{
 		item: in.WorkItemID, baseSHA: h.SourceSHA, prompt: prompt,
 		inTx: func(tx *sql.Tx, m *ManagedSession, now string) error {
 			h.ManagedID, h.State, h.CreatedAt = m.ID, "launched", now

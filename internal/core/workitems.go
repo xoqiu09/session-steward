@@ -152,17 +152,23 @@ func (c *Core) updateWorkItem(ctx context.Context, id string, p WorkItemPatch, f
 	if p.Status != nil && !itemStatuses[*p.Status] {
 		return fmt.Errorf("%w: 未知状态 %s", ErrBadRequest, *p.Status)
 	}
-	changesReview := p.Status != nil && (*p.Status == "done" || *p.Status == "in_progress")
+	changesReview := p.Status != nil && (*p.Status == "done" || *p.Status == "in_progress" || *p.Status == "abandoned")
 	if p.ExpectedReviewRevision != nil && (!changesReview || p.ExpectedStatus != nil) {
 		return fmt.Errorf("%w: 处理交付时只需指定交付版本", ErrBadRequest)
 	}
 	if p.ExpectedStatus != nil && (!changesReview || directAccept || *p.ExpectedStatus == "review" || !itemStatuses[*p.ExpectedStatus]) {
 		return fmt.Errorf("%w: 仅在待验收以外开始或管理任务时指定原状态", ErrBadRequest)
 	}
+	if p.RepoID != nil || p.Branch != nil {
+		// Finish any in-flight merge check before changing the project or source branch.
+		c.mergeMu.Lock()
+		defer c.mergeMu.Unlock()
+	}
 	now := c.St.NowTS()
 	err := c.panelTx(ctx, func(tx *sql.Tx) error {
 		var oldStatus string
-		if err := tx.QueryRow(`SELECT status FROM work_items WHERE id=?`, id).Scan(&oldStatus); err != nil {
+		var oldRepo int64
+		if err := tx.QueryRow(`SELECT status,COALESCE(repo_id,0) FROM work_items WHERE id=?`, id).Scan(&oldStatus, &oldRepo); err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
 				return ErrNotFound
 			}
@@ -194,15 +200,32 @@ func (c *Core) updateWorkItem(ctx context.Context, id string, p WorkItemPatch, f
 		if p.Acceptance != nil {
 			set, args = append(set, "acceptance=?"), append(args, *p.Acceptance)
 		}
-		if p.Branch != nil {
-			set, args = append(set, "branch=?"), append(args, strings.TrimSpace(*p.Branch))
-		}
 		if p.RepoID != nil {
 			repo, err := canonicalRepo(tx, *p.RepoID)
 			if err != nil {
 				return err
 			}
 			set, args = append(set, "repo_id=?"), append(args, nullInt(repo))
+			if repo != oldRepo {
+				set = append(set, "merge_state=CASE WHEN needs_merge=1 THEN 'not_ready' ELSE 'none' END")
+				if err := rememberTransferredMergeSource(ctx, tx, id); err != nil {
+					return err
+				}
+				if _, err := tx.Exec(`DELETE FROM meta WHERE k IN (?,?)`, "merge_verified:"+id, "merge_pr:"+id); err != nil {
+					return err
+				}
+				if _, err := tx.Exec(`UPDATE approvals SET status='expired',close_reason='repo_changed',closed_at=? WHERE work_item_id=? AND kind='merge' AND status IN ('pending','decided')`, now, id); err != nil {
+					return err
+				}
+			}
+		}
+		if p.Branch != nil {
+			branch := strings.TrimSpace(*p.Branch)
+			set, args = append(set, "branch=?"), append(args, branch)
+			if _, err := tx.Exec(`DELETE FROM meta WHERE k=? AND EXISTS (SELECT 1 FROM work_items WHERE id=? AND branch<>?)`,
+				"merge_transferred_source:"+id, id, branch); err != nil {
+				return err
+			}
 		}
 		if p.Status != nil {
 			set, args = append(set, "status=?"), append(args, *p.Status)

@@ -28,6 +28,7 @@ func TestStaleWorkItemReviewKeepsStatusAndRuns(t *testing.T) {
 		{name: "accept_after_return", returned: true, status: "done"},
 		{name: "accept_after_redelivery", returned: true, deliveredAgain: true, status: "done"},
 		{name: "return_after_new_delivery_with_same_time", deliveredAgain: true, status: "in_progress"},
+		{name: "abandon_after_redelivery", returned: true, deliveredAgain: true, status: "abandoned"},
 		{name: "mark_handled_after_redelivery", returned: true, deliveredAgain: true, management: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -251,5 +252,61 @@ func TestSnapshotKeepsAcceptanceTimeAfterTitleEdit(t *testing.T) {
 	}
 	if item.StatusChangedAt != store.TS(acceptedAt) {
 		t.Errorf("snapshot status_changed_at = %q, want acceptance time %q", item.StatusChangedAt, store.TS(acceptedAt))
+	}
+}
+
+func TestStaleAbandonKeepsAcceptance(t *testing.T) {
+	st, err := store.Open(filepath.Join(t.TempDir(), "review.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { st.Close() })
+	ctx := context.Background()
+	c := core.New(st, nil)
+	at := seedCollectedSignal(t, c).Add(2 * time.Hour)
+	delivery := collectedSignalEvent("abandon-review", event.KindDeliver, "hook", at)
+	if _, err := c.Ingest(ctx, &delivery); err != nil {
+		t.Fatal(err)
+	}
+	h := (&Server{Core: c, PanelToken: "pan"}).Handler()
+	patch := func(body string) *httptest.ResponseRecorder {
+		return liveDo(h, "PATCH", local, "/api/work-items/SIG-1", cookieName, "pan", body, true)
+	}
+	read := func() core.WorkItem {
+		t.Helper()
+		snap, err := c.Snapshot(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return snap.WorkItems[0]
+	}
+	old := read()
+	if old.Status != "review" || old.ReviewRevision == "" {
+		t.Fatalf("missing review delivery: %+v", old)
+	}
+	if w := patch(fmt.Sprintf(`{"status":"done","expected_review_revision":%q}`, old.ReviewRevision)); w.Code != http.StatusOK {
+		t.Fatalf("accept delivery: HTTP %d %s", w.Code, w.Body)
+	}
+	for _, body := range []string{
+		`{"status":"abandoned"}`,
+		fmt.Sprintf(`{"status":"abandoned","expected_review_revision":%q}`, old.ReviewRevision),
+	} {
+		w := patch(body)
+		if w.Code != http.StatusConflict || !strings.Contains(w.Body.String(), "重新查看") {
+			t.Errorf("stale abandon: want HTTP 409 and refresh prompt; got HTTP %d %s", w.Code, w.Body)
+		}
+	}
+	var abandoned int
+	if err := st.R().QueryRow(`SELECT count(*) FROM work_item_state_changes WHERE work_item_id='SIG-1' AND status='abandoned'`).Scan(&abandoned); err != nil {
+		t.Fatal(err)
+	}
+	if status := read().Status; status != "done" || abandoned != 0 {
+		t.Errorf("want accepted and 0 abandon history entries; got %s and %d entries", status, abandoned)
+	}
+	if w := patch(`{"status":"review"}`); w.Code != http.StatusOK {
+		t.Fatalf("submit a new review: HTTP %d %s", w.Code, w.Body)
+	}
+	if w := patch(fmt.Sprintf(`{"status":"abandoned","expected_review_revision":%q}`, read().ReviewRevision)); w.Code != http.StatusOK || read().Status != "abandoned" {
+		t.Fatalf("abandon current review: HTTP %d %s", w.Code, w.Body)
 	}
 }

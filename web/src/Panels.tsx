@@ -69,10 +69,13 @@ export function ItemDetail({ snap, id, onClose, onSelectSession, onSelectItem = 
   const sessions = sessionsFor(snap, id)
   const ups = (snap.deps ?? []).filter((d) => d.downstream === id)
   const downs = (snap.deps ?? []).filter((d) => d.upstream === id)
-  const set = (status: ItemStatus) => act.run(() => api.patchItem(id, {
-    status,
-    ...(status === 'in_progress' ? workStatusPrecondition(item) : {}),
-  }))
+  const set = (status: ItemStatus) => {
+    if (status === 'abandoned' && reviewChanged) return
+    return act.run(() => api.patchItem(id, {
+      status,
+      ...(status === 'in_progress' || status === 'abandoned' ? workStatusPrecondition(item) : {}),
+    }))
+  }
   const recordReview = (status: 'done' | 'in_progress') => {
     if (reviewChanged || reviewGate.current) return
     reviewGate.current = true
@@ -149,7 +152,7 @@ export function ItemDetail({ snap, id, onClose, onSelectSession, onSelectItem = 
         {item.status !== 'in_progress' && !manualReview && <button className="btn small" onClick={() => set('in_progress')}>{item.status === 'todo' || item.status === 'blocked' ? '标为执行中' : '重新开始'}</button>}
         {item.status !== 'blocked' && <button disabled={remote} className="btn small" onClick={() => set('blocked')}>标为阻塞</button>}
         {item.status !== 'review' && item.completion_policy !== 'auto_history' && <button disabled={remote} className="btn small" onClick={() => set('review')}>提交验收</button>}
-        {item.status !== 'abandoned' && <button disabled={remote} className="btn small" onClick={() => set('abandoned')}>放弃</button>}
+        {item.status !== 'abandoned' && <button disabled={remote || reviewChanged} className="btn small" onClick={() => set('abandoned')}>放弃</button>}
       </div>}
       <p className="hint">会话结束或回复完成都不会自动改变这里的状态，需要人工或 Agent 主动提交交付。</p>
 
