@@ -131,7 +131,7 @@ func (s *Server) managedRoutes(mux *http.ServeMux) {
 			writeErr(w, err)
 			return
 		}
-		writeJSON(w, 200, map[string]any{"package": text, "source_branch": h.SourceBranch, "source_sha": h.SourceSHA})
+		writeJSON(w, 200, map[string]any{"package": text, "source_branch": h.SourceBranch, "source_sha": h.SourceSHA, "package_sha": h.PackageSHA})
 	}))
 	mux.HandleFunc("POST /api/work-items/{id}/handoff", s.panel(func(w http.ResponseWriter, r *http.Request) {
 		var in core.HandoffInput

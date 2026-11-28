@@ -201,6 +201,60 @@ describe('交付处理回执与状态含义', () => {
     expect(api.patchItem).toHaveBeenCalledExactlyOnceWith('SYN-12', { status: 'in_progress', expected_status: 'done' })
   })
 
+  it('不再跟进使用打开确认时的交付编号，详情放弃也带交付编号', async () => {
+    const snap = reviewSnap()
+    let item = snap.work_items![0]
+    const quick = () => render('quick-abandon', () => QuickClose({ item }))
+    button(quick(), '不再跟进').props.onClick()
+    item = { ...item, review_revision: '1:3' }
+    snap.work_items![0] = item
+    vi.mocked(api.patchItem).mockResolvedValue({})
+    await button(quick(), '确认不再跟进').props.onClick()
+    const detail = render('detail-abandon', () => ItemDetail({ snap, id: 'SYN-12', onClose() {}, onSelectSession() {} }))
+    await button(detail, '放弃').props.onClick()
+    expect(vi.mocked(api.patchItem).mock.calls).toEqual([
+      ['SYN-12', { status: 'abandoned', expected_review_revision: '1:2' }],
+      ['SYN-12', { status: 'abandoned', expected_review_revision: '1:3' }],
+    ])
+  })
+
+  it('切换到同状态的工作项后取消不再跟进的确认', async () => {
+    const first = { ...reviewSnap().work_items![0], status: 'in_progress' as const, review_revision: undefined }
+    let item = first
+    const quick = () => render('switch-quick-abandon', () => QuickClose({ item }))
+    vi.mocked(api.patchItem).mockResolvedValue({})
+    button(quick(), '不再跟进').props.onClick()
+    expect(button(quick(), '确认不再跟进')).toBeDefined()
+
+    item = { ...first, id: 'SYN-13' }
+    const switched = quick()
+    const oldConfirm = button(switched, '确认不再跟进')
+    await oldConfirm?.props.onClick()
+    expect(api.patchItem).toHaveBeenCalledTimes(0)
+    expect(oldConfirm).toBeUndefined()
+    expect(button(switched, '不再跟进')).toBeDefined()
+
+    item = first
+    expect(button(quick(), '确认不再跟进')).toBeUndefined()
+  })
+
+  it('详情打开期间换轮时，重新查看前不能放弃新版交付', async () => {
+    let snap = reviewSnap()
+    const detail = () => render('refresh-detail-abandon', () => ItemDetail({ snap, id: 'SYN-12', onClose() {}, onSelectSession() {} }))
+    expect(button(detail(), '放弃')).toBeDefined()
+    snap = { ...snap, work_items: [{ ...snap.work_items![0], review_revision: '1:3' }] }
+    const changed = detail()
+    vi.mocked(api.patchItem).mockResolvedValue({})
+    const abandon = button(changed, '放弃')
+    await abandon.props.onClick()
+    expect(api.patchItem).toHaveBeenCalledTimes(0)
+    expect(abandon.props.disabled).toBe(true)
+
+    button(changed, '已查看更新后的交付').props.onClick()
+    await button(detail(), '放弃').props.onClick()
+    expect(api.patchItem).toHaveBeenCalledExactlyOnceWith('SYN-12', { status: 'abandoned', expected_review_revision: '1:3' })
+  })
+
   it('详情可以从自动归档重开，仍须带上当前交付编号', async () => {
     const snap = reviewSnap()
     snap.work_items![0] = { ...snap.work_items![0], automatic_history: true, completion_policy: 'auto_history' }

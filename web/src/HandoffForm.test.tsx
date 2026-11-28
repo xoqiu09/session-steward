@@ -29,7 +29,7 @@ const nodes = (node: any): ReactElement<any>[] => Array.isArray(node) ? node.fla
 const button = (tree: ReactElement<any>, label: string) => nodes(tree).find(node => node.type === 'button' && node.props.children === label)
 const element = (tree: ReactElement<any>, type: string) => nodes(tree).find(node => node.type === type)!
 const flush = async () => { for (let i = 0; i < 8; i++) await Promise.resolve() }
-const preview = { package: '只给 Codex 的合成预览', source_branch: 'synthetic', source_sha: 'synthetic-sha' }
+const preview = { package: '只给 Codex 的合成预览', source_branch: 'synthetic', source_sha: 'synthetic-sha', package_sha: 'synthetic-package-sha' }
 const launched = { handoff: {} as Handoff, managed: { work_item_id: 'A' } as ManagedSession }
 const draw = (work = item(), onLaunched = () => {}) => { host.begin(); const tree = HandoffForm({ snap, item: work, onLaunched }); host.commit(); return tree! }
 afterEach(() => { host.reset(); vi.restoreAllMocks() })
@@ -78,7 +78,7 @@ describe('交接确认绑定到实际展示的预览', () => {
     const confirm = button(draw(), '确认交接并启动')!.props.onClick
     confirm(); confirm()
     expect(launch).toHaveBeenCalledOnce()
-    expect(launch).toHaveBeenCalledWith('A', { to_agent: 'codex', note: '明确给 Codex 的说明', source_sha: preview.source_sha })
+    expect(launch).toHaveBeenCalledWith('A', { to_agent: 'codex', note: '明确给 Codex 的说明', source_sha: preview.source_sha, package_sha: preview.package_sha })
     expect(element(draw(), 'input').props.disabled).toBe(true)
     fail(new Error('合成交接拒绝')); await flush()
     expect(element(draw(), 'input').props.value).toBe('明确给 Codex 的说明')

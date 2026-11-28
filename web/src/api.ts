@@ -126,7 +126,7 @@ export const api = {
   summary: (item: string) => call<{ summary: AISummary | null }>('GET', `/api/work-items/${encodeURIComponent(item)}/summary`),
   generateSummary: (item: string) => call<{ summary: AISummary }>('POST', `/api/work-items/${encodeURIComponent(item)}/summary`),
   checkedMerge: (id: string) => call<MergeJob>('POST', `/api/approvals/${encodeURIComponent(id)}/checked-merge`),
-  handoffPreview: (item: string, b: { to_agent: string; note?: string }) => call<{ package: string; source_branch: string; source_sha: string }>('POST', `/api/work-items/${encodeURIComponent(item)}/handoff/preview`, b),
+  handoffPreview: (item: string, b: { to_agent: string; note?: string }) => call<{ package: string; source_branch: string; source_sha: string; package_sha: string }>('POST', `/api/work-items/${encodeURIComponent(item)}/handoff/preview`, b),
   liveNote: () => call<LiveNote>('GET', '/api/live/note'),
   liveReadingPool: () => call<LiveReadingPoolSummary>('GET', '/api/live/reading-pool'),
   importLiveReadingPool: (input: LiveReadingPoolImport, revision: string) => call<LiveReadingPoolSummary>('PUT', '/api/live/reading-pool', { ...input, revision, confirmed: true }),
@@ -136,7 +136,7 @@ export const api = {
   liveCompanion: (kind: LiveGesture) => call<LiveCompanionAction>('POST', '/api/live/companion', { kind }),
   setLiveResidents: (input: Omit<LiveResidents, 'anchor'>) => call<LiveResidents>('PUT', '/api/live/residents', input),
   liveLink: () => call<{ url: string; view: string }>('GET', '/api/live/link'),
-  handoff: (item: string, b: { to_agent: string; note?: string; source_sha?: string }) => call<{ handoff: Handoff; managed: ManagedSession }>('POST', `/api/work-items/${encodeURIComponent(item)}/handoff`, b),
+  handoff: (item: string, b: { to_agent: string; note?: string; source_sha: string; package_sha: string }) => call<{ handoff: Handoff; managed: ManagedSession }>('POST', `/api/work-items/${encodeURIComponent(item)}/handoff`, b),
 }
 
 export type Conn = 'connecting' | 'live' | 'offline' | 'unauthorized'

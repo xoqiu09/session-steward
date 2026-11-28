@@ -57,7 +57,7 @@ export function HandoffForm({ snap, item, onLaunched }: { snap: Snapshot; item: 
   const current = new Set(item.agents)
   const [to, setTo] = useState(agents.find((a) => !current.has(a.provider))?.name ?? agents[0]?.name ?? '')
   const [note, setNote] = useState('')
-  const [preview, setPreview] = useState<{package: string; source_sha: string; itemId: string; to: string; note: string; generation: number} | null>(null)
+  const [preview, setPreview] = useState<{package: string; source_sha: string; package_sha: string; itemId: string; to: string; note: string; generation: number} | null>(null)
   const act = useAction()
   const generation = useRef(0)
   const inFlight = useRef<'preview' | 'launch' | null>(null)
@@ -86,7 +86,7 @@ export function HandoffForm({ snap, item, onLaunched }: { snap: Snapshot; item: 
     inFlight.current = 'launch'
     act.run(async () => {
       try {
-        const result = await api.handoff(submitted.itemId, { to_agent: submitted.to, note: submitted.note, source_sha: submitted.source_sha })
+        const result = await api.handoff(submitted.itemId, { to_agent: submitted.to, note: submitted.note, source_sha: submitted.source_sha, package_sha: submitted.package_sha })
         if (generation.current === request && matches(submitted)) { setPreview(null); onLaunched(result.managed.work_item_id) }
       } catch (error) { if (generation.current === request && matches(submitted)) throw error }
       finally { inFlight.current = null }

@@ -262,7 +262,11 @@ func (c *Core) syncRepoMerge(ctx context.Context, r repoRow) {
 			proof.TargetRef = r.target
 			proof.CheckedAt = c.St.NowTS()
 			b, _ := json.Marshal(proof)
-			if err := c.St.SetMeta(ctx, "merge_pr:"+it.id, string(b)); err != nil {
+			if err := c.St.Tx(ctx, func(tx *sql.Tx) error {
+				_, err := tx.Exec(`INSERT INTO meta(k,v) SELECT ?,? FROM work_items WHERE id=? AND repo_id=?
+					ON CONFLICT(k) DO UPDATE SET v=excluded.v`, "merge_pr:"+it.id, string(b), it.id, r.id)
+				return err
+			}); err != nil {
 				s.PRNote = "保存 PR 核对结果失败"
 			}
 		}
