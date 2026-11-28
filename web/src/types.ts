@@ -259,7 +259,7 @@ export interface AgentInfo { name: string; provider: string; hooks: boolean }
 export interface CheckResult { argv: string[]; exit_code: number; seconds: number; tail: string }
 export interface MergeJob {
   id: string; approval_id: string; work_item_id: string; repo_id: number; source_sha: string; target_ref: string; target_sha: string; merge_sha: string
-  state: 'queued' | 'running' | 'passed' | 'failed' | 'merged' | 'aborted'; checks: CheckResult[] | null; error: string; created_at: string; updated_at: string
+  state: 'queued' | 'running' | 'passed' | 'failed' | 'merged' | 'aborted' | 'needs_review'; checks: CheckResult[] | null; error: string; created_at: string; updated_at: string
 }
 export interface Tokens { input: number; output: number; cache_read: number; cache_write: number }
 export interface SessionUsage extends Tokens { session_id: number; updated_at: string }

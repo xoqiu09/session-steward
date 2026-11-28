@@ -48,14 +48,23 @@ const gradeOrder: Record<Grade, number> = { ok: 0, missing: 1, failed: 2 }
 export function evidenceOf(snap: Snapshot, w: WorkItem): { evidence: Evidence[]; grade: Grade } {
   const evidence: Evidence[] = []
   for (const f of snap.features ?? []) {
-    const mine = f.contributions.filter((c) => c.work_item_id === w.id).sort((a, b) => (b.validation_at || b.at).localeCompare(a.validation_at || a.at))[0]
-    if (!mine) continue
-    if (mine.validation === 'passed') evidence.push({ label: `${f.title}：验证通过`, tone: 'ok', detail: mine.evidence })
-    else if (mine.validation === 'failed') evidence.push({ label: `${f.title}：验证失败`, tone: 'bad', detail: mine.evidence || mine.blocker })
-    else if (mine.evidence) evidence.push({ label: `${f.title}：有验证说明`, tone: 'info', detail: mine.evidence })
+    const mine = f.contributions.filter((c) => c.work_item_id === w.id).sort((a, b) => b.at.localeCompare(a.at))
+    const current = mine.find((c) => c.active && c.candidate) ?? mine[0]
+    if (!current) continue
+    const reports = mine.filter((c) => c.candidate === current.candidate)
+      .sort((a, b) => (b.validation_at || b.at).localeCompare(a.validation_at || a.at))
+    for (const c of reports) {
+      if (c.validation === 'passed') evidence.push({ label: `${f.title}：验证通过`, tone: 'ok', detail: c.evidence })
+      else if (c.validation === 'failed') evidence.push({ label: `${f.title}：验证失败`, tone: 'bad', detail: [c.evidence, c.blocker].filter(Boolean).join(' · ') || undefined })
+      else if (c === reports[0] && c.evidence) evidence.push({ label: `${f.title}：有验证说明`, tone: 'info', detail: c.evidence })
+    }
   }
   if (w.merge_state === 'merged') evidence.push({ label: w.merge_evidence?.method === 'github_pr' ? '已合并（GitHub PR 确认）' : '已合并（Git 确认）', tone: 'ok' })
-  else if (w.merge_state === 'approved') evidence.push({ label: '合并已批准，未执行', tone: 'info' })
+  else if (w.merge_state === 'approved') {
+    // 快照中的检查门记录按创建时间从新到旧。
+    const latestJob = snap.merge_jobs?.find((job) => job.work_item_id === w.id)
+    evidence.push({ label: latestJob?.state === 'needs_review' ? '合并已批准，结果待核对' : '合并已批准，未执行', tone: 'info' })
+  }
   if (w.branch) evidence.push({ label: `分支 ${w.branch}`, tone: 'info' })
   const grade: Grade = evidence.some((e) => e.tone === 'bad') ? 'failed' : evidence.some((e) => e.tone === 'ok') ? 'ok' : 'missing'
   return { evidence, grade }

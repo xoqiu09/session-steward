@@ -125,7 +125,7 @@ export function timelineOf(snap: Snapshot, item: WorkItem): TimelineEvent[] {
   }
   for (const j of jobs) {
     const failed = (j.checks ?? []).find((c) => c.exit_code !== 0)
-    ev.push({ key: j.id, at: j.updated_at, state: jobRunState(j), title: `检查门 · ${{ queued: '排队中', running: '检查中', passed: '检查通过，正在合并', failed: '检查未通过', merged: '已合并到本地目标分支', aborted: '已中止，未合并' }[j.state] ?? '状态待核实'}`, detail: failed ? `${failed.argv.join(' ')} 退出码 ${failed.exit_code ?? '待核实'}` : j.error || undefined })
+    ev.push({ key: j.id, at: j.updated_at, state: jobRunState(j), title: `检查门 · ${{ queued: '排队中', running: '检查中', passed: '检查通过，正在合并', failed: '检查未通过', merged: '已合并到本地目标分支', aborted: '已中止，未合并', needs_review: '合并结果待核对' }[j.state] ?? '状态待核实'}`, detail: failed ? `${failed.argv.join(' ')} 退出码 ${failed.exit_code ?? '待核实'}` : j.error || undefined })
   }
   for (const m of (snap.managed ?? []).filter((x) => x.work_item_id === item.id && x.state !== 'archived')) {
     ev.push({ key: m.id, at: m.updated_at || m.created_at, state: managedRunState(m), title: `托管会话 ${m.id} · ${{ starting: '启动中', running: '运行中', exited: '已退出', stopped: '已停止', failed: '启动失败', archived: '已归档' }[m.state] ?? '状态待核实'}`, detail: m.state === 'exited' || m.state === 'stopped' ? '退出不代表工作完成' : m.error || undefined })

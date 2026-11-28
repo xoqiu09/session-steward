@@ -126,6 +126,31 @@ describe('用户管理日常提醒', () => {
 })
 
 describe('TodayView', () => {
+  it('同一工作和候选版本的较晚通过回报不会盖住失败', () => {
+    const changed = { ...snap, features: [feature('export', '导出', [
+      contribution('DASH-2', { validation: 'failed', evidence: '大文件导出失败', at: t(7), active: false }),
+      contribution('DASH-2', { validation: 'passed', evidence: '小文件导出通过', at: t(6), session_id: 2, run_id: 2 }),
+      contribution('DASH-2', { candidate: 'c0', validation: 'passed', evidence: '旧版本通过', at: t(4), run_id: 3, active: false }),
+      contribution('BOOK-2', { candidate: 'c2', validation: 'failed', evidence: '另一工作失败', at: t(3), run_id: 4 }),
+    ])] }
+    const row = buildToday(changed, '').review.find((r) => r.item.id === 'DASH-2')
+    expect(row?.grade).toBe('failed')
+    const html = renderToStaticMarkup(<TodayView snap={changed} onSelectItem={() => {}} onOpenTown={() => {}} />)
+    expect(html).toContain('有验证失败')
+    expect(html).toContain('title="大文件导出失败"')
+    expect(html).toContain('title="小文件导出通过"')
+    expect(html).not.toContain('旧版本通过')
+    expect(html).not.toContain('另一工作失败')
+  })
+  it('验证失败时保留检查凭据和失败原因', () => {
+    const changed = { ...snap, features: [feature('export', '导出', [
+      contribution('DASH-2', { validation: 'failed', evidence: '检查记录 #47', blocker: '大文件导出超时' }),
+    ])] }
+    const html = renderToStaticMarkup(<TodayView snap={changed} onSelectItem={() => {}} onOpenTown={() => {}} />)
+    const detail = html.match(/title="([^"]*)">导出：验证失败/)?.[1]
+    expect(detail).toContain('检查记录 #47')
+    expect(detail).toContain('大文件导出超时')
+  })
   it('每件交付旁边明确验收完成或退回，证据和 Agent 说的分开写', () => {
     const html = renderToStaticMarkup(<TodayView snap={snap} onSelectItem={() => {}} onOpenTown={() => {}} />)
     expect(html).toContain('要你回应')

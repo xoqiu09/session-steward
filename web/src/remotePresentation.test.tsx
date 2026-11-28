@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Queue } from './Queue'
 import { MergeGate } from './P1'
 import { BriefSection } from './BriefSection'
+import { TodayView } from './today/TodayView'
 import * as bits from './bits'
 import { remoteReadOnlyMessage } from './access'
 import type { Approval, MergeJob, Snapshot, WorkItem } from './types'
@@ -40,10 +41,19 @@ function buttonAttrs(html: string, label: string) {
 }
 
 describe('remote merge result presentation', () => {
+  it('shows the same unconfirmed merge result in the check gate and the review card', () => {
+    remote()
+    const snap = { ...base, merge_jobs: [job('needs_review')] }
+    const onSelectItem = () => {}
+    expect(renderToStaticMarkup(<Queue snap={snap} onSelectItem={onSelectItem} />)).toContain('检查门：合并结果待核对')
+    const html = renderToStaticMarkup(<TodayView snap={snap} onSelectItem={onSelectItem} onOpenTown={() => {}} />)
+    expect(html.match(/>合并已批准，([^<]+)</)?.[1]).toBe('结果待核对')
+  })
   it.each([
     ['running', '检查门：检查中'],
     ['failed', '检查门：检查未通过'],
     ['passed', '检查门：检查通过，正在合并'],
+    ['needs_review', '检查门：合并结果待核对'],
   ] as const)('shows %s status in the queue without merge actions', (state, status) => {
     remote()
     const html = renderToStaticMarkup(<Queue snap={{ ...base, merge_jobs: [job(state)] }} onSelectItem={() => {}} />)

@@ -7,6 +7,7 @@ import { isRemote } from './access'
 
 export const jobStateLabel: Record<MergeJob['state'], string> = {
   queued: '排队中', running: '检查中', passed: '检查通过，正在合并', failed: '检查未通过', merged: '已合并到本地目标分支', aborted: '已中止，未合并',
+  needs_review: '合并结果待核对',
 }
 
 export const latestJob = (snap: Snapshot, approvalId: string) => (snap.merge_jobs ?? []).find((j) => j.approval_id === approvalId)

@@ -282,6 +282,76 @@ func TestAutoMergeOnApprovalAndRestartRecovery(t *testing.T) {
 	}
 }
 
+func TestRecoverPassedMergeJobChecksTarget(t *testing.T) {
+	for _, tc := range []struct {
+		name, target, want string
+		merged, advance    bool
+	}{
+		{name: "target equals checked merge", target: "main", want: "merged", merged: true},
+		{name: "target advanced past checked merge", target: "main", want: "merged", merged: true, advance: true},
+		{name: "target does not contain checked merge", target: "main", want: "needs_review"},
+		{name: "missing branch with same named tag", target: "missing", want: "needs_review"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c, dir, approval := gateRepo(t, [][]string{{"false"}})
+			ctx := context.Background()
+			base := strings.TrimSpace(git(t, dir, "rev-parse", "main"))
+			source := strings.TrimSpace(git(t, dir, "rev-parse", "feat/GT-1-x"))
+			git(t, dir, "checkout", "-qb", "checked")
+			git(t, dir, "merge", "--no-ff", "-qm", "checked", source)
+			checked := strings.TrimSpace(git(t, dir, "rev-parse", "HEAD"))
+			git(t, dir, "checkout", "-q", "main")
+			git(t, dir, "tag", "missing", checked)
+			if tc.merged {
+				git(t, dir, "merge", "--ff-only", "-q", checked)
+			}
+			if tc.advance {
+				commit(t, dir, "later")
+			}
+			before := git(t, dir, "show-ref")
+			now := c.St.NowTS()
+			if err := c.St.Tx(ctx, func(tx *sql.Tx) error {
+				_, err := tx.Exec(`INSERT INTO merge_jobs(id,approval_id,work_item_id,repo_id,source_sha,target_ref,target_sha,merge_sha,state,checks,created_at,updated_at)
+ SELECT 'mj_recover',id,work_item_id,repo_id,?,?,?,?,'passed','[{"exit_code":0}]',?,? FROM approvals WHERE id=?`, source, tc.target, base, checked, now, now, approval)
+				return err
+			}); err != nil {
+				t.Fatal(err)
+			}
+			traceFile := filepath.Join(t.TempDir(), "git-trace")
+			t.Setenv("GIT_TRACE", traceFile)
+			for range 2 {
+				if err := c.RecoverMergeJobs(ctx); err != nil {
+					t.Fatal(err)
+				}
+				job, err := c.MergeJob(ctx, "mj_recover")
+				if err != nil {
+					t.Fatal(err)
+				}
+				if job.State != tc.want {
+					t.Fatalf("recovered state = %q, want %q (%s)", job.State, tc.want, job.Error)
+				}
+				if job.MergeSHA != checked || len(job.Checks) != 1 || job.Checks[0].ExitCode != 0 {
+					t.Fatal("recovery must preserve the checked commit and result")
+				}
+			}
+			trace, err := os.ReadFile(traceFile)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, line := range strings.Split(string(trace), "\n") {
+				_, invocation, _ := strings.Cut(line, "built-in: git ")
+				command, _, _ := strings.Cut(invocation, " ")
+				if command == "merge" || command == "update-ref" {
+					t.Fatalf("recovery ran git %s:\n%s", command, trace)
+				}
+			}
+			if after := git(t, dir, "show-ref"); after != before {
+				t.Fatal("recovery must not move refs")
+			}
+		})
+	}
+}
+
 func TestAutoMergeRunsAfterApprove(t *testing.T) {
 	for k, v := range map[string]string{"GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@example.invalid", "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@example.invalid"} {
 		t.Setenv(k, v)
